@@ -152,7 +152,7 @@ export function readBudgetPanel(config: Record<string, unknown>, host: Host, now
   let reading;
   let cachePath: string | null = null;
   try {
-    const source = usageSourceFor(host, config);
+    const source = usageSourceFor(host, config, { historyPath });
     reading = source.read(now);
     cachePath = source.cachePath;
   } catch (error) {

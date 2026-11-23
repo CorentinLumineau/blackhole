@@ -277,4 +277,50 @@ describe('usageSourceFor provider chain', () => {
       expect(source.report(NOW).windows.map((w) => w.name)).toEqual(['five_hour', 'seven_day', 'seven_day_opus']);
     });
   });
+
+  describe('another account wrote the shared cache', () => {
+    const writeHistory = (dir: string, readings: unknown[]): string => {
+      const file = path.join(dir, 'usage-history.jsonl');
+      fs.writeFileSync(file, readings.map((r) => JSON.stringify(r)).join('\n') + '\n');
+      return file;
+    };
+    const ours = { observed_at: NOW - 600, used_percentage: 34, resets_at: NOW + 90 * HOUR };
+
+    test('a cache whose weekly resets_at differs from the campaign last probe is refused', () => {
+      withTempDir('usage-source', (dir) => {
+        const other = { seven_day: { used_percentage: 26, resets_at: NOW + 109 * HOUR } };
+        const historyPath = writeHistory(dir, [ours]);
+        const source = usageSourceFor('claude', cfg(writeCache(dir, other)), { historyPath });
+        const report = source.report(NOW);
+        expect(report).toMatchObject({ source: 'none', windows: [] });
+        expect(report.reason).toContain('another account');
+        expect(source.read(NOW).limits).toBeNull();
+      });
+    });
+
+    test('a weekly-less cache is refused while the campaign holds a current weekly probe', () => {
+      withTempDir('usage-source', (dir) => {
+        const historyPath = writeHistory(dir, [ours]);
+        const fiveOnly = { five_hour: { used_percentage: 10, resets_at: NOW + HOUR } };
+        expect(usageSourceFor('claude', cfg(writeCache(dir, fiveOnly)), { historyPath }).report(NOW).source).toBe('none');
+      });
+    });
+
+    test('a cache matching the latest probe is read', () => {
+      withTempDir('usage-source', (dir) => {
+        const older = { observed_at: NOW - 9000, used_percentage: 20, resets_at: NOW - HOUR };
+        const historyPath = writeHistory(dir, [older, ours]);
+        expect(usageSourceFor('claude', cfg(writeCache(dir, weeklyOnly)), { historyPath }).report(NOW)).toMatchObject({ source: 'rate-limit-cache', reason: null });
+      });
+    });
+
+    test('a past-reset last probe or no history leaves the cache unchecked', () => {
+      withTempDir('usage-source', (dir) => {
+        const other = { seven_day: { used_percentage: 26, resets_at: NOW + 109 * HOUR } };
+        const past = writeHistory(dir, [{ observed_at: NOW - 9000, used_percentage: 90, resets_at: NOW - HOUR }]);
+        expect(usageSourceFor('claude', cfg(writeCache(dir, other)), { historyPath: past }).report(NOW).source).toBe('rate-limit-cache');
+        expect(usageSourceFor('claude', cfg(writeCache(dir, other)), { historyPath: path.join(dir, 'none.jsonl') }).report(NOW).source).toBe('rate-limit-cache');
+      });
+    });
+  });
 });

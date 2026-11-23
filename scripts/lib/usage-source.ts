@@ -6,6 +6,7 @@ import { RATE_WINDOW_NAMES, readRateLimits, resolveRateLimitCachePath, type Rate
 import { detectHost, type Host } from './run-context.ts';
 import { UsageFileError, normalizeUsagePayload, type ExtraUsage, type PlanName, type ReportWindow } from './usage-normalize.ts';
 import { resolveUsageWindows, USAGE_WINDOWS, type UsageWindow } from './usage-budget.ts';
+import { readUsageHistory } from './usage-history.ts';
 
 // The usage source for a host: where its rate-limit reading comes from, and which windows that
 // reading shows. Claude reads the one rate-limit cache (written by the statusline or by
@@ -17,6 +18,13 @@ import { resolveUsageWindows, USAGE_WINDOWS, type UsageWindow } from './usage-bu
 // An explicit usage file (usage.ts --usage) is tried before the cache on every host, Cursor included;
 // a stale one ends the chain with its reason rather than falling back to the cache;
 // `report()` is the full normalized reading, `read()` the gate view of the same chain call.
+// The cache is one file per machine, so a session on another account can overwrite it. When the
+// campaign's usage history (`historyPath`) holds a weekly probe whose window is still current, the
+// cache is read only if its weekly `resets_at` is that window's: a reading from another weekly
+// window is refused, and the gates see no reading rather than another account's usage.
+
+/** How far a cached weekly `resets_at` may sit from the campaign's last probe and still be the same window. */
+export const SAME_WINDOW_TOLERANCE_SECONDS = 900;
 
 export type UsageSourceName = 'usage-file' | 'rate-limit-cache' | 'none';
 /** Which provider in the chain produced the reading: finer than `source`, which keeps the names the
@@ -104,11 +112,25 @@ const fileProvider = (usageFile: string, maxAgeSeconds: number): Provider => ({
   },
 });
 
-const cacheProvider = (cachePath: string, maxAgeSeconds: number, host: Host): Provider => ({
+/** Why the cache cannot be this campaign's reading, or null when it can (or nothing anchors it). */
+export const foreignCacheReason = (limits: RateLimits, historyPath: string | null, now: number): string | null => {
+  if (!historyPath) return null;
+  const history = readUsageHistory(historyPath);
+  const last = history.reduce<(typeof history)[number] | null>((a, b) => (a === null || b.observed_at >= a.observed_at ? b : a), null);
+  if (!last || last.resets_at <= now) return null;
+  const cached = limits.seven_day?.resets_at;
+  if (cached !== undefined && Math.abs(cached - last.resets_at) <= SAME_WINDOW_TOLERANCE_SECONDS) return null;
+  const seen = cached === undefined ? 'no weekly window' : `weekly resets_at ${cached}`;
+  return `rate-limit cache carries ${seen}, but this campaign last probed weekly resets_at ${last.resets_at}: another account may have written it; probe again or pass --usage`;
+};
+
+const cacheProvider = (cachePath: string, maxAgeSeconds: number, host: Host, historyPath: string | null): Provider => ({
   source: 'rate-limit-cache',
   run: (now) => {
     const { limits, reason, observedAt, origin } = readRateLimits(cachePath, now, maxAgeSeconds);
     if (!limits) return fail(host === 'unknown' ? `host unknown: ${reason}` : (reason as string));
+    const foreign = foreignCacheReason(limits, historyPath, now);
+    if (foreign) return { ok: false, reason: foreign, final: true };
     const windows: ReportWindow[] = RATE_WINDOW_NAMES.flatMap((name) => {
       const w = limits[name];
       return w ? [{ name, used_pct: w.used_percentage, resets_at: w.resets_at }] : [];
@@ -126,15 +148,16 @@ const cursorProvider: Provider = {
 };
 
 /** The source for `host`. Chain: the explicit `usageFile`, then the rate-limit cache (not on Cursor);
- * the first usable reading wins, except that a stale `usageFile` ends the chain with no reading. Throws on an invalid `resource_policy.pace` or `usage_budget.windows`,
+ * the first usable reading wins, except that a stale `usageFile` ends the chain with no reading.
+ * `historyPath` (the campaign's usage-history.jsonl) anchors the cache to this campaign's account. Throws on an invalid `resource_policy.pace` or `usage_budget.windows`,
  * and a missing or malformed `usageFile` throws UsageFileError when read. */
-export const usageSourceFor = (host: Host, config: Record<string, unknown>, options: { cachePath?: string; usageFile?: string } = {}): UsageSource => {
+export const usageSourceFor = (host: Host, config: Record<string, unknown>, options: { cachePath?: string; usageFile?: string; historyPath?: string | null } = {}): UsageSource => {
   const maxAge = resolvePaceGateThresholds(config).maxAgeSeconds;
   const only = resolveUsageWindows(config);
   const cachePath = options.cachePath || resolveRateLimitCachePath(config);
   const chain: Provider[] = [];
   if (options.usageFile) chain.push(fileProvider(options.usageFile, maxAge));
-  chain.push(host === 'cursor' ? cursorProvider : cacheProvider(cachePath, maxAge, host));
+  chain.push(host === 'cursor' ? cursorProvider : cacheProvider(cachePath, maxAge, host, options.historyPath ?? null));
   const name = chain[0].source;
   const usesCache = host !== 'cursor';
 
