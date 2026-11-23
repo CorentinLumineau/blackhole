@@ -204,8 +204,9 @@ export const appendConstraintBulletIfAbsent = (
 };
 
 /**
- * `append_row` dedup, pipe-table discriminator (`documentation/decisions/INDEX.md`,
- * `documentation/INDEX.md`) — the row's `path` column value. Delegates to `check-common.ts`'s
+ * `append_row` dedup, pipe-table discriminator (`documentation/decisions/INDEX.md`; root
+ * `documentation/INDEX.md` append_row entries are skipped as retired before reaching here) — the
+ * row's `path` column value. Delegates to `check-common.ts`'s
  * `appendIndexRowIfAbsent` (V-INT-02); an index whose header is ADR-schema goes to
  * `appendAdrIndexRowIfAbsent` instead, which renders by that header's columns and needs `today`.
  */
