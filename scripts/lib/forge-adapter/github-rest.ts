@@ -222,7 +222,7 @@ export const changePrBase = (repo: string, number: number, base: string): PrChan
     : { ok: false, base: actual, detail: `base is ${actual ?? 'unreadable'} after the change, expected ${base}` };
 };
 
-/** GitHub lists at most 1000 check runs of a commit; a read still short at the cap is refused, never returned partial. */
+/** At most 1000 rows (10 pages of 100) are read per list; a read still short of its total at the cap is refused, never returned partial. */
 const CHECK_PAGES_MAX = 10;
 
 /**

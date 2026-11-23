@@ -214,13 +214,16 @@ describe('collectStatusReport — the forge path', () => {
       if (endpoint.includes('/issues?')) return rest([]);
       if (/\/pulls\?/.test(endpoint)) return rest([{ number: 206, title: 'Cache the price table', body: null, head: { ref: 'b', sha: 'abc' }, state: 'open', merged_at: null }]);
       if (endpoint.endsWith('/pulls/206')) return rest({ number: 206, title: 'Cache the price table', body: null, mergeable: false, head: { ref: 'b', sha: 'abc' }, state: 'open', merged_at: null, labels: [{ name: 'ai-review:LGTM' }] });
-      if (endpoint.includes('/check-runs')) return rest({ check_runs: [{ name: 'test', status: 'completed', conclusion: 'success' }] });
-      if (endpoint.endsWith('/status')) return rest({ statuses: [] });
+      if (endpoint.includes('/check-runs')) return rest({ total_count: 1, check_runs: [{ name: 'test', status: 'completed', conclusion: 'success' }] });
+      if (endpoint.includes('/status?')) return rest({ statuses: [] });
       return { status: 1, stdout: '', stderr: `unexpected ${endpoint}` } as childProcess.SpawnSyncReturns<string>;
     }) as typeof childProcess.spawnSync);
     const { report } = await collectStatusReport(copy('full'), false, GENERATED_AT);
     expect(report.forge_checked).toBe(true);
     expect(report.board.find((c) => c.ref === 206)).toMatchObject({ stage: 'blocked', status: 'conflict with its base', tone: 'bad' });
+    // The CI read completed: the check-runs read ended at its total_count, then the first status page was read.
+    const ciReads = ghCalls().map((c) => String(c[1]?.[3])).filter((e) => /\/commits\/abc\/(check-runs|status)\?/.test(e));
+    expect(ciReads).toEqual(['repos/acme/widgets/commits/abc/check-runs?per_page=100&page=1', 'repos/acme/widgets/commits/abc/status?per_page=100&page=1']);
     // 203/204/205/213 are not open on this mocked forge, so they were never read.
     expect([...new Set(ghCalls().filter((c) => /\/pulls\/\d+$/.test(String(c[1]?.[3]))).map((c) => c[1]?.[3]))]).toEqual(['repos/acme/widgets/pulls/206']);
   });
