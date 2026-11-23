@@ -766,6 +766,17 @@ describe('extractWorkerJson', () => {
     const text = JSON.stringify(routerJson) + '\n\nThe route above was computed from the body only.';
     expect(extractWorkerJson(text)).toEqual(routerJson);
   });
+
+  test('prefers the bare return over a trailing empty object in prose', () => {
+    const routerJson = readFixture('router-routed.json');
+    const text = JSON.stringify(routerJson) + '\n\nAn empty object {} would mean no route was computed.';
+    expect(extractWorkerJson(text)).toEqual(routerJson);
+  });
+
+  test('a non-empty final object without status wins over an earlier example that has one', () => {
+    const text = 'Example: {"status":"complete","pr":1}\nMy return:\n{"pr":42,"branch":"x"}';
+    expect(extractWorkerJson(text)).toEqual({ pr: 42, branch: 'x' });
+  });
 });
 
 describe('resolveRole', () => {
@@ -955,6 +966,52 @@ describe('extractFromHookInput', () => {
 
     expect(result.status).toBe('blocked');
     expect(result.clarification_markers).toBe(0);
+  });
+
+  test('reads the worker JSON out of the last assistant envelope of a real-shaped JSONL transcript', () => {
+    const transcriptPath = path.join(fixturesDir, 'transcripts/cli-subagent-text-return.jsonl');
+    const input = { summary: 'no structured output here', agent_transcript_path: transcriptPath };
+
+    expect(extractFromHookInput(input)).toEqual(readFixture('router-routed.json'));
+  });
+
+  test('reads the SubagentHandback input of a Claude desktop JSONL transcript', () => {
+    const transcriptPath = path.join(fixturesDir, 'transcripts/desktop-subagent-handback.jsonl');
+    const input = { summary: 'no structured output here', agent_transcript_path: transcriptPath };
+
+    const result = extractFromHookInput(input) as Record<string, unknown>;
+
+    expect(result.status).toBe('routed');
+    expect(result.trigger).toBe('initial');
+  });
+
+  test('reads a final assistant line longer than 64 KB, the same tail budget as --recover-transcript', () => {
+    const routerJson = readFixture('router-routed.json');
+    const transcriptPath = path.join(tmpDir, 'long-final-line.jsonl');
+    const text = 'x'.repeat(100_000) + '\n```json\n' + JSON.stringify(routerJson) + '\n```';
+    fs.writeFileSync(
+      transcriptPath,
+      JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text }] } }),
+      'utf-8',
+    );
+    const input = { summary: 'no structured output here', agent_transcript_path: transcriptPath };
+
+    expect(extractFromHookInput(input)).toEqual(routerJson);
+  });
+
+  test('does not fall back to raw JSONL envelopes when the last assistant turn carries no JSON', () => {
+    const transcriptPath = path.join(tmpDir, 'no-json.jsonl');
+    fs.writeFileSync(
+      transcriptPath,
+      [
+        JSON.stringify({ type: 'user', message: { role: 'user', content: 'go' } }),
+        JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'Nothing to report.' }] } }),
+      ].join('\n'),
+      'utf-8',
+    );
+    const input = { summary: 'no structured output here', agent_transcript_path: transcriptPath };
+
+    expect(() => extractFromHookInput(input)).toThrow('no worker JSON found in summary or transcript');
   });
 
   test('throws when neither summary nor transcript contain JSON', () => {
@@ -1341,6 +1398,58 @@ describe('recover-transcript CLI mode', () => {
         },
       }),
       jsonlLine({ type: 'assistant', message: { content: [{ type: 'text', text: 'Handed back.' }] } }),
+    ]);
+
+    const result = await runValidateWorkerCli([
+      '--recover-transcript',
+      transcriptPath,
+      '--role',
+      'router',
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout.trim())).toEqual(routerJson);
+  });
+
+  test('prefers the SubagentHandback input over assistant text in the same last assistant turn', async () => {
+    const routerJson = readFixture('router-routed.json');
+    const exampleText = '```json\n{"status":"routed","route":{"needs_split":false}}\n```';
+    const transcriptPath = writeTranscript('router-text-and-handback.jsonl', [
+      jsonlLine({
+        type: 'assistant',
+        message: {
+          id: 'msg_last',
+          content: [
+            { type: 'text', text: 'Shape I am returning: ' + exampleText },
+            { type: 'tool_use', name: 'SubagentHandback', input: { message: JSON.stringify(routerJson) } },
+          ],
+        },
+      }),
+    ]);
+
+    const result = await runValidateWorkerCli([
+      '--recover-transcript',
+      transcriptPath,
+      '--role',
+      'router',
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout.trim())).toEqual(routerJson);
+  });
+
+  test('treats consecutive lines of one assistant message id as the same last turn', async () => {
+    const routerJson = readFixture('router-routed.json');
+    const exampleText = '```json\n{"status":"routed","route":{"needs_split":false}}\n```';
+    const transcriptPath = writeTranscript('router-split-turn.jsonl', [
+      jsonlLine({
+        type: 'assistant',
+        message: {
+          id: 'msg_last',
+          content: [{ type: 'tool_use', name: 'SubagentHandback', input: { message: JSON.stringify(routerJson) } }],
+        },
+      }),
+      jsonlLine({ type: 'assistant', message: { id: 'msg_last', content: [{ type: 'text', text: exampleText }] } }),
     ]);
 
     const result = await runValidateWorkerCli([

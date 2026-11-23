@@ -10,6 +10,7 @@ import {
   extractLastAssistantText,
   extractLastHandbackMessage,
   readTranscriptTail,
+  transcriptReturnCandidates,
 } from './lib/worker-json/transcript.ts';
 import type { HookInput, Role } from './lib/worker-json/types.ts';
 import { extractFromHookInput, validateWorker } from './lib/worker-json/validate.ts';
@@ -135,17 +136,15 @@ function runRecoverTranscript(
   role: Role,
   transcriptPath: string,
 ): number {
-  const tail = readTranscriptTail(transcriptPath, 200_000);
+  const tail = readTranscriptTail(transcriptPath);
   if (tail === null) {
     console.error(`transcript not found or unreadable: ${transcriptPath}`);
     return 1;
   }
 
-  // Assistant text first (Claude Code CLI); then the last `SubagentHandback` tool input,
-  // which is where a Claude desktop worker's return lives.
-  const sources = [extractLastAssistantText(tail), extractLastHandbackMessage(tail)].filter(
-    (text): text is string => text !== null,
-  );
+  // A `SubagentHandback` input in the last assistant turn first (Claude desktop), then that
+  // turn's text (Claude Code CLI), then the last handback input of an earlier turn.
+  const sources = transcriptReturnCandidates(tail);
   if (sources.length === 0) {
     console.error('no assistant message or SubagentHandback tool call found in transcript');
     return 1;
