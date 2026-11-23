@@ -74,7 +74,7 @@ Direct `/blackhole run` or `/goal` in a single session: act as orchestrator (leg
    substituting `{project-name}` from `.blackhole/config.json`'s `repo` field
    (`owner/repo-name` → `repo-name`) or `basename "$(pwd)"` when `repo` is absent or has no
    `/`. Additionally create `DESIGN.md` under the same skip-if-exists rule **only when**
-   `bash scripts/detect-frontend.sh` emits `frontend=yes`. Additionally create
+   `bash "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/detect-frontend.sh` emits `frontend=yes`. Additionally create
    `documentation/reference/journeys.md` under the same skip-if-exists rule **only when** the
    companion-file scaffold above is not skipped **and** `kaizen.enabled` is `true` **and**
    `kaizen.kinds` contains `ux-coherence`. When created (not skipped), run
