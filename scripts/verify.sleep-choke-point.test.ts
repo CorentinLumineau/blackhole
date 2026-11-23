@@ -7,7 +7,7 @@ import {
 } from './checks/sleep-choke-point.check.ts';
 
 // V-SLEEP-01: every playbook section that tells the model to ask the owner routes the question
-// through askOrPark() / clarify-gates.md § C3 adapter, so sleep mode can park it.
+// through askOrPark() / clarify-gates.md § C3 adapter, so it can be parked for the decide round.
 
 const doc = (path: string, content: string) => ({ path, content });
 const UNROUTED = 'asks the owner without askOrPark() / clarify-gates.md § C3 adapter';
@@ -23,7 +23,7 @@ describe('findUnroutedAsks', () => {
   });
 
   test('a route anywhere in the same section passes', () => {
-    for (const route of ['`askOrPark()`', 'clarify-gates.md § C3 adapter', 'the C3 adapter row for this session', '`clarify-gates.md` § Gate Content Contract', '`sleep-mode.md`']) {
+    for (const route of ['`askOrPark()`', 'clarify-gates.md § C3 adapter', 'the C3 adapter row for this session', '`clarify-gates.md` § Gate Content Contract', '`decision-parking.md`']) {
       expect(findUnroutedAsks([doc('a.md', `## G\nUse AskQuestion.\n\nRouted via ${route}.\n`)], [])).toEqual([]);
     }
   });

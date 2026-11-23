@@ -251,7 +251,8 @@ function runSection(r: StatusReport): string {
 
 function pendingSection(r: StatusReport): string {
   const lines = r.pending_decisions.map((d) => `${d.question} — recommended: ${d.recommended} · holds ${d.waiting_items} item${d.waiting_items === 1 ? '' : 's'}`);
-  return section('Decisions waiting for you', lines.length ? lineList(lines) : empty('No decision is waiting for you.'), lines.length);
+  const body = lines.length ? `${lineList(lines)}<p>${escapeHtml('Answer them all with /blackhole decide.')}</p>` : empty('No decision is waiting for you.');
+  return section('Decisions waiting for you', body, lines.length);
 }
 
 function eventsSection(r: StatusReport): string {

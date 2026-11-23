@@ -287,7 +287,7 @@ function readStatusPageInput(campaignDir: string, config: Parameters<typeof stat
   };
 }
 
-/** The launch gate's print-only mode: sleep mode is on (`isSleepMode`), or the run context reports no question channel. */
+/** The launch gate's print-only mode: the owner is away (`isSleepMode`), or the run context reports no question channel. Never `decisions.mode` (ADR-059 D5). */
 function readPrintOnly(campaignDir: string, config: Record<string, unknown>): boolean {
   const route = (readJsonOrNull(path.join(campaignDir, 'run-context.json')) ?? {}) as { route?: { question_channel?: unknown } };
   return isSleepMode(config) || route.route?.question_channel === 'none';

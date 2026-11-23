@@ -66,6 +66,7 @@ const LIVE: Record<string, unknown> = {
   usage_budget_note: 'note',
   catchup: { weekly_target_pct: 80 },
   sleep_mode: { enabled: false },
+  decisions: { mode: 'ask' },
 };
 
 const probed = (over: Partial<BudgetPanel> = {}): BudgetPanel => ({ ...NOT_PROBED, probed: true, reason: null, source: 'rate-limit-cache', age_seconds: 120, ...over });
@@ -108,7 +109,7 @@ describe('LAUNCH_ROW_CLAIMS', () => {
 
   test('every claimed key is read: removing it from a config carrying all claimed keys changes the owning row', () => {
     // Staging reads `enabled && write_governance !== false`: each key is observable only while the other is not masking it.
-    // Budget shows parallel_max only when pacing is off, and Sleep mode differs only while on: each gets its own variant.
+    // Budget shows parallel_max only when pacing is off, and the away part of Decisions differs only while on: each gets its own variant.
     const variants = [
       LIVE,
       { ...LIVE, docs_governance: { ...(LIVE.docs_governance as object), write_governance: true } },
@@ -134,7 +135,8 @@ describe('LAUNCH_ROW_CLAIMS', () => {
     expect(checked).toContain('pacing:usage_budget.max_workers');
     expect(checked).toContain('pacing:catchup');
     expect(checked).toContain('peers:usage_budget.coordination');
-    expect(checked).toHaveLength(30);
+    expect(checked).toContain('decisions:decisions');
+    expect(checked).toHaveLength(31);
   });
 
   test('every built row carries the label LAUNCH_ROW_LABELS names for its key', () => {

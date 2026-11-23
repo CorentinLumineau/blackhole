@@ -952,7 +952,7 @@ describe('status --summary (the launch summary)', () => {
     expect(proc.exitCode).toBe(0);
     const out = proc.stdout.toString();
     expect(out).toContain('## Launch summary');
-    for (const label of ['Scope', 'Order', 'Merge', 'Pacing', 'Budget', 'Status page', 'Kaizen and staging', 'Autonomy', 'Resource policy', 'Wave scheduling', 'Peers', 'Sleep mode', 'Other config']) expect(out).toContain(`| ${label} |`);
+    for (const label of ['Scope', 'Order', 'Merge', 'Pacing', 'Budget', 'Status page', 'Kaizen and staging', 'Autonomy', 'Resource policy', 'Wave scheduling', 'Peers', 'Decisions', 'Other config']) expect(out).toContain(`| ${label} |`);
     expect(out).toContain('pacing off');
   });
 
@@ -962,7 +962,7 @@ describe('status --summary (the launch summary)', () => {
     const parsed = JSON.parse(proc.stdout.toString());
     expect(parsed.rows.map((r: { key: string }) => r.key)).toEqual([
       'scope', 'order', 'merge', 'pacing', 'budget', 'status_page', 'kaizen_staging',
-      'autonomy', 'resource_policy', 'wave_scheduling', 'peers', 'sleep', 'other_config',
+      'autonomy', 'resource_policy', 'wave_scheduling', 'peers', 'decisions', 'other_config',
     ]);
     expect(Array.isArray(parsed.cards)).toBe(true);
   });
@@ -1001,7 +1001,7 @@ describe('status --summary (the launch summary)', () => {
     const parsed = JSON.parse(catchup.stdout.toString());
     expect(parsed.rows.map((r: { key: string }) => r.key)).toEqual([
       'scope', 'order', 'merge', 'pacing', 'budget', 'status_page', 'kaizen_staging',
-      'autonomy', 'resource_policy', 'wave_scheduling', 'peers', 'sleep', 'other_config',
+      'autonomy', 'resource_policy', 'wave_scheduling', 'peers', 'decisions', 'other_config',
     ]);
     expect(parsed.pacing).toMatchObject({ status: 'ok', floor_pct: 45.71, elapsed_h: 96, target_pct: 80, shortfall_pct: 15.71 });
     expect(JSON.parse(summary('--campaign-dir', FULL, '--now', NOW_FRI, '--json').stdout.toString()).rows).toHaveLength(13);
@@ -1045,9 +1045,10 @@ describe('status --summary (the launch summary)', () => {
   const NOW_S = '1763026200';
   const runContext = (host: string, questions: string) => ({ context: { host: { value: host } }, route: { question_channel: questions } });
 
-  test('sleep_mode.enabled: print-only, no question card', () => {
+  test('sleep_mode.enabled: print-only, no question card; default parking keeps the gate interactive', () => {
     const awake = summaryJson(tempCampaign({}));
     expect(awake.cards.length).toBeGreaterThan(0);
+    expect(summaryJson(tempCampaign({ decisions: { mode: 'park' }, sleep_mode: { enabled: false } })).cards.length).toBeGreaterThan(0);
     expect(summaryJson(tempCampaign({ sleep_mode: { enabled: true } })).cards).toEqual([]);
   });
 

@@ -3,9 +3,9 @@ import { when } from './budget.ts';
 import { DONE_STATUSES } from './queue.ts';
 import type { BudgetPanel, QueueIssue } from './types.ts';
 
-// Sleep mode, the parts around the choke point (`sleep-mode.md`): the `sleep_mode` block the
-// toggle writes, the wake-ups the campaign re-arms for itself while nobody is watching, and the
-// report the owner reads before the batched round. Pure: `scripts/campaign-record.ts` does the I/O.
+// Sleep mode, the owner's absence (`sleep-mode.md`): the `sleep_mode` block the toggle writes, the
+// wake-ups the campaign re-arms for itself while nobody is watching, and the reports the owner reads
+// before a decision round (`decision-parking.md`). Pure: `scripts/campaign-record.ts` does the I/O.
 
 /**
  * What was true when sleep mode went on, so the wake-up report can say what changed. `done` is
@@ -120,13 +120,19 @@ function budgetUsed(b: BudgetPanel, baseline: SleepBaseline | null): string {
   return parts.join(', ') || 'no usage window read';
 }
 
-/** The executive summary printed ahead of the batched round (`sleep-mode.md` § Wake-up round, step 2). */
+const waiting = (pending: number): string => (pending ? `${pending}, asked next` : 'none');
+
+/**
+ * The executive summary printed ahead of the round when the owner was away (`sleep-mode.md` §
+ * Wake-up). `stillAway` is set by `decide`, which answers without ending the absence.
+ */
 export function buildWakeReport(input: {
   since: string | null;
   baseline: SleepBaseline | null;
   issues: Record<string, QueueIssue> | null;
   budget: BudgetPanel;
   pending: number;
+  stillAway?: boolean;
 }): string {
   return [
     '## While you were away',
@@ -135,7 +141,22 @@ export function buildWakeReport(input: {
     `- Work done: ${workDone(input.baseline, input.issues)}.`,
     `- Open PRs in merge order: ${openPrs(input.issues)}.`,
     `- Budget used: ${budgetUsed(input.budget, input.baseline)}.`,
-    `- Decisions waiting for you: ${input.pending ? `${input.pending}, asked next` : 'none'}.`,
+    ...(input.stillAway
+      ? ['- Still away: the keep-awake hold and the print-only launch gate stay on until `/blackhole wake`.']
+      : []),
+    `- Decisions waiting for you: ${waiting(input.pending)}.`,
+    '',
+  ].join('\n');
+}
+
+/** The summary printed ahead of a decision round when the owner is present (`decision-parking.md` § Decide round). */
+export function buildDecideReport(input: { issues: Record<string, QueueIssue> | null; budget: BudgetPanel; pending: number }): string {
+  return [
+    '## Before you decide',
+    '',
+    `- Open PRs in merge order: ${openPrs(input.issues)}.`,
+    `- Usage now: ${budgetUsed(input.budget, null)}.`,
+    `- Decisions waiting for you: ${waiting(input.pending)}.`,
     '',
   ].join('\n');
 }

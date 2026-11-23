@@ -1,5 +1,5 @@
 <meta name="dash-one-writer">
-<meta name="bh-template-version" content="8">
+<meta name="bh-template-version" content="9">
 <style>
   /* Colours: the artifact page's own tokens, with a fallback for a page that defines none. --cd-info,
      the warm "your move" panel and the done column have no page token, so they are set here. */
@@ -102,6 +102,7 @@
       <h2 class="cd-h2" id="cd-pending-h">Decisions waiting for you <b class="t-warn" data-draw="pending_count" data-source="pending">0</b></h2>
       <ol class="cd-list" data-draw="pending" data-source="pending"></ol>
       <p class="cd-empty" data-empty="pending" hidden>No decision is waiting for you.</p>
+      <p class="cd-note" data-filled="pending" hidden>Answer them all with <code>/blackhole decide</code>.</p>
     </section>
   </div>
 
@@ -213,7 +214,8 @@
     a.href = url; a.target = '_blank'; a.rel = 'noopener';
     return a;
   }
-  // Fills a list, or shows its empty line (data-empty="<draw name>") when the dataset has no row.
+  // Fills a list, or shows its empty line (data-empty="<draw name>") when the dataset has no row
+  // and its filled line (data-filled="<draw name>") when it has some.
   function fill(el, source, build) {
     const st = dash.data(source).status;
     el.classList.toggle('dash-skeleton', st === 'loading');
@@ -221,6 +223,8 @@
     el.replaceChildren(...items);
     const empty = document.querySelector('[data-empty="' + el.dataset.draw + '"]');
     if (empty) empty.hidden = !(st === 'ok' && items.length === 0);
+    const filled = document.querySelector('[data-filled="' + el.dataset.draw + '"]');
+    if (filled) filled.hidden = !(st === 'ok' && items.length > 0);
   }
 
   function card(r, i) {

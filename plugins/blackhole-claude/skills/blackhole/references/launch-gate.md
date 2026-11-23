@@ -118,7 +118,7 @@ row as shown. Adjust opens only that row's form steps, never the whole form:
 | Autonomy, Resource policy, Wave scheduling | Display only: edit the block in `config.json` to change it |
 | Other config | Display only: the key names no row shows; never a value |
 | Peers | Display only (the configured role, or `solo (no live peer in this clone)`), unless a live peer is not yet coordinated with this session, or `unknown (N unreadable: <files>)`: then the peer question below |
-| Sleep mode | Display only: sleep mode on or off; while on the whole gate is print-only |
+| Decisions | Display only: `decisions.mode` (park by default, or ask), the decisions waiting for `/blackhole decide`, and the owner away (sleep mode), which alone makes the whole gate print-only |
 
 With `merge_mode` unset the Merge card has no Accept option (R-002): the owner must pick one.
 
@@ -153,21 +153,24 @@ answers become the `usage_budget` block `campaign-status.ts usage-caps` prints.
 
 ## Print-only mode
 
-Print-only mode applies when sleep mode is on (`sleep_mode.enabled`), or the run context has no
-question channel (its route reports questions `none`, e.g. a headless run). This is how a scheduled
+Print-only mode applies when the owner is away (sleep mode, `sleep_mode.enabled`), or the run
+context has no question channel (its route reports questions `none`, e.g. a headless run). Default
+parking (`decisions.mode`, `decision-parking.md`) never makes the gate print-only: on an
+interactive start the owner is present and the gate is owner-initiated, so its questions are asked
+directly (ADR-059 D5). This is how a scheduled
 catchup runs: sleep mode on, summary printed, every row accepted, then the `--floor` gate decides.
 The gate then prints
-the summary, asks nothing and never waits. It is not sleep mode's parking either: the
+the summary, asks nothing and never waits. It does not park its rows either: the
 `coordinator.md` 6-step form does not run, and nothing is parked through `askOrPark()`
-(`sleep-mode.md` § The choke point), so the gate leaves no pending decision behind, with one
+(`decision-parking.md` § The choke point), so the gate leaves no pending decision behind, with one
 exception, the peer question:
 
 - every row counts as accepted;
 - `merge_mode` unset: refuse to start, with one line, `merge_mode is unset; print-only mode cannot
   ask for it (R-002)` — never pick a merge mode for the owner;
 - a live peer that is not yet coordinated, or unreadable peer records (the Peers row offers a
-  question): refuse to start and release this session's record. Under sleep mode, first park the
-  peer question for the wake-up round. The question text and the option set are always the same,
+  question): refuse to start and release this session's record. While the owner is away, first park the
+  peer question for the decide round. The question text and the option set are always the same,
   so a re-park on the next wake merges into the pending decision instead of failing (`park`
   refuses the same question with a different option set). Join is always listed; the evidence
   says whether it applies, and the row's details (worktree, turn, heartbeat age, unreadable files)
@@ -177,7 +180,7 @@ exception, the peer question:
   when the evidence names a manager to join|Take over after drain" --recommended "Take over after
   drain" --evidence "<the Peers row value>; join: <id, or none>"` (`none` whenever the row offers no
   Join). A Join answer when the evidence
-  says `join: none` is treated as Take over. With no question channel and sleep mode off, refusing
+  says `join: none` is treated as Take over. With no question channel and the owner present, refusing
   is enough;
 - a failed probe or an unreachable page: say so in one line and continue without the page; the
   next interactive start offers the reuse / publish choice.

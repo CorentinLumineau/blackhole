@@ -7,8 +7,13 @@ User is **always** the source of truth for direction. Sync is automatic;
 
 Never instruct the model to call a question tool that is absent from the session schema.
 
-**First, `askOrPark()`** (`sleep-mode.md` § The choke point): when `sleep_mode.enabled` is `true`,
-no row below applies — the question is parked with `campaign-record.ts park` and asked on wake-up.
+**First, `askOrPark()`** (`decision-parking.md` § The choke point): unless `decisions.mode` is
+`ask` and the owner is not away, no row below applies — the question is parked with
+`campaign-record.ts park` and asked in the decide round (`/blackhole decide`). Parking is the
+default. Owner-initiated rounds are the answer channel and use the rows below directly: the
+launch configuration gate on an interactive start (its summary questions and the coordinator's
+bootstrap form), the decide round's own cards, and a follow-up question about a message the owner
+just sent (`coordinator.md` § Chat Feedback Intake Protocol).
 
 | If the session exposes | Coordinator / orchestrator does |
 |------------------------|--------------------------------|

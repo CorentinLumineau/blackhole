@@ -275,7 +275,7 @@ after reading checkpoint and forge sync:
      (EACCES) has no mtime and stays `unknown` until its permissions are corrected or the file is
      removed: dating it by the registry directory's mtime would let unrelated writes refresh or
      age out an unreadable entry, which loosens the read;
-   - under sleep mode, park it once with `launch-gate.md` § Print-only mode's fixed question and
+   - while the owner is away (sleep mode), park it once with `launch-gate.md` § Print-only mode's fixed question and
      option set; a re-park on a later turn merges into the same pending decision.
 
    Nothing refreshes the record between

@@ -3,10 +3,9 @@ import * as path from 'path';
 import { readJsonFile } from '../fs.ts';
 import { installStateFile } from '../state-write-guard.ts';
 
-// Sleep mode (`sleep-mode.md`): while the owner is away the campaign never asks. Each question it
-// would have put to the owner is parked here instead, and the wake-up turn asks them all at once.
-// `.blackhole/pending-decisions.json` is written only through `scripts/campaign-record.ts park` and
-// `resolve`, so its shape is checked once, here.
+// Decision parking (`decision-parking.md`, ADR-059): every owner question the campaign raises is
+// parked here by default, and `/blackhole decide` asks them all in one round. `.blackhole/pending-decisions.json`
+// is written only through `scripts/campaign-record.ts park` and `resolve`, so its shape is checked once, here.
 
 export const PENDING_DECISIONS_FILE = 'pending-decisions.json';
 export const PENDING_ENTITY_KEY = 'decisions';
@@ -34,15 +33,33 @@ export type PendingDecision = {
   created_at: string;
 };
 
-/** True only when `config.json` says `sleep_mode.enabled: true`. Absent or anything else ⇒ awake. */
+/** True only when `config.json` says `sleep_mode.enabled: true`: the owner is away (`sleep-mode.md`). */
 export function isSleepMode(config: unknown): boolean {
   const block = (config as { sleep_mode?: { enabled?: unknown } } | null)?.sleep_mode;
   return block?.enabled === true;
 }
 
-/** The one choke point every owner question goes through: ask now, or park it for the wake-up round. */
+export type DecisionsMode = 'park' | 'ask';
+
+/** The raw `decisions.mode` value, or undefined when the block or key is absent. */
+export const rawDecisionsMode = (config: unknown): unknown =>
+  ((config as { decisions?: unknown } | null)?.decisions as { mode?: unknown } | null | undefined)?.mode;
+
+/**
+ * `decisions.mode`: only an exact `"ask"` opts out of parking. Absent or anything else parks, since
+ * parking never decides for the owner and never interrupts them. `sleep_mode.enabled: false` is
+ * not read here: every past `wake` wrote it, so it says "the owner came back", not "ask me".
+ */
+export function decisionsMode(config: unknown): DecisionsMode {
+  return rawDecisionsMode(config) === 'ask' ? 'ask' : 'park';
+}
+
+/**
+ * The one choke point every owner question the campaign raises goes through: ask now, or park it
+ * for `/blackhole decide`. An away owner is never asked, whatever the mode.
+ */
 export function askOrPark(config: unknown): 'ask' | 'park' {
-  return isSleepMode(config) ? 'park' : 'ask';
+  return decisionsMode(config) === 'ask' && !isSleepMode(config) ? 'ask' : 'park';
 }
 
 /** Why `d` is not a valid pending decision, or null when it is. */
@@ -136,7 +153,7 @@ export type WakeCardQuestion = PendingDecision & { waiting_items: number };
 export type WakeBatch = { total: number; blocked_items: number[]; cards: WakeCardQuestion[][] };
 
 /**
- * The wake-up round: every parked decision, the most-blocking first (oldest first on a tie), in
+ * The decision round (`decide`, and `wake` after it ends the absence): every parked decision, the most-blocking first (oldest first on a tie), in
  * cards of at most four questions — one AskUserQuestion call (or one decision-card set) per card.
  */
 export function wakeBatch(list: PendingDecision[]): WakeBatch {

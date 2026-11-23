@@ -46,20 +46,22 @@ describe('run panel: route, sleep mode and coordination', () => {
     }
   });
 
-  test('sleep mode on with the parked count; off by default', () => {
-    const on = buildRunPanel({ config: { sleep_mode: { enabled: true } }, runContext: null, pending: [decision('PD-1', [3]), decision('PD-2', [4])] });
-    expect(on.sleep_mode).toBe(true);
-    expect(on.parked).toBe(2);
-    expect(valueOf(runRows(on), 'Sleep mode')).toBe('on · 2 parked decisions');
-    const off = buildRunPanel({ config: {}, runContext: null, pending: [] });
-    expect(valueOf(runRows(off), 'Sleep mode')).toBe('off · 0 parked decisions');
-    expect(valueOf(runRows(buildRunPanel({ config: {}, runContext: null, pending: [decision('PD-1', [])] })), 'Sleep mode')).toBe('off · 1 parked decision');
+  test('decisions park by default, with the waiting count, the round to run and the owner away', () => {
+    const away = buildRunPanel({ config: { sleep_mode: { enabled: true } }, runContext: null, pending: [decision('PD-1', [3]), decision('PD-2', [4])] });
+    expect(away.sleep_mode).toBe(true);
+    expect(away.decisions_mode).toBe('park');
+    expect(away.parked).toBe(2);
+    expect(valueOf(runRows(away), 'Decisions')).toBe('park · 2 waiting — run /blackhole decide · owner away');
+    const none = buildRunPanel({ config: {}, runContext: null, pending: [] });
+    expect(valueOf(runRows(none), 'Decisions')).toBe('park · none waiting');
+    const ask = buildRunPanel({ config: { decisions: { mode: 'ask' } }, runContext: null, pending: [decision('PD-1', [])] });
+    expect(valueOf(runRows(ask), 'Decisions')).toBe('ask · 1 waiting — run /blackhole decide');
   });
 
   test('an unreadable pending-decisions.json is said, never shown as zero parked', () => {
     const panel = buildRunPanel({ config: { sleep_mode: { enabled: true } }, runContext: null, pending: { error: 'no "decisions" array' } });
     expect(panel.parked).toBeNull();
-    expect(valueOf(runRows(panel), 'Sleep mode')).toBe('on · parked decisions unreadable: no "decisions" array');
+    expect(valueOf(runRows(panel), 'Decisions')).toBe('park · parked decisions unreadable: no "decisions" array · owner away');
   });
 
   test('coordination role: solo, manager, and peer with its manager and floor', () => {
@@ -107,11 +109,12 @@ describe('the run panel and the parked decisions on every surface', () => {
     expect(data.pending).toEqual([{ id: 'PD-1', question: 'Ship the gate as a draft?', recommended: 'Yes', waiting_items: 1, gate: 'plan-approval', created_at: '2026-11-11T09:00:00.000Z' }]);
     const text = formatDashboard({ checkpoint: {}, queue: { issues: {} }, ledger: {}, forge: { openIssues: 0, openPrs: 0, ok: true }, view: report });
     expect(text).toContain('### Run');
-    expect(text).toContain('- **Sleep mode:** off · 1 parked decision');
-    expect(text).toContain('### Decisions waiting for you (1)');
+    expect(text).toContain('- **Decisions:** park · 1 waiting — run /blackhole decide');
+    expect(text).toContain('### Decisions waiting for you (1) — run /blackhole decide');
     const html = renderStatusHtml(report);
     expect(html).toContain('Decisions waiting for you <span class="count">1</span>');
-    expect(html).toContain('Sleep mode: off · 1 parked decision');
+    expect(html).toContain('Decisions: park · 1 waiting — run /blackhole decide');
+    expect(html).toContain('Answer them all with /blackhole decide.');
     expect(html).toContain('Run route: not recorded');
   });
 });

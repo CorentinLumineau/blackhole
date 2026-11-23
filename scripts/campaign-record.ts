@@ -13,6 +13,7 @@ import {
 import {
   addPendingDecision,
   askOrPark,
+  isSleepMode,
   readPendingDecisions,
   resolvePendingDecision,
   wakeBatch,
@@ -22,14 +23,14 @@ import {
 import { SCOPE_KINDS, type QueueIssue, type ScopeEntry, type ScopeKind } from './lib/campaign-status/types.ts';
 import { readBudgetPanel, when } from './lib/campaign-status/budget.ts';
 import { USAGE_HISTORY_FILE } from './lib/usage-history.ts';
-import { buildWakeReport, doneIssues, planWakeUps, readSleepSession, sleepOff, sleepOn } from './lib/campaign-status/sleep-session.ts';
+import { buildDecideReport, buildWakeReport, doneIssues, planWakeUps, readSleepSession, sleepOff, sleepOn } from './lib/campaign-status/sleep-session.ts';
 import { releaseHold, resolveStateStore, systemHoldDeps, takeHold, type HoldDeps } from './lib/campaign-status/sleep-hold.ts';
 import { resolveHost } from './lib/usage-source.ts';
 import { resolveUsageBudget } from './lib/usage-budget.ts';
 
 // Records what the owner said so the status page shows it without a hand-kept file
-// (`status-page.md` § What the orchestrator records), and the questions sleep mode parks for the
-// owner's return (`sleep-mode.md`):
+// (`status-page.md` § What the orchestrator records), the owner questions parked for the decision
+// round (`decision-parking.md`), and the owner's absence (`sleep-mode.md`):
 //
 //   scope    --kind <in|parked|deferred|blocked-upstream|out> --text "<what>" [--reason "<why>"]
 //            [--refs 12,14] [--filter] [--date YYYY-MM-DD]       → config.json campaign_scope.entries
@@ -37,9 +38,10 @@ import { resolveUsageBudget } from './lib/usage-budget.ts';
 //   park     --question "<q>" --options "A: why|B|C" --recommended A [--evidence "<text>"]
 //            [--refs 12,14] [--gate <name>]                      → pending-decisions.json
 //   ask                                                          → prints `ask` or `park` (askOrPark)
+//   decide                                                       → prints the report and the batched round as JSON; writes nothing
 //   sleep    --on | --off                                        → config.json sleep_mode (on records since + baseline);
 //                                                                  on takes the local keep-awake hold, off releases it (.tmp/sleep-hold.json)
-//   wake                                                         → turns sleep mode off and releases the hold, then prints the report and the batched round as JSON
+//   wake                                                         → sleep --off, then the decide round with the away report (not away: decide)
 //   rearm                                                        → prints the wake-ups to keep armed as JSON (sleep-mode.md § Keeps itself alive)
 //   resolve  --id PD-1 --answer "<text>" [--date YYYY-MM-DD]     → pending-decisions.json + owner-decisions.json
 //
@@ -49,7 +51,7 @@ const USAGE =
   'Usage: bun scripts/campaign-record.ts scope --kind <in|parked|deferred|blocked-upstream|out> --text <text> ' +
   '[--reason <text>] [--refs 1,2] [--filter] [--date YYYY-MM-DD] | decision --text <text> [--refs 1,2] [--date YYYY-MM-DD] ' +
   '| park --question <text> --options "A: consequence|B" --recommended <label> [--evidence <text>] [--refs 1,2] [--gate <name>] ' +
-  '| ask | sleep --on|--off | wake | rearm | resolve --id PD-<n> --answer <text> [--date YYYY-MM-DD] [--campaign-dir <dir>]';
+  '| ask | decide | sleep --on|--off | wake | rearm | resolve --id PD-<n> --answer <text> [--date YYYY-MM-DD] [--campaign-dir <dir>]';
 
 type Flags = {
   kind?: string; text?: string; reason?: string; refs?: string; date?: string; filter: boolean; on: boolean; off: boolean; campaignDir: string;
@@ -207,7 +209,7 @@ export function runRecord(argv: string[], now: Date = new Date(), hold: HoldDeps
     if (flags.off) {
       writeJsonAtomic(configPath, sleepOff(config));
       const released = releaseHold(flags.campaignDir, hold);
-      return `Sleep mode off: ${waiting} parked decision${waiting === 1 ? '' : 's'} wait for \`campaign-record.ts wake\`.\n${released}`;
+      return `Sleep mode off: ${waiting} parked decision${waiting === 1 ? '' : 's'} wait for \`/blackhole decide\`.\n${released}`;
     }
     const issues = readQueueIssues(flags.campaignDir);
     const baseline = { done: issues ? doneIssues(issues) : null, weekly_pct: readBudget(flags.campaignDir, config, now).weekly_pct };
@@ -217,9 +219,22 @@ export function runRecord(argv: string[], now: Date = new Date(), hold: HoldDeps
     return `Sleep mode on since ${when(readSleepSession(next).since ?? now.toISOString())}: owner questions are parked (${waiting} waiting).\n${held}`;
   }
 
+  // `wake` with the owner not away has no absence to end: it is the decide round, config untouched.
+  if (sub === 'decide' || (sub === 'wake' && !isSleepMode(readConfig(flags.campaignDir)))) {
+    // The round is the answer channel, not a gate: its cards ask directly, so nothing here changes
+    // parking or the owner's absence (`decision-parking.md` § Decide round).
+    const config = readConfig(flags.campaignDir);
+    const batch = wakeBatch(readPendingDecisions(flags.campaignDir).decisions);
+    const issues = readQueueIssues(flags.campaignDir);
+    const budget = readBudget(flags.campaignDir, config, now);
+    const report = isSleepMode(config)
+      ? buildWakeReport({ ...readSleepSession(config), issues, budget, pending: batch.total, stillAway: true })
+      : buildDecideReport({ issues, budget, pending: batch.total });
+    return JSON.stringify({ report, ...batch }, null, 2);
+  }
+
   if (sub === 'wake') {
-    // Sleep mode goes off before the round is printed: while it is on, every question — the
-    // round's own included — would be parked again (`clarify-gates.md` § C3 adapter).
+    // The owner is back: end the absence, then the same round as `decide`. Parking is untouched.
     const config = readConfig(flags.campaignDir);
     writeJsonAtomic(path.join(flags.campaignDir, 'config.json'), sleepOff(config));
     const keep_awake = releaseHold(flags.campaignDir, hold);
