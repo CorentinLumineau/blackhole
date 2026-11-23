@@ -54,6 +54,14 @@ export interface ForgeCheck {
     | 'SKIPPED'
     | 'ACTION_REQUIRED'
     | null;
+  /** ISO 8601 start time of the check run. */
+  startedAt?: string;
+  /** Forge-assigned check-run id. */
+  runId?: number;
+  /** Forge-assigned id of the check suite the run belongs to. */
+  suiteId?: number;
+  /** Producer key from `suiteProducers`, set only when proved. */
+  producer?: string;
 }
 
 export interface ForgeAuthStatus {

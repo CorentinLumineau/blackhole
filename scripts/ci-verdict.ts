@@ -6,9 +6,10 @@ import { checksFromSnapshot, ciVerdict, requiredChecksFromConfig, unconfiguredPe
 // Merge-gate CI verdict from a checks snapshot file (ADR-050). Exit 0 green, 1 red, 3 pending,
 // 2 usage; the verdict JSON is printed either way.
 
-const USAGE = 'Usage: bun run scripts/ci-verdict.ts --checks <file> [--required <check name>]... [--config <path>]\n' +
+const USAGE = 'Usage: bun run scripts/ci-verdict.ts --checks <file> [--runs <file>] [--required <check name>]... [--config <path>]\n' +
   '  --required: exact check name that must have run and succeeded (repeatable; overrides merge_ready.required_checks)\n' +
   '  --config: campaign config to read merge_ready.required_checks from (default .blackhole/config.json)\n' +
+  '  --runs: the head\'s `GET repos/{repo}/actions/runs?head_sha=<sha>&per_page=100` JSON; it lets a newer pull_request run of the same workflow and PR replace an older CANCELLED run, unless that newer run ended NEUTRAL, SKIPPED or CANCELLED; without it every run is judged\n' +
   '  <file>: REST or GitHub MCP check-runs JSON, a combined-status JSON, both merged, or a ForgeCheck[] array';
 
 // parseFlags keeps one value per key, so the repeatable --required is collected here. A --required
@@ -29,7 +30,7 @@ const requiredFromArgv = (argv: string[]): string[] | null => {
 const main = (): number => {
   const argv = process.argv.slice(2);
   const flags = parseFlags(argv);
-  if (unknownFlagKeys(flags, ['checks', 'required', 'config']).length || typeof flags.checks !== 'string') {
+  if (unknownFlagKeys(flags, ['checks', 'required', 'config', 'runs']).length || typeof flags.checks !== 'string' || ('runs' in flags && typeof flags.runs !== 'string')) {
     console.error(USAGE);
     return 2;
   }
@@ -43,7 +44,8 @@ const main = (): number => {
     const configPath = typeof flags.config === 'string' ? flags.config : '.blackhole/config.json';
     const requiredChecks = flagRequired.length > 0 ? flagRequired
       : requiredChecksFromConfig(fs.existsSync(configPath) ? (readJsonFile(configPath, configPath) as Record<string, unknown>) : {});
-    const checks = checksFromSnapshot(readJsonFile(flags.checks, flags.checks));
+    const runs = typeof flags.runs === 'string' ? readJsonFile(flags.runs, flags.runs) : undefined;
+    const checks = checksFromSnapshot(readJsonFile(flags.checks, flags.checks), runs);
     const message = unconfiguredPendingMessage(checks, { requiredChecks });
     if (message) console.error(message);
     result = ciVerdict(checks, { requiredChecks });
