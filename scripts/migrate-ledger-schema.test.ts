@@ -10,6 +10,18 @@ import { migrateFindings, runMigration } from './migrate-ledger-schema.ts';
 
 describe('migrateFindings', () => {
   // Issue #1439 — read both, write one: legacy NOTE rows are rewritten to INFO.
+  // Issue #1455 — mercure-style severities collapse by the V-MPARITY-01 tier map.
+  test('mercure HIGH/MEDIUM/LOW severities rewrite to BLOCK/WARN/WARN', () => {
+    const { migrated, changed } = migrateFindings([
+      { id: 'F-h', issue_ref: 1, pr_ref: null, severity: 'HIGH' },
+      { id: 'F-m', issue_ref: 1, pr_ref: null, severity: 'MEDIUM' },
+      { id: 'F-l', issue_ref: 1, pr_ref: null, severity: 'LOW' },
+      { id: 'F-c', issue_ref: 1, pr_ref: null, severity: 'CRITICAL' },
+    ]);
+    expect(migrated.map((f) => f.severity)).toEqual(['BLOCK', 'WARN', 'WARN', 'BLOCK']);
+    expect(changed).toBe(4);
+  });
+
   test('legacy NOTE severity rewrites to INFO, row counted as changed', () => {
     const { migrated, changed } = migrateFindings([
       { id: 'F-n', issue_ref: 1, pr_ref: null, severity: 'NOTE' },

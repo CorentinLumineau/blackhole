@@ -4,6 +4,7 @@ import { root, type CheckResult } from './check-utils.ts';
 import { expandVcodeTableKey, parseVcodeTableRows } from '../lib/check-common.ts';
 import { MERCURE_VCODE_SNAPSHOT_STALE_DAYS } from '../lib/build/facts.ts';
 import { readJsonFile } from '../lib/fs.ts';
+import { MERCURE_SEVERITY_TIERS } from '../lib/worker-json/constants.ts';
 
 // Issue #869 (plan Design Decisions D1) — mechanizes V-code severity parity against mercure by
 // diffing blackhole's own src/references/blackhole-vcodes.md table against a vendored snapshot
@@ -40,7 +41,7 @@ type MercureVcodeSnapshotFile = {
 // ("LOW" !== "WARN") would flag every shared code as a false "disagreement" — see plan Design
 // Decisions D1 for the full table this mapping reproduces as a consequence, not an exclude list.
 export const mapMercureSeverityToBlackholeAction = (mercureSeverity: string): 'BLOCK' | 'WARN' =>
-  mercureSeverity === 'CRITICAL' || mercureSeverity === 'HIGH' ? 'BLOCK' : 'WARN';
+  MERCURE_SEVERITY_TIERS[mercureSeverity] ?? 'WARN';
 
 // One named, cited, removable allowlist (same shape as vcode-severity-sync.check.ts's
 // KNOWN_SEVERITY_EXEMPTIONS, V-INT-01) — the two codes plan Design Decisions D1 identified as

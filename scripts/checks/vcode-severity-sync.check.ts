@@ -55,7 +55,7 @@ export type Classification =
 // contradictory rules under one code: `blackhole-vcodes.md:42` declares it a BLOCK filing gate
 // (Priority = Gain × (11 − Effort) ≥ 30), while `reviewer.md` §6 instructs logging improvement
 // discoveries under that code at WARN. The ledger's 35 `V-PARETO-02` occurrences are all
-// NOTE/WARN — BLOCK has never fired. Severity is a property of the code, not of an instance
+// INFO/WARN (then spelled NOTE/WARN) — BLOCK has never fired. Severity is a property of the code, not of an instance
 // (`mercure-enforcement-contract.md`), so this genuinely contradicts the table rather than
 // describing a different kind of statement — no structural exclude-list for "logged as a
 // finding" phrasing was added to hide it. Delete this entry when #586 resolves the split.

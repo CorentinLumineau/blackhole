@@ -13,12 +13,25 @@ export const TRACKS = ['quick', 'standard', 'skip', 'design', 'brainstorm'] as c
 export const SIZE_ESTIMATES = ['xs', 's', 'm', 'l', 'xl'] as const;
 export const EXECUTION_MODES = ['standard', 'refactor-strict', 'docs-only'] as const;
 export const SEVERITIES = ['BLOCK', 'WARN', 'INFO'] as const;
-// Issue #1439 — the ledger once spelled the optional severity NOTE. Readers accept it as INFO;
-// nothing writes it (`migrate-ledger-schema.ts` rewrites old rows, V-LEDGER-01 reports them).
-export const LEGACY_SEVERITY_ALIASES: Readonly<Record<string, (typeof SEVERITIES)[number]>> = { NOTE: 'INFO' };
+// Mercure's four-tier severities collapse onto blackhole's: CRITICAL|HIGH -> BLOCK, MEDIUM|LOW ->
+// WARN (blackhole's INFO is optional, so LOW is not INFO). The one tier map V-MPARITY-01 and the
+// ledger aliases below both read.
+export const MERCURE_SEVERITY_TIERS: Readonly<Record<string, 'BLOCK' | 'WARN'>> = {
+  CRITICAL: 'BLOCK',
+  HIGH: 'BLOCK',
+  MEDIUM: 'WARN',
+  LOW: 'WARN',
+};
+// The ledger once spelled the optional severity NOTE, and a consumer ledger can carry mercure
+// tiers. Readers accept both; nothing writes them (`migrate-ledger-schema.ts` rewrites old rows,
+// V-LEDGER-01 reports them).
+export const LEGACY_SEVERITY_ALIASES: Readonly<Record<string, (typeof SEVERITIES)[number]>> = {
+  NOTE: 'INFO',
+  ...MERCURE_SEVERITY_TIERS,
+};
 export const normalizeSeverity = (severity: string): string => LEGACY_SEVERITY_ALIASES[severity] ?? severity;
 const SEVERITY_RANK: Readonly<Record<string, number>> = { BLOCK: 3, WARN: 2, INFO: 1 };
-/** BLOCK 3, WARN 2, INFO (or legacy NOTE) 1, anything else 0. */
+/** BLOCK 3, WARN 2, INFO 1, legacy aliases as their target, anything else 0. */
 export const severityRank = (severity: string | undefined): number =>
   SEVERITY_RANK[normalizeSeverity(severity ?? '')] ?? 0;
 export const ROUTE_STATUSES = ['routed', 'error', PARTIAL_STATUS] as const;

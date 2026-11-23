@@ -61,7 +61,7 @@ export const findLedgerSchemaDrift = (findings: unknown[]): string[] => {
         `${id}: verification_mode is ${JSON.stringify(row.verification_mode)} (expected "executed"|"reasoned")`,
       );
     }
-    // Issue #1439 — one optional severity, INFO; legacy NOTE has a migration, other values none.
+    // One optional severity, INFO; legacy NOTE and mercure tiers have a migration, other values none.
     if ('severity' in row && !(SEVERITIES as readonly unknown[]).includes(row.severity)) {
       const legacy = typeof row.severity === 'string' && row.severity in LEGACY_SEVERITY_ALIASES;
       violations.push(

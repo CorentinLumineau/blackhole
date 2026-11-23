@@ -34,7 +34,7 @@ Path: `.blackhole/findings-ledger.json` (gitignored at runtime).
 |-------|--------|-------|
 | `id` | `F-NNNNN` | Zero-padded from `next_id`; increment after append |
 | `vcode` | `V-*` | Required on every row |
-| `severity` | `BLOCK` \| `WARN` \| `INFO` | Matches vcodes rule and the reviewer return (`SEVERITIES`). A legacy `NOTE` row reads as `INFO`; `scripts/migrate-ledger-schema.ts` rewrites it and `V-LEDGER-01` reports it |
+| `severity` | `BLOCK` \| `WARN` \| `INFO` | Matches vcodes rule and the reviewer return (`SEVERITIES`). A legacy `NOTE` row reads as `INFO`, and a mercure-style `CRITICAL`/`HIGH` as `BLOCK`, `MEDIUM`/`LOW` as `WARN`; `scripts/migrate-ledger-schema.ts` rewrites them and `V-LEDGER-01` reports them |
 | `phase` | `handle` \| `plan` \| `implement` \| `review` \| `hunt` | When discovered |
 | `issue_ref` | number | Parent campaign issue |
 | `pr_ref` | number \| null | Set when PR exists |

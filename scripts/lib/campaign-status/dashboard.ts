@@ -433,7 +433,7 @@ export function formatDashboard(opts: {
     `**Queue:** ${q.active} active · ${q.done} done · ${q.in_flight} in-flight · ${q.blocked} blocked · ${q.ready} ready${q.unclassified > 0 ? ` · ${q.unclassified} unclassified` : ''}`,
   );
   lines.push(
-    `**Ledger:** ${ledgerCounts.open} open (BLOCK ${ledgerCounts.block} · WARN ${ledgerCounts.warn} · NOTE ${ledgerCounts.note}) · ${ledgerCounts.deferred} deferred`,
+    `**Ledger:** ${ledgerCounts.open} open (BLOCK ${ledgerCounts.block} · WARN ${ledgerCounts.warn} · INFO ${ledgerCounts.info}) · ${ledgerCounts.deferred} deferred`,
   );
   const queueHealth = computeQueueHealth({
     forgeOk: forge.ok,

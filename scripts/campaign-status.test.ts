@@ -230,6 +230,19 @@ describe('countLedgerByStatus', () => {
     expect(counts.block).toBe(1);
     expect(counts.deferred).toBe(1);
   });
+
+  // Issue #1455 — the optional tier is INFO (legacy NOTE and mercure tiers read through the aliases).
+  test('counts the optional tier as info, reading legacy and mercure spellings', () => {
+    const counts = countLedgerByStatus([
+      { status: 'open', severity: 'INFO' },
+      { status: 'open', severity: 'NOTE' },
+      { status: 'open', severity: 'HIGH' },
+      { status: 'open', severity: 'LOW' },
+    ]);
+    expect(counts.info).toBe(2);
+    expect(counts.block).toBe(1);
+    expect(counts.warn).toBe(1);
+  });
 });
 
 describe('discoveryFilings', () => {
@@ -271,6 +284,17 @@ describe('formatDashboard', () => {
     expect(out).toContain('6 open issues');
     expect(out).toContain('### In-flight');
     expect(out).toContain('#34 Model inherit');
+  });
+
+  // Issue #1455 — the ledger line names the optional tier INFO, not the retired NOTE.
+  test('ledger line labels the optional tier INFO', () => {
+    const out = formatDashboard({
+      ...baseOpts,
+      scope: { milestone: 'v0.4.2' },
+      ledger: { findings: [{ status: 'open', severity: 'INFO' }] },
+    });
+    expect(out).toContain('INFO 1');
+    expect(out).not.toContain('NOTE');
   });
 
   test('renders label scope', () => {
