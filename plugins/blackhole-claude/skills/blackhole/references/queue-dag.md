@@ -81,6 +81,29 @@ name alone.
 | `route` | object \| absent | Optional (ADR-004); absent == today's behavior (`plan_mode: full`). See `### \`route\` object` subsection |
 | `rulings_checked_at` | number \| absent | Optional (issue #422); absent ≡ `0`. The rulings ledger (`documentation/reference/product-principles.md`) frontmatter `rulings_revision` this issue was last validated against — monotonic, never decremented, written only by the orchestrator (single-writer, `blackhole-state.md`) in the same atomic write as the phase transition it accompanies. Set from a planner return whose `ruling_conflicts: []` (`worker-schemas.md` § Rulings ledger (read-input)). Staleness predicate `stale(I)`, the single definition every consumption site cites (`orchestrator.md` § Ruling Re-Check Gate, `orchestrator-runtime.md` § Triage): `stale(I) ≡ ledgerPresent AND docs_governance.enabled AND docs_governance.companion_files AND (I.rulings_checked_at ?? 0) < ledger.rulings_revision` — absent ledger or either config flag `false` means the predicate never fires, byte-identical to today's behavior |
 
+### Legacy values
+
+A queue written before the enums above were enforced can still carry a legacy `status` or
+`phase`, and the state-write guard then refuses every write to it, `forge-sync.ts` included.
+`scripts/queue-migrate.ts` rewrites them in one pass. Run from the repo that holds the campaign:
+
+```bash
+bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/queue-migrate.ts            # dry run: prints each change, writes nothing
+bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/queue-migrate.ts --apply    # snapshots queue.json to archive/, installs through the guard
+```
+
+`--campaign-dir <dir>` points it at a campaign directory other than `./.blackhole`.
+
+| Field | Legacy value | Becomes |
+|-------|--------------|---------|
+| `status` | `done` | `merged` when the entry records a numeric `pr`, else `closed`; the phase becomes `done` |
+| `status` | `in-review` | `in-flight`, with the phase set to `review` |
+| `status` | `excluded` | `blocked`, with `legacy-status:excluded` prepended to `notes`, so it is never picked up again silently |
+| `phase` | `loop` | `done` |
+
+Every entry is kept. Any other undocumented value stops the migration, naming the entry, to be
+fixed by hand.
+
 ### `route` object (optional — ADR-004)
 
 <!-- shape: exhaustive -->
