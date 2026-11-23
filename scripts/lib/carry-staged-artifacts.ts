@@ -167,12 +167,14 @@ export const rewriteInvestigatorFrontmatter = (
 // B) — the mandatory trailing `(ADR-{NNN})` / `(analyze: issue #N)` citation suffix — reused
 // rather than a second mechanism (V-INT-02, issue #557).
 
-const citationSuffix = (bulletLine: string): string | null => {
+/** Trailing `(...)` citation of a constraint bullet, or null when it carries none. */
+export const citationSuffix = (bulletLine: string): string | null => {
   const match = bulletLine.match(/\(([^()]+)\)\s*$/);
   return match ? `(${match[1]})` : null;
 };
 
-const activeConstraintsBullets = (architectureMd: string): string[] => {
+/** `- ` bullet lines of ARCHITECTURE.md's `## Active Constraints` section, trimmed. */
+export const activeConstraintsBullets = (architectureMd: string): string[] => {
   const section = architectureMd.split('## Active Constraints')[1] ?? '';
   const body = section.split(/\n## /)[0] ?? '';
   return body

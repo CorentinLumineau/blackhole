@@ -1,6 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
+import {
+  activeConstraintsBullets,
+  appendConstraintBulletIfAbsent,
+  citationSuffix,
+} from './lib/carry-staged-artifacts.ts';
 import { readComposedAgentDoc } from './lib/check-common.ts';
 
 // Issue #557 — the ADR-021 D2 carry-step's `append_row` idempotency guard
@@ -11,53 +16,12 @@ import { readComposedAgentDoc } from './lib/check-common.ts';
 // column: the guard as originally written could append the same constraint twice on an
 // implementer re-spawn.
 //
-// The carry-step itself has no executable TS counterpart (it is agent-prompt prose, same as
-// router.md's local-analyze mechanism — see router-local-analyze.test.ts), so this file both
-// pins the spec TEXT and exercises a local reference implementation of the documented
-// citation-suffix algorithm end-to-end, run twice, to prove the specified discriminator is
-// actually idempotent — not merely described as such (V-TEST-05).
+// The carry-step's dedup is executable code in scripts/lib/carry-staged-artifacts.ts; this
+// file pins the spec TEXT and exercises that production helper end-to-end, run twice, to prove
+// the specified discriminator is actually idempotent — not merely described as such (V-TEST-05).
 
 const root = path.resolve(import.meta.dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf-8');
-
-// --- reference implementation — mirrors implementer.md's documented ARCHITECTURE.md branch ---
-
-// The mandatory trailing attribution planner.md appends to every constraint bullet
-// (`(ADR-{NNN})` for §4.8 Trigger A, `(analyze: issue #N)` for Step 4 Trigger B) is also the
-// discriminator planner.md's own near-duplicate check uses (src/agents/planner.md:41) — reused
-// here rather than a second mechanism (V-INT-02).
-const citationSuffix = (bulletLine: string): string | null => {
-  const m = bulletLine.match(/\(([^()]+)\)\s*$/);
-  return m ? `(${m[1]})` : null;
-};
-
-const activeConstraintsBullets = (architectureMd: string): string[] => {
-  const section = architectureMd.split('## Active Constraints')[1] ?? '';
-  const body = section.split(/\n## /)[0] ?? '';
-  return body
-    .split('\n')
-    .map((l) => l.trim())
-    .filter((l) => l.startsWith('- '));
-};
-
-// Append-only-if-absent, keyed on citation suffix — the ARCHITECTURE.md branch of the
-// append_row idempotency guard implementer.md documents.
-const appendConstraintBulletIfAbsent = (
-  architectureMd: string,
-  stagedBullet: string
-): { content: string; appended: boolean } => {
-  const suffix = citationSuffix(stagedBullet);
-  const alreadyCarried = activeConstraintsBullets(architectureMd).some(
-    (b) => citationSuffix(b) === suffix
-  );
-  if (alreadyCarried) return { content: architectureMd, appended: false };
-
-  const marker = '## Active Constraints';
-  const insertAt = architectureMd.indexOf(marker) + marker.length;
-  const content =
-    architectureMd.slice(0, insertAt) + `\n${stagedBullet}` + architectureMd.slice(insertAt);
-  return { content, appended: true };
-};
 
 const FIXTURE_ARCHITECTURE = `# ARCHITECTURE
 
