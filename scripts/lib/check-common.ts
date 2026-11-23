@@ -316,8 +316,12 @@ const insertRowSorted = (
   return [...lines.slice(0, separatorIdx + 1), ...sortedLines, ...lines.slice(blockEnd)].join('\n');
 };
 
+// Splits a GFM table line on its cell delimiters only: a backslash-escaped `\|` is cell content,
+// not a delimiter, and stays in its cell verbatim.
+export const splitUnescapedPipes = (line: string): string[] => line.split(/(?<!\\)\|/);
+
 const splitRowCells = (line: string): string[] => {
-  const cells = line.split('|').map((c) => c.trim());
+  const cells = splitUnescapedPipes(line).map((c) => c.trim());
   return cells.slice(1, cells[cells.length - 1] === '' ? -1 : undefined);
 };
 
@@ -347,22 +351,30 @@ const adrRowKey = (rawLine: string): string => {
   return first.match(ADR_TOKEN)?.[0] ?? first;
 };
 
+export class UnclassifiableAdrFragmentError extends Error {
+  override name = 'UnclassifiableAdrFragmentError';
+}
+
 type AdrFragment = { id: string; file: string; title: string; status: string; date: string };
 
 // A staged fragment is either blackhole's 5-cell shape (`file | title | adr | status | trigger`,
 // recognised by `adr` in the type column) or already in the foreign schema (`adr | title |
-// status | date`, extra trailing cells ignored). Anything else is unclassifiable.
+// status | date`, extra trailing cells ignored). Anything else is unclassifiable and refused: a
+// type value of `adr` anywhere but the type column, or a type column with the wrong cell count,
+// means the columns are shifted and a best-effort render would corrupt the row.
 const parseAdrFragment = (fragment: string): AdrFragment => {
   const line = fragment.split('\n').find((l) => l.trim().startsWith('|'));
   const cells = line ? splitRowCells(line) : [];
   const id = cells[0]?.match(ADR_TOKEN)?.[0];
-  if (!id) throw new Error(`staged append_row fragment did not parse as a table row: ${fragment}`);
+  if (!id) throw new UnclassifiableAdrFragmentError(`staged append_row fragment did not parse as a table row: ${fragment}`);
   const link = cells[0].match(/^\[[^\]]*\]\((.*)\)$/);
   const file = (link ? link[1] : cells[0]).replace(/^\.\//, '');
-  const blackholeShape = cells.length >= 4 && cells[2].toLowerCase() === 'adr';
-  return blackholeShape
-    ? { id, file, title: cells[1], status: cells[3], date: '' }
-    : { id, file, title: cells[1] ?? '', status: cells[2] ?? '', date: cells[3] ?? '' };
+  const typeIdx = cells.findIndex((c, i) => i > 0 && c.toLowerCase() === 'adr');
+  if (typeIdx === 2 && cells.length === 5) return { id, file, title: cells[1], status: cells[3], date: '' };
+  if (typeIdx === -1 && cells.length >= 4) return { id, file, title: cells[1], status: cells[2], date: cells[3] };
+  throw new UnclassifiableAdrFragmentError(
+    `staged append_row fragment fits neither the 5-cell \`file | title | adr | status | trigger\` shape nor the \`adr | title | status | date\` shape (${cells.length} cells): ${fragment}`,
+  );
 };
 
 const renderAdrCell = (column: string, f: AdrFragment, today: string): string => {

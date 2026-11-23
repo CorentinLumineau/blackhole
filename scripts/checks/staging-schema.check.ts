@@ -1,5 +1,5 @@
 import { read, type CheckResult } from './check-utils.ts';
-import { readComposedAgentDoc } from '../lib/check-common.ts';
+import { readComposedAgentDoc, splitUnescapedPipes } from '../lib/check-common.ts';
 
 // Issue #482: pins the ADR-021 D1 durable-artifact staging contract —
 // `.blackhole/staged/<issue>/manifest.json`'s field names and enum values, documented in
@@ -10,10 +10,8 @@ import { readComposedAgentDoc } from '../lib/check-common.ts';
 // Local table parser (not `check-common.ts`'s `parseIndexTableRows`/`parseVcodeTableRows`):
 // neither shared parser fits — both split naively on `line.split('|')`, which would shred this
 // table's Values-column escaped pipes (`` \| ``, separating enum alternatives) into extra cells.
-// This parser splits on a pipe *not* preceded by a backslash instead, and has exactly one caller
-// today, so it stays local per the plan's YAGNI judgment rather than joining check-common.ts for
-// a single consumer (see `.blackhole/plans/issue-482.md` § Verified prerequisite state for the
-// full shared-parser search this decision is based on).
+// This parser splits with the shared `splitUnescapedPipes` (a pipe *not* preceded by a
+// backslash) instead; the row logic stays local because it reads one specific doc table.
 
 const blackholeStateDoc = 'src/references/blackhole-state.md';
 const plannerDoc = 'src/agents/planner.md';
@@ -37,7 +35,7 @@ export const parseManifestFieldTable = (content: string): ManifestFieldRow[] => 
 
   const rows: ManifestFieldRow[] = [];
   for (let i = headerIndex + 1; i < lines.length && /^\s*\|/.test(lines[i]); i++) {
-    const cells = lines[i].split(/(?<!\\)\|/).map((c) => c.trim());
+    const cells = splitUnescapedPipes(lines[i]).map((c) => c.trim());
     const fieldCell = cells[1];
     if (!fieldCell || !fieldCell.startsWith('`')) continue;
     const field = fieldCell.replace(/^`|`$/g, '');
