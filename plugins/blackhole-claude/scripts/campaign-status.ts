@@ -308,7 +308,7 @@ function readPrintOnly(campaignDir: string, unattended: boolean): boolean {
  * through the provider chain (`--usage-file` first), and the floor budget the Budget row judges by.
  * An invalid `catchup` block becomes `{ invalid }`, shown on the Pacing row; a bad override exits 2.
  */
-function readCatchup(config: Record<string, unknown>, host: ReturnType<typeof resolveHost>, flags: CatchupArgs, nowS: number) {
+function readCatchup(config: Record<string, unknown>, host: ReturnType<typeof resolveHost>, flags: CatchupArgs, nowS: number, historyPath: string) {
   let preset;
   try {
     preset = resolveCatchup(config);
@@ -317,7 +317,7 @@ function readCatchup(config: Record<string, unknown>, host: ReturnType<typeof re
   }
   try {
     preset = applyOverrides(preset, { floor_pct: flags.floorPct ?? undefined, no_spawn_at: flags.noSpawnAt ?? undefined, stop_workers_at: flags.stopWorkersAt ?? undefined, lane: flags.lane ?? undefined });
-    const source = usageSourceFor(host, config, { usageFile: flags.usageFile ?? undefined });
+    const source = usageSourceFor(host, config, { usageFile: flags.usageFile ?? undefined, historyPath });
     const reading = source.read(nowS);
     const pacing = readPacing(source.report(nowS), preset, nowS);
     const floorPct = flags.floorPct ?? pacing.floor_pct;
@@ -379,7 +379,7 @@ async function printLaunchSummary(
   }
   const config = collected.state.config as Record<string, unknown>;
   const host = resolveHost(campaignDir, process.env);
-  const catchup = catchupFlags ? readCatchup(config, host, catchupFlags, nowS) : null;
+  const catchup = catchupFlags ? readCatchup(config, host, catchupFlags, nowS, path.join(campaignDir, USAGE_HISTORY_FILE)) : null;
   const rows = buildLaunchSummary({
     report: collected.report,
     config,

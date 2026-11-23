@@ -4,6 +4,7 @@ import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
 import { readJsonFile } from './lib/fs.ts';
 import type { Host } from './lib/run-context.ts';
 import { resolveHost, usageSourceFor } from './lib/usage-source.ts';
+import { usageHistoryPathFor } from './lib/usage-history.ts';
 
 // Usage: bun run scripts/usage.ts [--usage <file>] [--cache <path>] [--host claude|cursor]
 //        [--config <path>] [--now <epoch s>]
@@ -36,6 +37,7 @@ const main = (): void => {
     const source = usageSourceFor(host, config, {
       cachePath: typeof flags.cache === 'string' ? flags.cache : undefined,
       usageFile: typeof flags.usage === 'string' ? flags.usage : undefined,
+      historyPath: usageHistoryPathFor(configPath),
     });
     const report = source.report(now);
     if (report.source === 'none') console.error(`usage: ${report.reason}`);
