@@ -4,9 +4,9 @@ import * as os from 'os';
 import * as path from 'path';
 import { runRecord } from '../../campaign-record.ts';
 import { NOT_PROBED } from './budget.ts';
-import { sleepRow } from './launch-summary.ts';
+import { decisionsRow } from './launch-summary.ts';
 import { SLEEP_HOLD_FILE, type HoldDeps } from './sleep-hold.ts';
-import { buildWakeReport, CI_CHECK_IN_MINUTES, planWakeUps, readSleepSession, sleepOff, sleepOn } from './sleep-session.ts';
+import { buildDecideReport, buildWakeReport, CI_CHECK_IN_MINUTES, planWakeUps, readSleepSession, sleepOff, sleepOn } from './sleep-session.ts';
 import type { BudgetPanel, QueueIssue } from './types.ts';
 
 // Sleep mode around the choke point: the toggle, re-armed wake-ups as data, the wake-up report, and the
@@ -106,7 +106,7 @@ describe('sleepOn / sleepOff', () => {
 });
 
 describe('campaign-record sleep --on | --off', () => {
-  test('--on snapshots the done issues and the weekly %, --off turns it off, ask follows the flag', () => {
+  test('--on snapshots the done issues and the weekly %, --off turns it off, parking stays the default', () => {
     const dir = probedCampaign({ merge_mode: 'leave-open' }, QUEUE);
     const flags = ['--campaign-dir', dir];
     const mac = fakeMac();
@@ -120,12 +120,24 @@ describe('campaign-record sleep --on | --off', () => {
     expect(block.baseline).toEqual({ done: [1, 2], weekly_pct: 61 });
     expect(runRecord(['ask', ...flags], NOW)).toBe('park');
     expect(runRecord(['sleep', '--off', ...flags], NOW, mac.deps)).toBe(
-      'Sleep mode off: 0 parked decisions wait for `campaign-record.ts wake`.\nKeep-awake: released caffeinate (pid 700).',
+      'Sleep mode off: 0 parked decisions wait for `/blackhole decide`.\nKeep-awake: released caffeinate (pid 700).',
     );
     expect(mac.calls).toEqual(['spawn caffeinate -i', 'kill 700']);
     expect(fs.existsSync(path.join(dir, SLEEP_HOLD_FILE))).toBe(false);
     expect(readConfig(dir).sleep_mode).toEqual({ enabled: false });
+    expect(runRecord(['ask', ...flags], NOW)).toBe('park');
+  });
+
+  test('ask mode asks while the owner is present and parks while they are away', () => {
+    const dir = probedCampaign({ merge_mode: 'leave-open', decisions: { mode: 'ask' } }, QUEUE);
+    const flags = ['--campaign-dir', dir];
+    const mac = fakeMac();
     expect(runRecord(['ask', ...flags], NOW)).toBe('ask');
+    runRecord(['sleep', '--on', ...flags], NOW, mac.deps);
+    expect(runRecord(['ask', ...flags], NOW)).toBe('park');
+    runRecord(['sleep', '--off', ...flags], NOW, mac.deps);
+    expect(runRecord(['ask', ...flags], NOW)).toBe('ask');
+    expect(readConfig(dir).decisions).toEqual({ mode: 'ask' });
   });
 
   test('--on with no queue.json records the done baseline as not measured', () => {
@@ -150,7 +162,7 @@ describe('campaign-record sleep --on | --off', () => {
     expect(() => runRecord(['sleep', '--on', '--off', '--campaign-dir', dir], NOW)).toThrow('sleep takes --on or --off');
   });
 
-  test('wake prints the report ahead of the batch and turns sleep mode off', () => {
+  test('wake prints the report ahead of the batch, turns sleep mode off and leaves parking alone', () => {
     const dir = campaign({ sleep_mode: { enabled: true, since: NOW_ISO, baseline: { done: [1], weekly_pct: null } } }, QUEUE);
     fs.mkdirSync(path.join(dir, '.tmp'));
     fs.writeFileSync(
@@ -166,6 +178,26 @@ describe('campaign-record sleep --on | --off', () => {
     expect(out.report).toContain('Work done: 1 issue finished — #2');
     expect(out.total).toBe(0);
     expect(readConfig(dir).sleep_mode).toEqual({ enabled: false });
+    expect(readConfig(dir).decisions).toBeUndefined();
+  });
+
+  test('decide while away keeps the hold and the away state, and says what ends them', () => {
+    const dir = campaign({ sleep_mode: { enabled: true, since: NOW_ISO, baseline: { done: [1], weekly_pct: null } } }, QUEUE);
+    const before = fs.readFileSync(path.join(dir, 'config.json'), 'utf-8');
+    const mac = fakeMac();
+    const out = JSON.parse(runRecord(['decide', '--campaign-dir', dir], NOW, mac.deps));
+    expect(mac.calls).toEqual([]);
+    expect(fs.readFileSync(path.join(dir, 'config.json'), 'utf-8')).toBe(before);
+    expect(out.report).toContain('## While you were away');
+    expect(out.report).toContain('- Still away: the keep-awake hold and the print-only launch gate stay on until `/blackhole wake`.');
+    expect(out.keep_awake).toBeUndefined();
+  });
+
+  test('decide with the owner present prints the short report', () => {
+    const dir = campaign({ merge_mode: 'leave-open' }, QUEUE);
+    const out = JSON.parse(runRecord(['decide', '--campaign-dir', dir], NOW, fakeMac().deps));
+    expect(out.report).toStartWith('## Before you decide');
+    expect(out.report).not.toContain('away');
   });
 
   test('rearm prints the wake-ups and the schedule from run-context.json', () => {
@@ -273,13 +305,32 @@ describe('buildWakeReport', () => {
   });
 });
 
+describe('buildDecideReport', () => {
+  test('open PRs, usage now and the decisions, with nothing about an absence', () => {
+    expect(buildDecideReport({ issues: QUEUE, budget: PROBED, pending: 2 })).toBe(
+      [
+        '## Before you decide',
+        '',
+        '- Open PRs in merge order: 1. #3 (PR #13) — none; 2. #4 (PR #14) — waits on #3 (stacked on) (cross-repo dependencies not read).',
+        '- Usage now: weekly 61%, 5-hour 92%.',
+        '- Decisions waiting for you: 2, asked next.',
+        '',
+      ].join('\n'),
+    );
+  });
+});
+
 describe('the sleep flag outside config.json', () => {
-  test('the launch summary Sleep row is display-only and says what parks', () => {
-    const off = sleepRow({});
-    expect(off).toMatchObject({ key: 'sleep', label: 'Sleep mode', value: 'off', adjustable: false });
-    const on = sleepRow({ sleep_mode: { enabled: true, since: NOW_ISO } });
-    expect(on.value).toBe('on since Tue 17 Nov 02:00 UTC');
-    expect(on.consequence).toBe('No question is asked: each is parked for the wake-up round, and this gate only prints.');
+  test('the launch summary Decisions row is display-only and names the mode, the wait and the away state', () => {
+    const park = decisionsRow({}, 0);
+    expect(park).toMatchObject({ key: 'decisions', label: 'Decisions', value: 'park (default) · none waiting', adjustable: false });
+    expect(decisionsRow({}, 3).value).toBe('park (default) · 3 waiting — run /blackhole decide');
+    expect(decisionsRow({ decisions: { mode: 'ask' } }, 0).value).toBe('ask · none waiting');
+    expect(decisionsRow({ decisions: { mode: 'later' } }, 0).value).toBe('park (invalid decisions.mode "later") · none waiting');
+    expect(decisionsRow({}, null).value).toBe('park (default) · parked decisions unreadable');
+    const away = decisionsRow({ sleep_mode: { enabled: true, since: NOW_ISO } }, 1);
+    expect(away.value).toBe('park (default) · 1 waiting — run /blackhole decide · owner away since Tue 17 Nov 02:00 UTC');
+    expect(away.consequence).toBe('Owner away: no question is asked, each is parked for /blackhole decide, and this gate only prints.');
   });
 
   test('run-context.json carries sleep_mode with its since and keep-awake hold, and the run says so', () => {

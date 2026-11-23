@@ -13,5 +13,5 @@
 | Resource policy | absent: defaults | The resource gate defers a batch below 2500 MB free memory; the test-lock wrapper is mandatory. |
 | Wave scheduling | absent: defaults | No path sharding or hot-file lock: parallel workers may collide on shared files. |
 | Peers | solo | This session spends the usage budget alone; no other session is coordinated. |
-| Sleep mode | off | Every gate asks as it comes; `/blackhole sleep` parks owner questions for one wake-up round. |
+| Decisions | park (default) · none waiting | Gates park their questions; /blackhole decide asks them all, most-blocking first. This launch gate still asks. |
 | Other config | campaign_scope, display_targets, forge, target_branch | Keys no row above shows, by name only; their values are not printed. |

@@ -26,7 +26,7 @@ const COVERAGE = [
   '|-------|-------------|-----|--------|',
   '| `repo` | `links` | — | forge pages |',
   '| `parallel_max` | `config` | Concurrency | |',
-  '| `sleep_mode` | `run` | Sleep mode | |',
+  '| `sleep_mode` | `run` | Decisions | |',
   '| `scratchpad_dir` | none | — | where worktrees live; not run state |',
   '',
   '## Next section',
@@ -47,7 +47,7 @@ describe('V-CONFIG-03 status page coverage', () => {
     expect(parseCoverageTable(doc())).toEqual([
       { block: 'repo', dataset: 'links', rows: [], reason: 'forge pages' },
       { block: 'parallel_max', dataset: 'config', rows: ['Concurrency'], reason: '' },
-      { block: 'sleep_mode', dataset: 'run', rows: ['Sleep mode'], reason: '' },
+      { block: 'sleep_mode', dataset: 'run', rows: ['Decisions'], reason: '' },
       { block: 'scratchpad_dir', dataset: 'none', rows: [], reason: 'where worktrees live; not run state' },
     ]);
   });
@@ -104,7 +104,7 @@ describe('V-CONFIG-03 status page coverage', () => {
   });
 
   test('a registered sub-block may add its own row; an unregistered one fails', () => {
-    const sub = [...COVERAGE.slice(0, -2), '| `sleep_mode.enabled` | `run` | Sleep mode | |', '| `sleep_mode.ghost` | `run` | — | |', '', '## Next section'];
+    const sub = [...COVERAGE.slice(0, -2), '| `sleep_mode.enabled` | `run` | Decisions | |', '| `sleep_mode.ghost` | `run` | — | |', '', '## Next section'];
     expect(findStatusCoverageGaps(doc(sub), TEMPLATE)).toEqual([`sleep_mode.ghost: listed in ${COVERAGE_HEADING} but registered in no field row`]);
   });
 

@@ -6,6 +6,7 @@ import { runRecord } from '../../campaign-record.ts';
 import {
   addPendingDecision,
   askOrPark,
+  decisionsMode,
   PENDING_DECISIONS_FILE,
   pendingDecisionError,
   readPendingDecisions,
@@ -30,12 +31,24 @@ const NOW = new Date('2026-11-17T02:00:00.000Z');
 const pending = (dir: string) => JSON.parse(fs.readFileSync(path.join(dir, PENDING_DECISIONS_FILE), 'utf-8')).decisions;
 
 describe('askOrPark — the one choke point', () => {
-  test('parks only when sleep_mode.enabled is exactly true', () => {
-    expect(askOrPark({ sleep_mode: { enabled: true } })).toBe('park');
-    expect(askOrPark({ sleep_mode: { enabled: false } })).toBe('ask');
-    expect(askOrPark({ sleep_mode: { enabled: 'true' } })).toBe('ask');
-    expect(askOrPark({})).toBe('ask');
-    expect(askOrPark(null)).toBe('ask');
+  test('parks by default: absent config, absent block, invalid mode', () => {
+    expect(askOrPark({})).toBe('park');
+    expect(askOrPark(null)).toBe('park');
+    expect(askOrPark({ decisions: { mode: 'park' } })).toBe('park');
+    expect(askOrPark({ decisions: { mode: 'ASK' } })).toBe('park');
+    expect(askOrPark({ decisions: 'ask' })).toBe('park');
+  });
+
+  test('asks only when decisions.mode is exactly "ask" and the owner is not away', () => {
+    expect(askOrPark({ decisions: { mode: 'ask' } })).toBe('ask');
+    expect(askOrPark({ decisions: { mode: 'ask' }, sleep_mode: { enabled: false } })).toBe('ask');
+    expect(askOrPark({ decisions: { mode: 'ask' }, sleep_mode: { enabled: true } })).toBe('park');
+  });
+
+  test('sleep_mode.enabled false, as every past wake wrote it, is not an opt-out', () => {
+    expect(askOrPark({ sleep_mode: { enabled: false } })).toBe('park');
+    expect(decisionsMode({ sleep_mode: { enabled: false } })).toBe('park');
+    expect(decisionsMode({ decisions: { mode: 'ask' } })).toBe('ask');
   });
 });
 
@@ -128,10 +141,13 @@ describe('campaign-record park / wake / resolve', () => {
     runRecord(['park', '--question', 'Split #30?', '--options', 'Yes|No', '--recommended', 'No', ...flags], NOW);
 
     expect(runRecord(['ask', ...flags], NOW)).toBe('park');
-    const batch = JSON.parse(runRecord(['wake', ...flags], NOW));
-    // The round's own questions must reach the owner: wake turns sleep mode off before it prints.
-    expect(JSON.parse(fs.readFileSync(path.join(dir, 'config.json'), 'utf-8')).sleep_mode).toEqual({ enabled: false });
-    expect(runRecord(['ask', ...flags], NOW)).toBe('ask');
+    const configBefore = fs.readFileSync(path.join(dir, 'config.json'), 'utf-8');
+    const batch = JSON.parse(runRecord(['decide', ...flags], NOW));
+    // The round is the answer channel: it leaves parking, and the owner's away state, as they were.
+    expect(fs.readFileSync(path.join(dir, 'config.json'), 'utf-8')).toBe(configBefore);
+    expect(runRecord(['ask', ...flags], NOW)).toBe('park');
+    expect(Object.keys(batch)).toEqual(['report', 'total', 'blocked_items', 'cards']);
+    expect(batch.report).toContain('- Decisions waiting for you: 2, asked next.');
     expect(batch.total).toBe(2);
     expect(batch.cards[0].map((q: PendingDecision) => q.id)).toEqual(['PD-1', 'PD-2']);
 

@@ -1,14 +1,14 @@
 import type { Manifest } from '../carry-staged-artifacts.ts';
 import { collectDocCarry, dispatchGaps } from '../route-artifacts.ts';
 import { resolveBudgetSettings } from './budget.ts';
-import { isSleepMode, wakeBatch, type PendingDecision } from './pending-decisions.ts';
+import { decisionsMode, isSleepMode, wakeBatch, type PendingDecision } from './pending-decisions.ts';
 import type { DocCarry, PendingRow, RunPanel } from './types.ts';
 
-// The status page's Run panel (route, sleep mode, coordination) and its "Decisions waiting for
+// The status page's Run panel (route, decisions, coordination) and its "Decisions waiting for
 // you" list. Pure: `campaign-status.ts` reads `run-context.json` and `pending-decisions.json`.
 
 /** The Run panel's rows, always all four, in this order: the coverage contract names them. */
-export const RUN_ROW_KEYS = ['Run route', 'Sleep mode', 'Coordination', 'Doc carry'] as const;
+export const RUN_ROW_KEYS = ['Run route', 'Decisions', 'Coordination', 'Doc carry'] as const;
 
 /** `pending-decisions.json` as read: its decisions, or why it could not be read. */
 export type PendingRead = PendingDecision[] | { error: string };
@@ -90,6 +90,7 @@ export function buildRunPanel(input: { config: Record<string, unknown>; runConte
   const dcError = dc !== null && 'error' in dc ? dc.error : null;
   return {
     route: readRoute(input.runContext),
+    decisions_mode: decisionsMode(input.config),
     sleep_mode: isSleepMode(input.config),
     parked: Array.isArray(input.pending) ? input.pending.length : null,
     parked_error: unreadable ? (input.pending as { error: string }).error : null,
@@ -99,6 +100,9 @@ export function buildRunPanel(input: { config: Record<string, unknown>; runConte
     doc_carry_error: dcError,
   };
 }
+
+/** What every surface tells the owner to run when decisions wait (`decision-parking.md` § Decide round). */
+export const DECIDE_HINT = 'run /blackhole decide';
 
 const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`;
 
@@ -138,17 +142,18 @@ function docCarryValue(p: RunPanel): string {
 
 /** The panel as key/value rows: the text dashboard, `--html` and the `run` dataset all print these. */
 export function runRows(p: RunPanel): Array<{ key: string; value: string }> {
-  const parked = p.parked === null ? `parked decisions unreadable: ${p.parked_error}` : plural(p.parked, 'parked decision');
+  const parked =
+    p.parked === null ? `parked decisions unreadable: ${p.parked_error}` : p.parked ? `${p.parked} waiting — ${DECIDE_HINT}` : 'none waiting';
   const values: Record<(typeof RUN_ROW_KEYS)[number], string> = {
     'Run route': routeValue(p.route),
-    'Sleep mode': `${p.sleep_mode ? 'on' : 'off'} · ${parked}`,
+    Decisions: [p.decisions_mode, parked, ...(p.sleep_mode ? ['owner away'] : [])].join(' · '),
     Coordination: coordinationValue(p),
     'Doc carry': docCarryValue(p),
   };
   return RUN_ROW_KEYS.map((key) => ({ key, value: values[key] }));
 }
 
-/** The parked decisions in the wake-up round's order (`wakeBatch`); none when the file is unreadable. */
+/** The parked decisions in the decide round's order (`wakeBatch`); none when the file is unreadable. */
 export function pendingRows(pending: PendingRead): PendingRow[] {
   if (!Array.isArray(pending)) return [];
   return wakeBatch(pending).cards.flat().map((d) => ({

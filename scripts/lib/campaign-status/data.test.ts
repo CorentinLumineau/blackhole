@@ -121,6 +121,6 @@ describe('parseStatusArgs --data', () => {
 describe('buildStatusData: run dataset', () => {
   test('has four rows, Doc carry last', () => {
     const run = buildStatusData(report()).run;
-    expect(run.map((r) => r.key)).toEqual(['Run route', 'Sleep mode', 'Coordination', 'Doc carry']);
+    expect(run.map((r) => r.key)).toEqual(['Run route', 'Decisions', 'Coordination', 'Doc carry']);
   });
 });

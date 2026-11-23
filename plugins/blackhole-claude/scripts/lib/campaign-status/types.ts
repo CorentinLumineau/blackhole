@@ -384,7 +384,7 @@ export type StatusReport = {
   deny_counts: DenyCount[];
   /** The usage reading and the usage-budget verdict for it (`budget.ts`); `probed: false` when no reading was found. Additive. */
   budget: BudgetPanel;
-  /** Run route, sleep mode with its parked count, and the coordination role (`run-state.ts`). Additive. */
+  /** Run route, the decisions mode with its parked count and the owner's absence, and the coordination role (`run-state.ts`). Additive. */
   run: RunPanel;
   /** The parked owner decisions, most-blocking first: the "Decisions waiting for you" panel. Additive. */
   pending_decisions: PendingRow[];
@@ -468,7 +468,7 @@ export type IssueRow = { num: number; issue: QueueIssue };
 /** The launch summary's rows, in display order, for a run and for a catchup alike (`launch-summary.ts`). */
 export const LAUNCH_ROW_KEYS = [
   'scope', 'order', 'merge', 'pacing', 'budget', 'status_page', 'kaizen_staging',
-  'autonomy', 'resource_policy', 'wave_scheduling', 'peers', 'sleep', 'other_config',
+  'autonomy', 'resource_policy', 'wave_scheduling', 'peers', 'decisions', 'other_config',
 ] as const;
 export type LaunchRowKey = (typeof LAUNCH_ROW_KEYS)[number];
 
@@ -505,6 +505,9 @@ export type RunPanel = {
     missing: string[];
     refreshed_at: string | null;
   } | null;
+  /** `decisions.mode` resolved (`decisionsMode`): `park` unless the config opts into `ask`. */
+  decisions_mode: 'park' | 'ask';
+  /** The owner is away (`sleep_mode.enabled`, `sleep-mode.md`). */
   sleep_mode: boolean;
   /** Decisions parked in `pending-decisions.json`; null when the file is unreadable (`parked_error`). */
   parked: number | null;

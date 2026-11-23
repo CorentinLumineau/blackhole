@@ -4,7 +4,7 @@ import { classPreview, groupBlockedRows, waitReason } from './blocked-classes.ts
 import { formatMergeNextItem, mergeNextOrder, trunkFixIssues } from '../merge-next.ts';
 import { formatStackMergeOrder, stackMergeOrder } from '../stack-parent.ts';
 import { budgetRows } from './budget.ts';
-import { runRows } from './run-state.ts';
+import { DECIDE_HINT, runRows } from './run-state.ts';
 import { safePatternId, topDenyCounts } from './deny-counts.ts';
 import { SCOPE_LABELS } from './record.ts';
 import { formatScopeLabel } from './scope-label.ts';
@@ -379,11 +379,11 @@ export function renderDenyCountsSection(rows: DenyCount[]): string[] {
   return lines;
 }
 
-/** Route, sleep mode and coordination, then the parked decisions waiting on the owner. */
+/** Route, decisions and coordination, then the parked decisions waiting on the owner. */
 export function renderRunSection(view: Pick<StatusReport, 'run' | 'pending_decisions'>): string[] {
   const lines = ['### Run', ...runRows(view.run).map((r) => `- **${r.key}:** ${r.value}`), ''];
   if (view.pending_decisions.length) {
-    lines.push(`### Decisions waiting for you (${view.pending_decisions.length})`);
+    lines.push(`### Decisions waiting for you (${view.pending_decisions.length}) — ${DECIDE_HINT}`);
     for (const d of view.pending_decisions) lines.push(`- **${d.id}** ${d.question} — recommended: ${d.recommended} · holds ${d.waiting_items}`);
     lines.push('');
   }

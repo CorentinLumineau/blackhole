@@ -3,8 +3,9 @@ import * as path from 'path';
 import { read, root, type CheckResult } from './check-utils.ts';
 import { markdownHeadings } from '../lib/markdown-headings.ts';
 
-// V-SLEEP-01 — the sleep-mode choke point (`sleep-mode.md` § The choke point). While the owner is
-// away no question may reach a question tool: each one is parked instead. That only holds if
+// V-SLEEP-01 — the decision-parking choke point (`decision-parking.md` § The choke point). A
+// question the campaign raises reaches a question tool only when `askOrPark()` says `ask`; by
+// default it is parked for `/blackhole decide` instead (ADR-059). That only holds if
 // every playbook step that asks the owner routes through `askOrPark()`, directly or through
 // `clarify-gates.md` (whose C3 adapter opens with it). A section that names `AskQuestion` or
 // `AskUserQuestion` must therefore cite one of the routes below; the unit is the innermost
@@ -13,7 +14,7 @@ import { markdownHeadings } from '../lib/markdown-headings.ts';
 
 const PLAYBOOK_DIRS = ['src/agents', 'src/references'];
 const ASK_TOOL = /\bAsk(?:User)?Question\b/;
-const ROUTED = /askOrPark|C3 adapter|clarify-gates\.md|sleep-mode\.md/;
+const ROUTED = /askOrPark|C3 adapter|clarify-gates\.md|decision-parking\.md/;
 const WHOLE_FILE = '*';
 
 export type PlaybookFile = { path: string; content: string };
@@ -22,7 +23,7 @@ export type DescriptiveMention = { file: string; section: string; why: string };
 
 export const DESCRIPTIVE_MENTIONS: DescriptiveMention[] = [
   { file: 'src/references/clarify-gates.md', section: WHOLE_FILE, why: 'the C3 adapter itself; its first rule is askOrPark()' },
-  { file: 'src/references/sleep-mode.md', section: WHOLE_FILE, why: 'the sleep-mode contract; the wake-up round asks only after sleep mode is off' },
+  { file: 'src/references/decision-parking.md', section: WHOLE_FILE, why: 'the parking contract; the decide round is the owner-initiated answer channel' },
   { file: 'src/references/claude-code-native.md', section: 'Claude Code', why: 'C1-C3 primitive table: names the host tool, asks nothing' },
   { file: 'src/references/claude-code-native.md', section: 'Cursor (desktop, Cloud, CLI)', why: 'C1-C3 primitive table: names the host tool, asks nothing' },
   { file: 'src/references/model-routing.md', section: 'Cursor', why: 'harness note: which model sessions lack the picker' },

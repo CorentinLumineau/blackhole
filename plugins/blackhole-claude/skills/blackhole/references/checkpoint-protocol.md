@@ -16,7 +16,7 @@ On every orchestrator turn end, persist in this order:
 
 1. `queue.json` (atomic tmp + mv)
 2. `findings-ledger.json` (atomic tmp + mv)
-3. `campaign-checkpoint.md` (when in-flight work exists). In sleep mode (`sleep_mode.enabled`),
+3. `campaign-checkpoint.md` (when in-flight work exists). While the owner is away (sleep mode, `sleep_mode.enabled`),
    first run `bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts rearm` and arm each wake-up it prints that is not
    already armed (`sleep-mode.md` § Keeps itself alive), then write one `## Notes` line per armed
    wake-up, `wake-up armed: <at> <reasons> <routine id or "next turn">`, so a resume arms none twice

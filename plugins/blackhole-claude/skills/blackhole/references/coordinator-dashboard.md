@@ -39,7 +39,7 @@ inline `--usage` is refused with it (exit `2`), and the catchup flags are refuse
 `--json` adds a `pacing` object (the reading, the effective floor and the effective preset).
 
 Run form: 13 rows in fixed order (Scope, Order, Merge, Pacing, Budget, Status page, Kaizen and staging,
-Autonomy, Resource policy, Wave scheduling, Peers, Sleep mode, Other config),
+Autonomy, Resource policy, Wave scheduling, Peers, Decisions, Other config),
 each with a one-line consequence. The status page reads the same builder, so the two never
 disagree. The Peers row reads `scripts/peer-campaigns.ts detect` (ADR-057) and states its reach:
 `solo (no live peer in this clone)` when clean, the configured role alone outside a git clone,
@@ -119,8 +119,8 @@ definition of the shape; bump `schema_version` on a breaking change):
 | `ledger_open` | Every open finding, BLOCK first then most recent (`id`, `vcode`, `severity`, `summary`, `issue_ref`) |
 | `deny_counts` | PreToolUse hook `deny` (`tier: block`) and `warn` events per `pattern_id` (`pattern_id`, `deny`, `warn`) since the campaign started, from live and archived `.blackhole/hook-events`, most frequent first. Additive; the dashboard's **Hook denials** section lists the top 5 |
 | `budget` | The usage-budget panel (`scripts/lib/campaign-status/budget.ts`): `probed`, `reason` (why not probed, else `null`), `age_seconds`, `five_hour_pct` and `five_hour_resets_at` (`null` when the plan has no current five_hour window), `weekly_pct`, `resets_at` (the weekly reset), `workers_allowed`, `verdict` and `verdict_reasons` (`workersAllowed()`, or `unavailable` with `parallel_max` when `usage_budget` is off or invalid), and `forecast` (`{pct_per_hour, reaches: [{pct, at}]}`, one entry per distinct weekly threshold, `at` `null` when not reached before the reset; `null` without a weekly window), `source` (`rate-limit-cache`, or `null` when not probed) and `windows` (the windows the reading shows, `five_hour` only when the plan has one). Times are ISO 8601. `target_at_reset` is `usage_budget.weekly.target_at_reset` (`null` when unset or invalid), shown as a **Weekly target** row. With no reading, `probed: false` and every number `null`; the page says `usage not probed`. Additive |
-| `run` | The Run panel (`scripts/lib/campaign-status/run-state.ts`): `route` (`run-context.json`'s `host`, `pattern`, `state_store`, `question_channel`, `forge_channel`, `missing`, `refreshed_at`; `null` when the file is absent or has no route), `sleep_mode`, `parked` (decisions in `pending-decisions.json`, `null` with `parked_error` when the file is unreadable) and `coordination` (`usage_budget.coordination`, `null` with `coordination_invalid` when `usage_budget` is invalid). Its rows are `RUN_ROW_KEYS`: Run route, Sleep mode, Coordination, Doc carry (`doc_carry`: artifacts promised vs staged vs carried, `null` when docs governance is off, `doc_carry_error` when a manifest is unreadable). Additive |
-| `pending_decisions` | The parked owner decisions (`id`, `question`, `recommended` option label, `waiting_items`, `gate`, `created_at`), most-blocking first as the wake-up round asks them (`wakeBatch`); empty when none is parked or the file is unreadable. The **Decisions waiting for you** panel shows their count. Additive |
+| `run` | The Run panel (`scripts/lib/campaign-status/run-state.ts`): `route` (`run-context.json`'s `host`, `pattern`, `state_store`, `question_channel`, `forge_channel`, `missing`, `refreshed_at`; `null` when the file is absent or has no route), `decisions_mode` (`decisionsMode()`: `park` unless the config opts into `ask`), `sleep_mode` (the owner is away), `parked` (decisions in `pending-decisions.json`, `null` with `parked_error` when the file is unreadable) and `coordination` (`usage_budget.coordination`, `null` with `coordination_invalid` when `usage_budget` is invalid). Its rows are `RUN_ROW_KEYS`: Run route, Decisions (`park · 3 waiting — run /blackhole decide`, then `owner away` when away), Coordination, Doc carry (`doc_carry`: artifacts promised vs staged vs carried, `null` when docs governance is off, `doc_carry_error` when a manifest is unreadable). Additive |
+| `pending_decisions` | The parked owner decisions (`id`, `question`, `recommended` option label, `waiting_items`, `gate`, `created_at`), most-blocking first as the decide round asks them (`wakeBatch`); empty when none is parked or the file is unreadable. The **Decisions waiting for you** panel shows their count and `run /blackhole decide`. Additive |
 | `host` | `pace` (the pace line or `null`) and `notes` (plugin-drift lines) |
 | `scope_record` | `recorded` and the `entries` of `config.json` `campaign_scope` (`kind`, `text`, `set_at`, optional `reason`, `refs`, `filter`); malformed entries are dropped. Additive |
 | `decisions` | `owner-decisions.json`, newest first (`date`, `text`, optional `refs`). Additive |
@@ -180,8 +180,8 @@ The status script emits markdown with:
    scope (the header's scope label when none is recorded), the three newest decisions and a **Usage budget**
    section (5-hour % only with a five_hour window, weekly % and reset, workers allowed, the
    `weekly X% reached around HH:MM` forecast, or `usage not probed`), a **Run** section (run
-   route, sleep mode with its parked count, coordination) and, when any is parked,
-   **Decisions waiting for you (N)**, then forge open issues/PRs, queue active/done/in-flight/blocked/ready, ledger
+   route, decisions mode with its waiting count and the decide hint, coordination) and, when any
+   is parked, **Decisions waiting for you (N) — run /blackhole decide**, then forge open issues/PRs, queue active/done/in-flight/blocked/ready, ledger
    severities, and a **Queue health** verdict (`✓ HEALTHY` / `⚠ STALLED` / `✗ DEGRADED`) computed
    from forge availability plus the blocked/in-flight counts already shown here. Scoped
    deliberately narrow: it says nothing about plugin-cache drift or doc-tree health — those are

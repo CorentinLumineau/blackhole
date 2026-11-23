@@ -32,7 +32,7 @@ export const LAUNCH_ROW_CLAIMS: Record<LaunchRowKey, readonly RowClaim[]> = {
   resource_policy: [{ block: 'resource_policy', keys: ['fan_out_override', 'mitigations', 'testlock_carveout', 'gate', 'pace'] }],
   wave_scheduling: [{ block: 'wave_scheduling', keys: ['shard_by_touch_path', 'hot_files_max_one_per_wave', 'batched_checks_pr'] }],
   peers: [{ block: 'usage_budget', keys: ['coordination'] }],
-  sleep: ['sleep_mode'],
+  decisions: ['decisions', 'sleep_mode'],
   other_config: [],
 };
 
@@ -49,7 +49,7 @@ export const LAUNCH_ROW_LABELS: Record<LaunchRowKey, string> = {
   resource_policy: 'Resource policy',
   wave_scheduling: 'Wave scheduling',
   peers: 'Peers',
-  sleep: 'Sleep mode',
+  decisions: 'Decisions',
   other_config: 'Other config',
 };
 

@@ -104,7 +104,7 @@ the plugin version).
 
 One Data dashboard per campaign, laid out by `templates/status-dashboard/index.html` (resolve it
 from `${BLACKHOLE_PLUGIN_ROOT:-.}`). Its datasets are `overview`, `moves`, `blockers`, `board`,
-`streams`, `scope`, `config`, `decisions`, `links`, `denials` (the top 5 hook rules by deny and warn count), `budget` (the usage-budget rows, `budgetRows()`), `run` (`runRows()`: run route, sleep mode with its parked count, coordination role) and `pending` (the parked owner decisions; `STATUS_DATASET_IDS`; the ids and fields:
+`streams`, `scope`, `config`, `decisions`, `links`, `denials` (the top 5 hook rules by deny and warn count), `budget` (the usage-budget rows, `budgetRows()`), `run` (`runRows()`: run route, decisions mode with its waiting count, coordination role) and `pending` (the parked owner decisions; `STATUS_DATASET_IDS`; the ids and fields:
 `scripts/lib/campaign-status/data.ts`). The page works STALE out in the reader's browser from
 `overview.last_activity_at` and `overview.stale_after_hours` (the one `STALE_AFTER_HOURS`), so a
 dashboard nobody refreshes stops saying running by itself; "x min ago" is computed when it is
@@ -203,8 +203,8 @@ sees at a glance where the run stands and what to do:
 2. **Your move** (numbered, each a link: PRs delivered at LGTM or held for the owner first, then
    owner gates, then other PRs ready to merge; "Nothing is waiting on you.") beside **Blocking
    the run** ("Nothing blocks the run.") and **Decisions waiting for you** (a count, then each
-   question parked by sleep mode, most-blocking first, with its recommended answer;
-   `pending-decisions.json`, read with `sleep-mode.md`'s helpers)
+   parked question, most-blocking first, with its recommended answer, then `Answer them all with
+   /blackhole decide`; `pending-decisions.json`, read with `decision-parking.md`'s helpers)
 3. **Stage board** — five columns: in review (`ready`, `review`, `active`: work in flight
    without a PR yet), blocked, not started (`you`: an owner gate, `todo`), parked, done. Four
    cards per column, the rest in a native `<details>` "N more". Each card is a link `#ref title`
@@ -217,8 +217,8 @@ sees at a glance where the run stands and what to do:
    **Config**, **Your decisions** (newest first; the Data dashboard shows four and folds the rest),
    **Hook denials** (top 5 rules by deny and warn count, or `no hook denials recorded`),
    **Usage budget** — see below — and **Run**: the run route from `run-context.json` (pattern,
-   host, state store, question and forge channels, any missing capability), sleep mode on or off
-   with the parked count, and the coordination role (solo, manager, or peer of its manager)
+   host, state store, question and forge channels, any missing capability), the decisions mode with
+   the waiting count, `run /blackhole decide` and `owner away` while away, and the coordination role (solo, manager, or peer of its manager)
 
 Every top-level config block names the dataset that shows it, or `none` with a reason, in
 `config-template.md` § Status page coverage (`V-CONFIG-03`): a run feature that adds config adds

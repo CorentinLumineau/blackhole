@@ -76,7 +76,7 @@ const OWNER_GATE_STEPS: Record<string, string> = {
   'awaiting-plan-approval': 'Owner: approve the plan',
   'awaiting-design-approval': 'Owner: approve the design',
   'awaiting-ruling-recheck': 'Owner: re-confirm the product ruling',
-  'awaiting-owner-on-return': 'Owner: answer the decision parked while you were away',
+  'awaiting-owner-on-return': 'Owner: answer the parked decision — run /blackhole decide',
 };
 const ADDRESSES_OWNER = /^\s*owner:|needs-owner/i;
 
