@@ -105,7 +105,7 @@ has no `documentation/` target.
    when `docs_governance.enabled` and `docs_governance.write_governance` both resolve `true`
    (absent or `false` on either ⇒ skip entirely — no staging write, no manifest entry), on **every
    track including Skip**:
-   1. Run `scripts/detect-doc-schema.sh index documentation/INDEX.md` (repo-convention precedence,
+   1. Run `bash scripts/detect-doc-schema.sh index documentation/INDEX.md` (repo-convention precedence,
       `doc-governance.md` § Repo Convention Precedence) before rendering the plan body's
       lifecycle frontmatter.
    2. Render a durable plan body at `.blackhole/staged/<issue>/plan-{slug}.md` (filename from
@@ -393,7 +393,7 @@ The artifact consolidates 8 ordered subsections:
     **The planner MUST NOT substitute its own judgment** for it — the script is the sole source
     of the verdict, never the planner's own read of the artifact's substance — skipping the invocation is a `V-AUTO-01` BLOCK finding:
     - `status: "ready"` (from `design-aggregate.ts`) → before writing, run
-      `scripts/detect-doc-schema.sh` (repo-convention-precedence detection, ADR-012 E1) against
+      `bash scripts/detect-doc-schema.sh` (repo-convention-precedence detection, ADR-012 E1) against
       both target artifacts: `index` mode on `documentation/decisions/INDEX.md`, `frontmatter`
       mode on an existing sibling ADR file if one exists. Render the new ADR's frontmatter and its
       `documentation/decisions/INDEX.md` row in the detected schema per
@@ -460,7 +460,7 @@ The artifact consolidates 8 ordered subsections:
       glob. A drifted ADR appends a `V-ADR-07` WARN finding to `findings[]` naming it and
       recommending re-validation — **advisory only**: it never blocks promotion and never
       re-invokes `design-aggregate.ts` or a blind-critic re-spawn. Then run
-      `scripts/detect-doc-schema.sh` exactly as the `ready` branch above (same
+      `bash scripts/detect-doc-schema.sh` exactly as the `ready` branch above (same
       repo-convention-precedence detection, ADR-012 E1) and render
       `documentation/decisions/ADR-{NNN}-{slug}.md` plus the matching
       `documentation/decisions/INDEX.md` row in the detected schema. When `docs_governance.enabled`
