@@ -5,6 +5,7 @@ import { read } from '../checks/check-utils.ts';
 import { extractManifestExampleJson } from '../checks/staging-schema.check.ts';
 import { withTempDir } from './test-fixtures.ts';
 import {
+  activeConstraintsBullets,
   appendConstraintBulletIfAbsent,
   appendPipeTableRowIfAbsent,
   carryManifest,
@@ -328,6 +329,55 @@ describe('append_row dedup — ARCHITECTURE.md bullet-list discriminator (citati
     const result = appendConstraintBulletIfAbsent('', bullet);
     expect(result.appended).toBe(true);
     expect(result.content).toBe(`## Active Constraints\n${bullet}\n`);
+  });
+
+  test('an h3 "### Active Constraints" is not the heading -> h2 section appended, h3 untouched', () => {
+    const h3 = '# ARCHITECTURE\n\n### Active Constraints\n\nprose\n';
+    const result = appendConstraintBulletIfAbsent(h3, bullet);
+    expect(result.appended).toBe(true);
+    expect(result.content).toBe(`${h3}\n## Active Constraints\n${bullet}\n`);
+    expect(appendConstraintBulletIfAbsent(result.content, bullet).appended).toBe(false);
+  });
+
+  test('a heading inside a fenced code block is not the heading -> bullet never lands in the fence', () => {
+    const fenced = '# ARCHITECTURE\n\n```md\n## Active Constraints\n- Example (ADR-021)\n```\n';
+    expect(activeConstraintsBullets(fenced)).toEqual([]);
+    const result = appendConstraintBulletIfAbsent(fenced, bullet);
+    expect(result.appended).toBe(true);
+    expect(result.content).toBe(`${fenced}\n## Active Constraints\n${bullet}\n`);
+  });
+
+  test('a fenced heading before the real one -> bullet goes under the real heading', () => {
+    const md = '# A\n\n~~~\n## Active Constraints\n~~~\n\n## Active Constraints\n- Old (ADR-001)\n\n## Next\n';
+    const result = appendConstraintBulletIfAbsent(md, bullet);
+    expect(result.content).toBe(
+      `# A\n\n~~~\n## Active Constraints\n~~~\n\n## Active Constraints\n${bullet}\n- Old (ADR-001)\n\n## Next\n`,
+    );
+  });
+
+  test('an inline mention is not the heading -> no mid-line splice, re-carry idempotent', () => {
+    const inline = '# ARCHITECTURE\n\nSee `## Active Constraints` later.\n';
+    const result = appendConstraintBulletIfAbsent(inline, bullet);
+    expect(result.appended).toBe(true);
+    expect(result.content).toBe(`${inline}\n## Active Constraints\n${bullet}\n`);
+    const second = appendConstraintBulletIfAbsent(result.content, bullet);
+    expect(second.appended).toBe(false);
+    expect(second.content).toBe(result.content);
+  });
+
+  test('section body stops at the next h2 and keeps h3 subsections', () => {
+    const md = '## Active Constraints\n- A (ADR-001)\n### Sub\n- B (ADR-002)\n## Other\n- C (ADR-003)\n';
+    expect(activeConstraintsBullets(md)).toEqual(['- A (ADR-001)', '- B (ADR-002)']);
+  });
+
+  test('CRLF input keeps CRLF line endings (existing heading and appended section)', () => {
+    const withHeading = '# A\r\n\r\n## Active Constraints\r\n- Old (ADR-001)\r\n';
+    const inserted = appendConstraintBulletIfAbsent(withHeading, bullet);
+    expect(inserted.content).toBe(`# A\r\n\r\n## Active Constraints\r\n${bullet}\r\n- Old (ADR-001)\r\n`);
+    expect(appendConstraintBulletIfAbsent(inserted.content, bullet).appended).toBe(false);
+
+    const appended = appendConstraintBulletIfAbsent('# A\r\n', bullet);
+    expect(appended.content).toBe(`# A\r\n\r\n## Active Constraints\r\n${bullet}\r\n`);
   });
 });
 

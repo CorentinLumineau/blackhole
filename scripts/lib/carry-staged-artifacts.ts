@@ -173,14 +173,55 @@ export const citationSuffix = (bulletLine: string): string | null => {
   return match ? `(${match[1]})` : null;
 };
 
+const ACTIVE_CONSTRAINTS_HEADING = '## Active Constraints';
+const ACTIVE_CONSTRAINTS_LINE = /^## Active Constraints[ \t]*$/;
+const FENCE_LINE = /^ {0,3}(`{3,}|~{3,})/;
+const SECTION_END_LINE = /^#{1,2}(?:[ \t]|$)/;
+
+interface ArchitectureLine {
+  text: string; // without its line ending
+  start: number; // offset of the line's first character
+  end: number; // offset just past `text`, before the line ending
+  fenced: boolean; // inside (or delimiting) a fenced code block
+}
+
+/** Split into lines with offsets, marking those inside a ``` / ~~~ fenced code block. */
+const architectureLines = (md: string): ArchitectureLine[] => {
+  const lines: ArchitectureLine[] = [];
+  let fence: string | null = null;
+  let start = 0;
+  for (const raw of md.split('\n')) {
+    const text = raw.endsWith('\r') ? raw.slice(0, -1) : raw;
+    const marker = text.match(FENCE_LINE)?.[1];
+    let fenced = fence !== null;
+    if (fence === null && marker) {
+      fence = marker;
+      fenced = true;
+    } else if (fence !== null && marker && marker[0] === fence[0] && marker.length >= fence.length && text.trim() === marker) {
+      fence = null;
+    }
+    lines.push({ text, start, end: start + text.length, fenced });
+    start += raw.length + 1;
+  }
+  return lines;
+};
+
+/** Index of the line-anchored, unfenced `## Active Constraints` h2, or -1. */
+const activeConstraintsHeadingIndex = (lines: ArchitectureLine[]): number =>
+  lines.findIndex((line) => !line.fenced && ACTIVE_CONSTRAINTS_LINE.test(line.text));
+
 /** `- ` bullet lines of ARCHITECTURE.md's `## Active Constraints` section, trimmed. */
 export const activeConstraintsBullets = (architectureMd: string): string[] => {
-  const section = architectureMd.split('## Active Constraints')[1] ?? '';
-  const body = section.split(/\n## /)[0] ?? '';
-  return body
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.startsWith('- '));
+  const lines = architectureLines(architectureMd);
+  const headingIndex = activeConstraintsHeadingIndex(lines);
+  if (headingIndex === -1) return [];
+  const bullets: string[] = [];
+  for (const line of lines.slice(headingIndex + 1)) {
+    if (!line.fenced && SECTION_END_LINE.test(line.text)) break;
+    const trimmed = line.text.trim();
+    if (!line.fenced && trimmed.startsWith('- ')) bullets.push(trimmed);
+  }
+  return bullets;
 };
 
 export const appendConstraintBulletIfAbsent = (
@@ -191,15 +232,19 @@ export const appendConstraintBulletIfAbsent = (
   const alreadyCarried = activeConstraintsBullets(architectureMd).some((bullet) => citationSuffix(bullet) === suffix);
   if (alreadyCarried) return { content: architectureMd, appended: false };
 
-  const marker = '## Active Constraints';
-  const headingAt = architectureMd.indexOf(marker);
-  if (headingAt === -1) {
+  const eol = architectureMd.includes('\r\n') ? '\r\n' : '\n';
+  const lines = architectureLines(architectureMd);
+  const headingIndex = activeConstraintsHeadingIndex(lines);
+  if (headingIndex === -1) {
     // No section to insert into: append one at end of file, leaving every existing byte intact.
-    const separator = architectureMd === '' ? '' : architectureMd.endsWith('\n') ? '\n' : '\n\n';
-    return { content: `${architectureMd}${separator}${marker}\n${stagedBullet}\n`, appended: true };
+    const separator = architectureMd === '' ? '' : architectureMd.endsWith('\n') ? eol : `${eol}${eol}`;
+    return {
+      content: `${architectureMd}${separator}${ACTIVE_CONSTRAINTS_HEADING}${eol}${stagedBullet}${eol}`,
+      appended: true,
+    };
   }
-  const insertAt = headingAt + marker.length;
-  const content = `${architectureMd.slice(0, insertAt)}\n${stagedBullet}${architectureMd.slice(insertAt)}`;
+  const insertAt = lines[headingIndex]!.end;
+  const content = `${architectureMd.slice(0, insertAt)}${eol}${stagedBullet}${architectureMd.slice(insertAt)}`;
   return { content, appended: true };
 };
 
