@@ -109,7 +109,7 @@ describe('LAUNCH_ROW_CLAIMS', () => {
 
   test('every claimed key is read: removing it from a config carrying all claimed keys changes the owning row', () => {
     // Staging reads `enabled && write_governance !== false`: each key is observable only while the other is not masking it.
-    // Budget shows parallel_max only when pacing is off, and the away part of Decisions differs only while on: each gets its own variant.
+    // Budget shows parallel_max only when pacing is off: it gets its own variant.
     const variants = [
       LIVE,
       { ...LIVE, docs_governance: { ...(LIVE.docs_governance as object), write_governance: true } },

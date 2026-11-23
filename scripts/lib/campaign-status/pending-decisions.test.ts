@@ -10,16 +10,17 @@ import {
   PENDING_DECISIONS_FILE,
   pendingDecisionError,
   readPendingDecisions,
+  retiredSleepModeWarning,
   resolvePendingDecision,
   wakeBatch,
   type PendingDecision,
 } from './pending-decisions.ts';
 import { readDecisions } from './record.ts';
 
-const FIXTURE = path.resolve(import.meta.dir, '../../../fixtures/sleep-mode/pending-decisions.example.json');
+const FIXTURE = path.resolve(import.meta.dir, '../../../fixtures/decision-parking/pending-decisions.example.json');
 const dirs: string[] = [];
-function campaign(config: Record<string, unknown> = { merge_mode: 'leave-open', sleep_mode: { enabled: true } }): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-sleep-'));
+function campaign(config: Record<string, unknown> = { merge_mode: 'leave-open' }): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-decisions-'));
   dirs.push(dir);
   fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify(config));
   return dir;
@@ -39,16 +40,26 @@ describe('askOrPark — the one choke point', () => {
     expect(askOrPark({ decisions: 'ask' })).toBe('park');
   });
 
-  test('asks only when decisions.mode is exactly "ask" and the owner is not away', () => {
+  test('asks only when decisions.mode is exactly "ask"', () => {
     expect(askOrPark({ decisions: { mode: 'ask' } })).toBe('ask');
-    expect(askOrPark({ decisions: { mode: 'ask' }, sleep_mode: { enabled: false } })).toBe('ask');
-    expect(askOrPark({ decisions: { mode: 'ask' }, sleep_mode: { enabled: true } })).toBe('park');
+    expect(decisionsMode({ decisions: { mode: 'ask' } })).toBe('ask');
   });
 
-  test('sleep_mode.enabled false, as every past wake wrote it, is not an opt-out', () => {
+  test('a retired sleep_mode block is ignored either way: it neither parks nor asks', () => {
+    expect(askOrPark({ decisions: { mode: 'ask' }, sleep_mode: { enabled: true } })).toBe('ask');
     expect(askOrPark({ sleep_mode: { enabled: false } })).toBe('park');
-    expect(decisionsMode({ sleep_mode: { enabled: false } })).toBe('park');
-    expect(decisionsMode({ decisions: { mode: 'ask' } })).toBe('ask');
+  });
+});
+
+describe('retiredSleepModeWarning', () => {
+  test('warns on any sleep_mode block, never throws, and is silent without one', () => {
+    const line = 'config.json sleep_mode is retired and ignored (ADR-059 amendment): remove it; an unattended start passes --unattended';
+    expect(retiredSleepModeWarning({ sleep_mode: { enabled: true, since: '2026-11-17T02:00:00.000Z' } })).toBe(line);
+    expect(retiredSleepModeWarning({ sleep_mode: 'garbage' })).toBe(line);
+    expect(retiredSleepModeWarning({ sleep_mode: null })).toBe(line);
+    expect(retiredSleepModeWarning({ decisions: { mode: 'park' } })).toBeNull();
+    expect(retiredSleepModeWarning(null)).toBeNull();
+    expect(retiredSleepModeWarning('x')).toBeNull();
   });
 });
 
@@ -125,8 +136,8 @@ describe('wakeBatch — one round, most-blocking first, four per card', () => {
   });
 });
 
-describe('campaign-record park / wake / resolve', () => {
-  test('park writes through the state guard, wake prints the batch, resolve records the answer', () => {
+describe('campaign-record park / decide / resolve', () => {
+  test('park writes through the state guard, decide prints the batch, resolve records the answer', () => {
     const dir = campaign();
     const flags = ['--campaign-dir', dir];
     expect(
@@ -143,7 +154,7 @@ describe('campaign-record park / wake / resolve', () => {
     expect(runRecord(['ask', ...flags], NOW)).toBe('park');
     const configBefore = fs.readFileSync(path.join(dir, 'config.json'), 'utf-8');
     const batch = JSON.parse(runRecord(['decide', ...flags], NOW));
-    // The round is the answer channel: it leaves parking, and the owner's away state, as they were.
+    // The round is the answer channel: it leaves parking as it was.
     expect(fs.readFileSync(path.join(dir, 'config.json'), 'utf-8')).toBe(configBefore);
     expect(runRecord(['ask', ...flags], NOW)).toBe('park');
     expect(Object.keys(batch)).toEqual(['report', 'total', 'blocked_items', 'cards']);

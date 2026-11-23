@@ -46,12 +46,12 @@ describe('run panel: route, sleep mode and coordination', () => {
     }
   });
 
-  test('decisions park by default, with the waiting count, the round to run and the owner away', () => {
-    const away = buildRunPanel({ config: { sleep_mode: { enabled: true } }, runContext: null, pending: [decision('PD-1', [3]), decision('PD-2', [4])] });
-    expect(away.sleep_mode).toBe(true);
-    expect(away.decisions_mode).toBe('park');
-    expect(away.parked).toBe(2);
-    expect(valueOf(runRows(away), 'Decisions')).toBe('park · 2 waiting — run /blackhole decide · owner away');
+  test('decisions park by default, with the waiting count, the round to run and a retired sleep_mode named', () => {
+    const legacy = buildRunPanel({ config: { sleep_mode: { enabled: true } }, runContext: null, pending: [decision('PD-1', [3]), decision('PD-2', [4])] });
+    expect(legacy.retired_sleep_mode).toBe(true);
+    expect(legacy.decisions_mode).toBe('park');
+    expect(legacy.parked).toBe(2);
+    expect(valueOf(runRows(legacy), 'Decisions')).toBe('park · 2 waiting — run /blackhole decide · retired sleep_mode ignored');
     const none = buildRunPanel({ config: {}, runContext: null, pending: [] });
     expect(valueOf(runRows(none), 'Decisions')).toBe('park · none waiting');
     const ask = buildRunPanel({ config: { decisions: { mode: 'ask' } }, runContext: null, pending: [decision('PD-1', [])] });
@@ -61,7 +61,7 @@ describe('run panel: route, sleep mode and coordination', () => {
   test('an unreadable pending-decisions.json is said, never shown as zero parked', () => {
     const panel = buildRunPanel({ config: { sleep_mode: { enabled: true } }, runContext: null, pending: { error: 'no "decisions" array' } });
     expect(panel.parked).toBeNull();
-    expect(valueOf(runRows(panel), 'Decisions')).toBe('park · parked decisions unreadable: no "decisions" array · owner away');
+    expect(valueOf(runRows(panel), 'Decisions')).toBe('park · parked decisions unreadable: no "decisions" array · retired sleep_mode ignored');
   });
 
   test('coordination role: solo, manager, and peer with its manager and floor', () => {

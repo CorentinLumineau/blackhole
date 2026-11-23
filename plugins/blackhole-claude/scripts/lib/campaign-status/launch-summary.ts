@@ -6,8 +6,7 @@ import { DEFAULT_USAGE_BUDGET, type UsageBudgetConfig } from '../usage-budget.ts
 import { parallelMaxOf, resolveBudgetSettings, when } from './budget.ts';
 import { formatScopeLabel } from './dashboard.ts';
 import { autonomyRow, otherConfigRow, plural, resourcePolicyRow, runPacingRow, waveSchedulingRow } from './launch-config-rows.ts';
-import { decisionsMode, isSleepMode, QUESTIONS_PER_CARD, rawDecisionsMode } from './pending-decisions.ts';
-import { readSleepSession } from './sleep-session.ts';
+import { decisionsMode, QUESTIONS_PER_CARD, rawDecisionsMode, retiredSleepModeWarning } from './pending-decisions.ts';
 import { statusPageRow, type StatusPageInput } from './status-page-row.ts';
 import { LAUNCH_ROW_KEYS, type BudgetPanel, type ConfigSummaryInput, type GateOption, type LaunchRow, type LaunchRowKey, type StatusReport } from './types.ts';
 
@@ -310,8 +309,8 @@ function peersRow(config: Record<string, unknown>, detected: DetectResult | unde
 
 /**
  * Decisions (`decision-parking.md`, ADR-059): display-only. The mode, how many decisions wait for
- * `/blackhole decide` (`waiting` null: the file is unreadable), and the owner's absence, which alone
- * makes this gate print-only (`sleep-mode.md`).
+ * `/blackhole decide` (`waiting` null: the file is unreadable), and a retired `sleep_mode` block,
+ * named and ignored. Print-only mode is never read from config (`--unattended`, `launch-gate.md`).
  */
 export function decisionsRow(config: Record<string, unknown>, waiting: number | null): LaunchRow {
   const base = { key: 'decisions' as const, label: 'Decisions', header: 'Decisions', adjustable: false };
@@ -320,13 +319,10 @@ export function decisionsRow(config: Record<string, unknown>, waiting: number | 
     decisionsMode(config) === 'ask' ? 'ask' : raw === undefined ? 'park (default)' : raw === 'park' ? 'park' : `park (invalid decisions.mode ${JSON.stringify(raw)})`;
   const wait = waiting === null ? 'parked decisions unreadable' : waiting ? `${waiting} waiting — run /blackhole decide` : 'none waiting';
   const parts = [mode, wait];
-  const away = isSleepMode(config);
-  if (away) {
-    const { since } = readSleepSession(config);
-    parts.push(since ? `owner away since ${when(since)}` : 'owner away');
-  }
-  const consequence = away
-    ? 'Owner away: no question is asked, each is parked for /blackhole decide, and this gate only prints.'
+  const retired = retiredSleepModeWarning(config);
+  if (retired) parts.push('retired sleep_mode ignored');
+  const consequence = retired
+    ? `${retired}.`
     : decisionsMode(config) === 'ask'
       ? 'Every gate asks as it comes; set decisions.mode to park (or remove it) to answer them in rounds.'
       : 'Gates park their questions; /blackhole decide asks them all, most-blocking first. This launch gate still asks.';

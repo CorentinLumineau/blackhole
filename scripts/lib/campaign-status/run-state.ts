@@ -1,7 +1,7 @@
 import type { Manifest } from '../carry-staged-artifacts.ts';
 import { collectDocCarry, dispatchGaps } from '../route-artifacts.ts';
 import { resolveBudgetSettings } from './budget.ts';
-import { decisionsMode, isSleepMode, wakeBatch, type PendingDecision } from './pending-decisions.ts';
+import { decisionsMode, retiredSleepModeWarning, wakeBatch, type PendingDecision } from './pending-decisions.ts';
 import type { DocCarry, PendingRow, RunPanel } from './types.ts';
 
 // The status page's Run panel (route, decisions, coordination) and its "Decisions waiting for
@@ -91,7 +91,7 @@ export function buildRunPanel(input: { config: Record<string, unknown>; runConte
   return {
     route: readRoute(input.runContext),
     decisions_mode: decisionsMode(input.config),
-    sleep_mode: isSleepMode(input.config),
+    retired_sleep_mode: retiredSleepModeWarning(input.config) !== null,
     parked: Array.isArray(input.pending) ? input.pending.length : null,
     parked_error: unreadable ? (input.pending as { error: string }).error : null,
     coordination: settings.budget ? { ...settings.budget.coordination } : null,
@@ -146,7 +146,7 @@ export function runRows(p: RunPanel): Array<{ key: string; value: string }> {
     p.parked === null ? `parked decisions unreadable: ${p.parked_error}` : p.parked ? `${p.parked} waiting — ${DECIDE_HINT}` : 'none waiting';
   const values: Record<(typeof RUN_ROW_KEYS)[number], string> = {
     'Run route': routeValue(p.route),
-    Decisions: [p.decisions_mode, parked, ...(p.sleep_mode ? ['owner away'] : [])].join(' · '),
+    Decisions: [p.decisions_mode, parked, ...(p.retired_sleep_mode ? ['retired sleep_mode ignored'] : [])].join(' · '),
     Coordination: coordinationValue(p),
     'Doc carry': docCarryValue(p),
   };

@@ -1,13 +1,13 @@
 ---
 type: adr
-summary: "Every owner question the campaign raises is parked by default (decisions.mode park, ask opts out); /blackhole decide asks them all in cards of four, most-blocking first, and leaves parking on; sleep keeps only the owner-away part (keep-awake hold, re-armed wake-ups, print-only launch gate, away report); the interactive launch gate and the decide round are owner-initiated and ask directly"
+summary: "Every owner question the campaign raises is parked by default (decisions.mode park, ask opts out); /blackhole decide asks them all in cards of four, most-blocking first, reports what ran since the last round, and leaves parking on; sleep mode is retired (amendment): run and catchup hold keep-awake while work is in flight, an unattended start passes --unattended, a leftover sleep_mode key warns and is ignored; the interactive launch gate and the decide round are owner-initiated and ask directly"
 status: accepted
-review_trigger: "on a change to askOrPark(), the decisions or sleep_mode config blocks, the decide round, or the launch gate's print-only mode"
+review_trigger: "on a change to askOrPark(), the decisions config block, the decide round or its baseline, the keep-awake rule, or the launch gate's print-only mode"
 created: 2026-11-23
 last_updated: 2026-11-23
 related:
   - src/references/decision-parking.md
-  - src/references/sleep-mode.md
+  - src/references/keep-awake.md
   - src/references/clarify-gates.md
   - src/references/launch-gate.md
   - documentation/plans/plan-park-owner-decisions-by-default.md
@@ -17,7 +17,7 @@ related:
 
 ## Status
 
-Accepted — 2026-11-23, owner request in the invest-monorepo catchup campaign.
+Accepted — 2026-11-23, owner request in the invest-monorepo catchup campaign. Amended 2026-11-23: sleep mode retired (§ Amendment).
 
 ## Context
 
@@ -90,6 +90,59 @@ nor a reason to re-arm.
 The pending-decisions schema (`pending-decisions.json`), the queue note `awaiting-owner-on-return`
 and the `V-SLEEP-01` choke-point check are kept unchanged in shape; the check also accepts the new
 contract file, `decision-parking.md`, as a route.
+
+## Amendment — 2026-11-23: retire sleep mode
+
+**Owner approval.** Approved by the owner in chat on 2026-11-23 ("let's fix plugin to remove the
+sleep mode"), after the analysis in issue 1433. Decisions D1 to D6 above are left unedited for
+history; where they mention sleep mode, `sleep_mode`, `wake` or the owner's absence, this section
+supersedes them.
+
+**Why.** Once D1 made parking the default, sleep mode only bundled four unrelated behaviours: the
+keep-awake hold, "never ask while away", the print-only launch gate and the away report. Each one
+belongs somewhere else, and the mode was a sticky switch the owner had to remember to turn off.
+
+**A1 — Keep-awake follows the run, not the owner.** `run` and `catchup` hold the OS idle inhibitor
+whenever a worker is in flight or a wake is armed, and release it at drain, stop and
+`STOP-CAMPAIGN`. One idempotent command reconciles it:
+`campaign-record.ts keep-awake --workers <n> [--wake-armed]`, called at each spawn, each turn end,
+a drain-and-wake usage stop (`--wake-armed`) and every stop (`--workers 0`). Worker count comes
+from the checkpoint's in-flight workers, not queue status, so a PR waiting on CI or the owner does
+not hold the machine for days. The hold module is `keep-awake.ts` (formerly `sleep-hold.ts`), and
+its record moves to `.tmp/keep-awake-hold.json`; a record at the old `.tmp/sleep-hold.json` is
+adopted on first read, so an upgrade never orphans a live inhibitor. Presence does not matter: an
+unattended campaign dies when the machine sleeps either way.
+
+**A2 — "Never ask while away" is dropped.** `askOrPark()` follows `decisions.mode` alone. Parking
+is the default, so the owner is not interrupted unless they chose `ask`. The optional ask-timeout
+from the proposal (an `ask`-mode question with no answer parks after N minutes) is **not built**:
+it stays a possible follow-up if `ask` mode turns out to strand questions.
+
+**A3 — Print-only becomes a per-invocation `--unattended` flag.** D5's print-only mode is keyed on
+`campaign-status.ts --summary --unattended` or a run context with no question channel, never on
+config. The scheduled catchup prompt (`phase-catchup.md` § Scheduled task) passes it. No sticky
+state: a forgotten `wake` used to silently skip the next interactive gate, and a flag cannot. An
+unattended invocation also keeps re-arming its own wake-ups at each turn end (`rearm`), which
+sleep mode did; an interactive one arms none, as before, so campaigns that never slept see no
+change.
+
+**A4 — The away report becomes the decide report.** `/blackhole decide` reports what ran since
+the last decide round: issues finished, open PRs with their blockers, and weekly points used. Each
+`decide` records `{at, done, weekly_pct}` in `.blackhole/decide-baseline.json` (`buildDecideReport`,
+`decide-round.ts`, formerly `sleep-session.ts`); this amends D2's "writes nothing" to "writes only
+its own baseline". The first round says "not measured". A campaign away at the upgrade has its
+`sleep_mode.since`/`baseline` used once as that first baseline.
+
+**A5 — Removal and migration.** `campaign-record.ts sleep` and `wake` fail with a line naming
+their replacement. The `sleep_mode` config key is retired: any `sleep_mode` block is ignored with
+a warning (run context, the launch summary and Run panel Decisions rows, the decide JSON), never a
+crash. `sleep-mode.md` is deleted; the hold and wake-up content moves to `keep-awake.md`. The Run
+panel field `sleep_mode` becomes `retired_sleep_mode`, and `run-context.json` records
+`keep_awake` instead of `sleep_mode`.
+
+**Strongest case against, and why it does not hold.** Sleep mode was the only explicit "owner is
+gone" signal in an interactive session. That matters only under `decisions.mode: ask`, which is no
+longer the default; the ask-timeout (A2) covers it if it is ever needed.
 
 ## Alternatives Considered
 

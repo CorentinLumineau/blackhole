@@ -252,9 +252,9 @@ Say any of:
 Coordinator spawns orchestrator; user does not need to paste a long prompt.
 
 Owner questions are parked by default and answered with `/blackhole decide`
-(`decision-parking.md`). Leaving for the night: `/blackhole sleep` — the coordinator relays nothing
-to the owner and the machine is held awake; `/blackhole wake` ends it and runs the decide round
-(`sleep-mode.md`).
+(`decision-parking.md`). Leaving for the night needs no command: questions are parked by default,
+and the run holds the machine awake while work is in flight (`keep-awake.md`); `/blackhole decide`
+reports what ran since the last round.
 
 ## Claude Code harness notes
 

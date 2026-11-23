@@ -6,11 +6,10 @@ import { readJsonFile } from './lib/fs.ts';
 import { resolveUsageBudget } from './lib/usage-budget.ts';
 import { usageSourceFor, type UsageReading } from './lib/usage-source.ts';
 import { checkForgeAuthSync } from './lib/forge-doctor.ts';
-import { isSleepMode } from './lib/campaign-status/pending-decisions.ts';
+import { retiredSleepModeWarning } from './lib/campaign-status/pending-decisions.ts';
 import { pluginVersionWarning, readPluginVersion, readPluginVersionCheck } from './lib/plugin-drift.ts';
 import { projectIdentity } from './project-identity.ts';
-import { readSleepSession } from './lib/campaign-status/sleep-session.ts';
-import { keepAwakeStatus, systemHoldDeps } from './lib/campaign-status/sleep-hold.ts';
+import { keepAwakeStatus, systemHoldDeps } from './lib/campaign-status/keep-awake.ts';
 import {
   AGENT_TOOLS,
   detectRunContext,
@@ -21,7 +20,7 @@ import {
 } from './lib/run-context.ts';
 
 // Writes .blackhole/run-context.json (the context, the route, the host's usage source with the
-// windows its reading shows, and whether sleep mode is on) and prints the resolved route (ADR-046). Exit 1 when the
+// windows its reading shows, and the keep-awake hold's state) and prints the resolved route (ADR-046). Exit 1 when the
 // campaign is missing a capability it cannot start without, so bootstrap can refuse by exit code.
 
 const USAGE =
@@ -109,17 +108,14 @@ const main = () => {
     pluginName: projectIdentity.name,
   });
   const versionWarning = pluginVersionWarning(pluginCheck);
-  const sleepMode = {
-    enabled: isSleepMode(config.config),
-    since: readSleepSession(config.config).since,
-    keep_awake: keepAwakeStatus(campaignDir, route.state_store, systemHoldDeps.identify),
-  };
+  const keepAwake = keepAwakeStatus(campaignDir, route.state_store, systemHoldDeps.identify);
+  const retiredSleepMode = retiredSleepModeWarning(config.config);
 
   if (flags['no-write'] !== true) {
     fs.mkdirSync(campaignDir, { recursive: true });
     const target = path.join(campaignDir, 'run-context.json');
     const tmp = `${target}.tmp`;
-    const record = { refreshed_at: new Date().toISOString(), context, route, usage, sleep_mode: sleepMode, plugin: { running: pluginCheck.running, newest: pluginCheck.newest, behind: pluginCheck.behind } };
+    const record = { refreshed_at: new Date().toISOString(), context, route, usage, keep_awake: keepAwake, plugin: { running: pluginCheck.running, newest: pluginCheck.newest, behind: pluginCheck.behind } };
     fs.writeFileSync(tmp, `${JSON.stringify(record, null, 2)}\n`);
     fs.renameSync(tmp, target);
   }
@@ -134,11 +130,8 @@ const main = () => {
       ? `  usage ${usage.source} (${usage.windows.join(', ')})`
       : `  usage unavailable: ${usage.reason ?? 'no current window'}`,
   );
-  if (sleepMode.enabled) {
-    const hold = sleepMode.keep_awake;
-    const keepAwake = hold.held ? `held by ${hold.tool} (pid ${hold.pid})` : hold.reason;
-    console.log(`  sleep mode on: owner questions are parked (sleep-mode.md); keep-awake: ${keepAwake}`);
-  }
+  if (keepAwake.held) console.log(`  keep-awake: held by ${keepAwake.tool} (pid ${keepAwake.pid})`);
+  if (retiredSleepMode) console.log(`  warn: ${retiredSleepMode}`);
   if (budget.unreadable) console.log('  warn: config.json unreadable, usage_budget treated as disabled');
   if (versionWarning) console.log(`  warn: ${versionWarning}`);
   for (const warning of route.warnings) console.log(`  warn: ${warning}`);

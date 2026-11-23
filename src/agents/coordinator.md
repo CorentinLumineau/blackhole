@@ -48,7 +48,7 @@ Configuration Gate, extended per ADR-006 § "Campaign launch form") — run
 steps 1-6 below whenever **any** of these four conditions hold, regardless
 of whether `.blackhole/config.json` already exists. The gate is owner-initiated: on an interactive
 start its questions (picker or inline) are asked, never parked (`clarify-gates.md` § C3 adapter);
-it only prints while the owner is away or has no question channel (`launch-gate.md` § Print-only mode).
+it only prints for an `--unattended` invocation or a run with no question channel (`launch-gate.md` § Print-only mode).
 `launch-gate.md` § Print-only mode owns what happens when nothing may be asked: the gate prints,
 asks nothing, and refuses to start while `merge_mode` is unset.
 

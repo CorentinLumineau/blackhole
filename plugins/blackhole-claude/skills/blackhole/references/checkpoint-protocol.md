@@ -16,10 +16,13 @@ On every orchestrator turn end, persist in this order:
 
 1. `queue.json` (atomic tmp + mv)
 2. `findings-ledger.json` (atomic tmp + mv)
-3. `campaign-checkpoint.md` (when in-flight work exists). While the owner is away (sleep mode, `sleep_mode.enabled`),
-   first run `bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts rearm` and arm each wake-up it prints that is not
-   already armed (`sleep-mode.md` § Keeps itself alive), then write one `## Notes` line per armed
-   wake-up, `wake-up armed: <at> <reasons> <routine id or "next turn">`, so a resume arms none twice
+3. `campaign-checkpoint.md` (when in-flight work exists). In an unattended invocation
+   (`--unattended`), first run `bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts rearm` and arm each wake-up it
+   prints that is not already armed (`keep-awake.md` § Wake-ups), then write one `## Notes` line
+   per armed wake-up, `wake-up armed: <at> <reasons> <routine id or "next turn">`, so a resume arms
+   none twice. Then, in every invocation, reconcile the hold:
+   `bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts keep-awake --workers <rows in ## In-flight workers> [--wake-armed]`
+   (`--wake-armed` when a wake is armed; `keep-awake.md` § The rule)
 4. When `.blackhole/run-context.json` routes `state_store: branch` (the disk does not outlive the
    session), push the state from the main clone:
    `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/state-branch.ts push --message "chore(state): turn <orchestrator_turn_id>"`.

@@ -75,7 +75,10 @@ step 8), so a long turn keeps its claims live.
    Issues left `ready` stay `ready`. A `defer` from the resource gate and a `NO-SPAWN` from the
    usage gate are handled the same way; the usage drain-and-wake verdicts add the wake below.
 4. Log `WAVE <N>: issues [...]` before the first spawn.
-5. Record each worker in `campaign-checkpoint.md` `## In-flight workers` with role, issue `#N`, spawn turn id, and (issue #422, gated by `docs_governance.enabled`/`companion_files`) the rulings ledger's `rulings_revision` at spawn time — see `checkpoint-protocol.md` § In-flight workers row format.
+5. Take the keep-awake hold for the workers now in flight:
+   `bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts keep-awake --workers <n>` (`keep-awake.md`); idempotent, and an
+   inhibitor problem is reported in one line, never a reason not to spawn.
+6. Record each worker in `campaign-checkpoint.md` `## In-flight workers` with role, issue `#N`, spawn turn id, and (issue #422, gated by `docs_governance.enabled`/`companion_files`) the rulings ledger's `rulings_revision` at spawn time — see `checkpoint-protocol.md` § In-flight workers row format.
 
 ### Barrier
 
@@ -275,7 +278,7 @@ after reading checkpoint and forge sync:
      (EACCES) has no mtime and stays `unknown` until its permissions are corrected or the file is
      removed: dating it by the registry directory's mtime would let unrelated writes refresh or
      age out an unreadable entry, which loosens the read;
-   - while the owner is away (sleep mode), park it once with `launch-gate.md` § Print-only mode's fixed question and
+   - in an unattended invocation (`--unattended`), park it once with `launch-gate.md` § Print-only mode's fixed question and
      option set; a re-park on a later turn merges into the same pending decision.
 
    Nothing refreshes the record between

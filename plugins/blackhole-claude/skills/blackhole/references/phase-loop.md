@@ -12,7 +12,7 @@
 - [ ] Compute ready set (queue-dag.md)
 - [ ] Persist queue.json → findings-ledger.json → campaign-checkpoint.md when in-flight work exists (checkpoint-protocol.md)
 - [ ] Spawn parallel batch (up to parallel_max) — one turn, end turn (capped to `incident_mode.parallel_max_override` — default 1 — incident-issue-only, when incident mode is active; see `orchestrator-runtime.md` § Incident Mode)
-- [ ] Ready set empty, nothing in flight, only items parked on owner decisions left? → end the turn on `N decisions waiting — run /blackhole decide` (`decision-parking.md` § The choke point): not complete, no wake-up armed for it
+- [ ] Ready set empty, nothing in flight, only items parked on owner decisions left? → end the turn on `N decisions waiting — run /blackhole decide` (`decision-parking.md` § The choke point): not complete, no wake-up armed for it, and keep-awake released (`campaign-record.ts keep-awake --workers 0`, `keep-awake.md`)
 - [ ] Open issues + open PRs both zero? → campaign complete
 ```
 
@@ -317,6 +317,9 @@ if kaizen.enabled AND territory not exhausted (some kind in kaizen.kinds has
 else:
     campaign complete — proceed below
 ```
+
+On campaign complete, release the keep-awake hold: `bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts keep-awake
+--workers 0` (`keep-awake.md`).
 
 `kaizen.trigger` gates whether this on-empty check ever fires at all: it only applies when
 `kaizen.trigger == "on-empty"` (default) or `kaizen.trigger == "manual"` is not the deciding

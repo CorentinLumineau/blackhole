@@ -82,6 +82,8 @@ Per `queue-dag.md` Step 4: compute execution waves via topological sort on `depe
 
 **One turn per batch** means one orchestrator turn **includes** the barrier wait for that batch — not spawn-and-exit. Do not end the turn after logging `WAVE <N>` until the batch barrier clears.
 
+**Keep-awake** follows the run, not the owner: `campaign-record.ts keep-awake --workers <n> [--wake-armed]` at each spawn, each turn end, and with `--workers 0` at drain, stop and `STOP-CAMPAIGN` (`.agents/build/skills/blackhole/references/keep-awake.md`). An `--unattended` invocation (the scheduled catchup) also re-arms its own wake-ups and keeps the launch gate print-only.
+
 ---
 
 ## Background worker barrier (Cursor / Pattern B)
