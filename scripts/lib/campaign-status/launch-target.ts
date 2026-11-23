@@ -31,14 +31,16 @@ const statedPath = (stated: string): string =>
 /**
  * Whether the repository a session's stated intent names (a bare repo name, a repository path or a
  * URL) is the resolved one. A bare name matches the last path segment; anything with a `/` must
- * equal the whole path (GitLab nested groups included); case is ignored. With no resolved
- * repository nothing can be confirmed, so it never matches.
+ * equal the whole path or a suffix of it starting on a segment boundary, so `owner/repo` matches a
+ * proxied origin's `git/owner/repo` and `sub/repo` matches `grp/sub/repo`, but `wner/repo` never
+ * matches `owner/repo`. Case is ignored. With no resolved repository nothing can be confirmed, so
+ * it never matches.
  */
 export function statedTargetMatches(stated: string, target: LaunchTarget): boolean {
   if (!target.repo) return false;
   const resolved = target.repo.toLowerCase();
   const wanted = statedPath(stated);
-  return wanted.includes('/') ? wanted === resolved : wanted === resolved.split('/').pop();
+  return wanted.includes('/') ? resolved === wanted || resolved.endsWith(`/${wanted}`) : wanted === resolved.split('/').pop();
 }
 
 const repoText = (t: LaunchTarget): string => t.repo ?? 'no repo';

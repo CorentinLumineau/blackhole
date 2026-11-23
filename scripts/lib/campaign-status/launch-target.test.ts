@@ -36,13 +36,23 @@ describe('statedTargetMatches', () => {
     expect(statedTargetMatches('other/blackhole', target)).toBe(false);
   });
 
-  test('GitLab nested groups compare the whole path', () => {
+  test('GitLab nested groups compare the whole path or a segment-boundary suffix', () => {
     const nested = { repo: 'grp/sub/repo', campaignDir: DIR, source: 'origin' as const };
     expect(statedTargetMatches('grp/sub/repo', nested)).toBe(true);
     expect(statedTargetMatches('https://gitlab.com/grp/sub/repo', nested)).toBe(true);
     expect(statedTargetMatches('repo', nested)).toBe(true);
-    expect(statedTargetMatches('sub/repo', nested)).toBe(false);
+    expect(statedTargetMatches('sub/repo', nested)).toBe(true);
     expect(statedTargetMatches('grp/other/repo', nested)).toBe(false);
+  });
+
+  test('a stated path matches a segment-boundary suffix of the resolved path, as on a proxied cloud origin', () => {
+    const proxied = resolveLaunchTarget({ campaignDir: DIR, configRepo: undefined, originUrl: 'http://proxy@127.0.0.1:4000/git/owner/repo' });
+    expect(proxied.repo).toBe('git/owner/repo');
+    expect(statedTargetMatches('owner/repo', proxied)).toBe(true);
+    expect(statedTargetMatches('sub/repo', { repo: 'grp/sub/repo', campaignDir: DIR, source: 'origin' })).toBe(true);
+    expect(statedTargetMatches('wner/repo', { repo: 'owner/repo', campaignDir: DIR, source: 'config' })).toBe(false);
+    expect(statedTargetMatches('wner/repo', proxied)).toBe(false);
+    expect(statedTargetMatches('other/repo', proxied)).toBe(false);
   });
 
   test('no resolved repository never matches a stated target: it cannot be confirmed', () => {
