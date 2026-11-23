@@ -12,6 +12,7 @@
 - [ ] Compute ready set (queue-dag.md)
 - [ ] Persist queue.json → findings-ledger.json → campaign-checkpoint.md when in-flight work exists (checkpoint-protocol.md)
 - [ ] Spawn parallel batch (up to parallel_max) — one turn, end turn (capped to `incident_mode.parallel_max_override` — default 1 — incident-issue-only, when incident mode is active; see `orchestrator-runtime.md` § Incident Mode)
+- [ ] Ready set empty, nothing in flight, only items parked on owner decisions left? → end the turn on `N decisions waiting — run /blackhole decide` (`decision-parking.md` § The choke point): not complete, no wake-up armed for it
 - [ ] Open issues + open PRs both zero? → campaign complete
 ```
 

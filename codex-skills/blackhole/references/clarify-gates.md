@@ -10,8 +10,10 @@ Never instruct the model to call a question tool that is absent from the session
 **First, `askOrPark()`** (`decision-parking.md` § The choke point): unless `decisions.mode` is
 `ask` and the owner is not away, no row below applies — the question is parked with
 `campaign-record.ts park` and asked in the decide round (`/blackhole decide`). Parking is the
-default. Two owner-initiated rounds are the answer channel and use the rows below directly: the
-launch gate's questions on an interactive start, and the decide round's own cards.
+default. Owner-initiated rounds are the answer channel and use the rows below directly: the
+launch configuration gate on an interactive start (its summary questions and the coordinator's
+bootstrap form), the decide round's own cards, and a follow-up question about a message the owner
+just sent (`coordinator.md` § Chat Feedback Intake Protocol).
 
 | If the session exposes | Coordinator / orchestrator does |
 |------------------------|--------------------------------|

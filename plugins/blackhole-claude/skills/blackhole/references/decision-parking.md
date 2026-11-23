@@ -37,10 +37,11 @@ twice. The same question with different options is refused — reword it or reus
 
 `bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts ask` prints which of the two applies, read from `config.json`.
 
-**Owner-initiated rounds ask directly.** Two rounds are started by the owner and are the answer
-channel itself, so `askOrPark()` does not apply to them: the launch gate's questions on an
-interactive start (`launch-gate.md` § Questions; print-only mode is keyed on absence, never on
-`decisions.mode`), and the decide round's cards below.
+**Owner-initiated rounds ask directly.** Rounds the owner starts are the answer channel itself,
+so `askOrPark()` does not apply to them: the launch configuration gate on an interactive start
+(`launch-gate.md` § Questions and the coordinator's bootstrap form; print-only mode is keyed on
+absence, never on `decisions.mode`), the decide round's cards below, and a follow-up question about
+a message the owner just sent (`coordinator.md` § Chat Feedback Intake Protocol).
 
 No playbook may skip the choke point: `scripts/checks/sleep-choke-point.check.ts` (`V-SLEEP-01`)
 fails any `src/agents/*.md` or `src/references/*.md` section that names `AskQuestion` or
@@ -53,8 +54,8 @@ reason; an entry that stops matching fails too.
 outward-facing or irreversible is parked, never decided by the agent.
 
 **Nothing left but parked items.** When every remaining item waits on a parked decision, the turn
-ends on `N decisions waiting — run /blackhole decide`: it is not a completion, and it arms no
-wake-up of its own.
+ends on `N decisions waiting — run /blackhole decide` (`phase-loop.md` checklist): it is not a
+completion, and it arms no wake-up of its own.
 
 ## Pending-decision record
 

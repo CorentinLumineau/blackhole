@@ -33,8 +33,9 @@ campaign state.
 **Campaign launch configuration gate** (ADR-005 § Campaign Launch
 Configuration Gate, extended per ADR-006 § "Campaign launch form") — run
 steps 1-6 below whenever **any** of these four conditions hold, regardless
-of whether `.blackhole/config.json` already exists. Every question in this gate, picker or
-lettered inline options alike, goes through `askOrPark()` first (`clarify-gates.md` § C3 adapter).
+of whether `.blackhole/config.json` already exists. The gate is owner-initiated: on an interactive
+start its questions (picker or inline) are asked, never parked (`clarify-gates.md` § C3 adapter);
+it only prints while the owner is away or has no question channel (`launch-gate.md` § Print-only mode).
 `launch-gate.md` § Print-only mode owns what happens when nothing may be asked: the gate prints,
 asks nothing, and refuses to start while `merge_mode` is unset.
 
@@ -228,6 +229,11 @@ When the user asks to cut, publish, or tag a release (`vX.Y.Z`):
 ## Chat Feedback Intake Protocol
  
 When the user enters a message in the chat:
+
+A question about the message the owner just sent (a vague request, an ambiguous answer, a blocker
+they are resolving now) is owner-initiated and asked directly; anything the campaign raises on its
+own goes through `askOrPark()` (`clarify-gates.md` § C3 adapter). When the owner asks to process,
+answer or go through the decisions, run the decide round (`decision-parking.md` § Decide round).
  
 1.  **Triaging New Directions**:
     *   Classify first per `clarify-gates.md` § Chat feedback intake's task-vs-ruling

@@ -41,7 +41,7 @@ import { resolveUsageBudget } from './lib/usage-budget.ts';
 //   decide                                                       → prints the report and the batched round as JSON; writes nothing
 //   sleep    --on | --off                                        → config.json sleep_mode (on records since + baseline);
 //                                                                  on takes the local keep-awake hold, off releases it (.tmp/sleep-hold.json)
-//   wake                                                         → sleep --off, then the decide round with the away report
+//   wake                                                         → sleep --off, then the decide round with the away report (not away: decide)
 //   rearm                                                        → prints the wake-ups to keep armed as JSON (sleep-mode.md § Keeps itself alive)
 //   resolve  --id PD-1 --answer "<text>" [--date YYYY-MM-DD]     → pending-decisions.json + owner-decisions.json
 //
@@ -219,7 +219,8 @@ export function runRecord(argv: string[], now: Date = new Date(), hold: HoldDeps
     return `Sleep mode on since ${when(readSleepSession(next).since ?? now.toISOString())}: owner questions are parked (${waiting} waiting).\n${held}`;
   }
 
-  if (sub === 'decide') {
+  // `wake` with the owner not away has no absence to end: it is the decide round, config untouched.
+  if (sub === 'decide' || (sub === 'wake' && !isSleepMode(readConfig(flags.campaignDir)))) {
     // The round is the answer channel, not a gate: its cards ask directly, so nothing here changes
     // parking or the owner's absence (`decision-parking.md` § Decide round).
     const config = readConfig(flags.campaignDir);

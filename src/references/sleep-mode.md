@@ -36,7 +36,8 @@ finished since `since` (against the sleep baseline), open PRs in merge order wit
 blocker, weekly usage now and the points used while away, and the number of decisions waiting
 (`buildWakeReport`, `scripts/lib/campaign-status/sleep-session.ts`). The JSON also carries
 `keep_awake`, the release line. Ask the cards and resolve the answers exactly as that section says.
-`/blackhole decide` while away prints the same report without ending the absence.
+`/blackhole decide` while away prints the same report without ending the absence. `wake` with the
+owner not away has no absence to end: it is the decide round, and writes nothing.
 
 ## Keeps itself alive
 

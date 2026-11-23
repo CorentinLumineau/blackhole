@@ -193,6 +193,16 @@ describe('campaign-record sleep --on | --off', () => {
     expect(out.keep_awake).toBeUndefined();
   });
 
+  test('wake with the owner not away is the decide round and writes nothing', () => {
+    const dir = campaign({ merge_mode: 'leave-open', sleep_mode: { enabled: false } }, QUEUE);
+    const before = fs.readFileSync(path.join(dir, 'config.json'), 'utf-8');
+    const mac = fakeMac();
+    const out = JSON.parse(runRecord(['wake', '--campaign-dir', dir], NOW, mac.deps));
+    expect(out.report).toStartWith('## Before you decide');
+    expect(mac.calls).toEqual([]);
+    expect(fs.readFileSync(path.join(dir, 'config.json'), 'utf-8')).toBe(before);
+  });
+
   test('decide with the owner present prints the short report', () => {
     const dir = campaign({ merge_mode: 'leave-open' }, QUEUE);
     const out = JSON.parse(runRecord(['decide', '--campaign-dir', dir], NOW, fakeMac().deps));

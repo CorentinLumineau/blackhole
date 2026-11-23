@@ -1,7 +1,7 @@
 ---
 name: blackhole
-description: Orchestrates backlog campaign until zero open issues and PRs. Multitask Mode entry via coordinator. Auto-syncs GitHub issues, clarifies/splits any size, five-phase lifecycle, V-code ledger. Use for finish the backlog, backlog campaign, /blackhole, orchestrate issues, split issues, bc-run, bc-status.
-argument-hint: "[run | catchup | stop]"
+description: Orchestrates backlog campaign until zero open issues and PRs. Multitask Mode entry via coordinator. Auto-syncs GitHub issues, clarifies/splits any size, five-phase lifecycle, V-code ledger. Parks owner decisions and answers them all on /blackhole decide. Use for finish the backlog, backlog campaign, /blackhole, process the decisions, orchestrate issues, split issues, bc-run, bc-status.
+argument-hint: "[run | catchup | decide | stop]"
 disable-model-invocation: true
 ---
 
