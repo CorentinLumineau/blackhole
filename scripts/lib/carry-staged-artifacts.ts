@@ -323,6 +323,13 @@ const writeCarryTarget = (
  * in the worktree checked out for the PR. `opts.stagingRoot` (default `repoRoot`, matching the
  * existing `opts.today` optional-parameter shape) resolves `staged_path` only — `target_path`
  * always resolves against `repoRoot`, since that is where the PR branch lives.
+ *
+ * All-or-nothing on a refusal: every entry's content is computed before any target is written,
+ * so a throw (an absent staged_path, an `IndexFragmentShapeError`, an
+ * `UnclassifiableAdrFragmentError`) leaves the PR worktree exactly as it was rather than holding
+ * an ADR body without its index row. Entries that append to the same target chain in memory, each
+ * applied on top of the previous one's result. A write failure in the second pass stays
+ * entry-scoped, as below.
  */
 export const carryManifest = (
   manifest: Manifest,
@@ -339,6 +346,8 @@ export const carryManifest = (
   // the trigger to auto-regenerate documentation/INDEX.md once, after the loop, instead of the
   // retired per-entry `append_row` staging convention.
   let regenerateRootIndex = false;
+  const planned: { index: number; entry: ValidEntry; targetAbs: string; content: string }[] = [];
+  const pendingContent = new Map<string, string>();
 
   for (const entry of valid) {
     const index = entries.indexOf(entry);
@@ -384,20 +393,8 @@ export const carryManifest = (
     if (entry.target_kind === 'new_file') {
       const raw = fs.readFileSync(stagedAbs, 'utf-8');
       const content = decideCopyMode(entry) === 'rewrite' ? rewriteInvestigatorFrontmatter(raw, entry, today) : raw;
-      // Write-step FS errors (issue #784 AC2/AC3) are entry-scoped, not invocation-scoped — a
-      // worktree-shaped `.git` (ENOTDIR) or any other write failure skips this one entry instead
-      // of throwing and denying the rest of the manifest. Distinct from the "declared staged_path
-      // absent" throw above, which stays fatal — it signals a broken invocation, not adversarial
-      // entry content.
-      const written = writeCarryTarget(targetAbs, content);
-      if (written.ok) {
-        carriedPaths.push(entry.target_path);
-        if (entry.target_path.startsWith('documentation/') && !entry.target_path.startsWith('documentation/decisions/')) {
-          regenerateRootIndex = true;
-        }
-      } else {
-        skipped.push({ index, reason: `write failed for target_path "${entry.target_path}": ${written.message}` });
-      }
+      planned.push({ index, entry, targetAbs, content });
+      pendingContent.set(targetAbs, content);
       continue;
     }
 
@@ -414,18 +411,35 @@ export const carryManifest = (
     }
 
     const fragment = fs.readFileSync(stagedAbs, 'utf-8').trim();
-    const existing = fs.existsSync(targetAbs) ? fs.readFileSync(targetAbs, 'utf-8') : '';
+    const existing =
+      pendingContent.get(targetAbs) ?? (fs.existsSync(targetAbs) ? fs.readFileSync(targetAbs, 'utf-8') : '');
     const result =
       entry.target_path === 'ARCHITECTURE.md'
         ? appendConstraintBulletIfAbsent(existing, fragment)
         : appendPipeTableRowIfAbsent(existing, fragment, { today });
     if (result.appended) {
-      const written = writeCarryTarget(targetAbs, result.content);
-      if (written.ok) {
-        carriedPaths.push(entry.target_path);
-      } else {
-        skipped.push({ index, reason: `write failed for target_path "${entry.target_path}": ${written.message}` });
-      }
+      planned.push({ index, entry, targetAbs, content: result.content });
+      pendingContent.set(targetAbs, result.content);
+    }
+  }
+
+  // Write-step FS errors (issue #784 AC2/AC3) are entry-scoped, not invocation-scoped — a
+  // worktree-shaped `.git` (ENOTDIR) or any other write failure skips this one entry instead of
+  // throwing and denying the rest of the manifest. Distinct from the throws in the planning pass
+  // above, which stay fatal and fire before anything is written.
+  for (const { index, entry, targetAbs, content } of planned) {
+    const written = writeCarryTarget(targetAbs, content);
+    if (!written.ok) {
+      skipped.push({ index, reason: `write failed for target_path "${entry.target_path}": ${written.message}` });
+      continue;
+    }
+    carriedPaths.push(entry.target_path);
+    if (
+      entry.target_kind === 'new_file' &&
+      entry.target_path.startsWith('documentation/') &&
+      !entry.target_path.startsWith('documentation/decisions/')
+    ) {
+      regenerateRootIndex = true;
     }
   }
 
