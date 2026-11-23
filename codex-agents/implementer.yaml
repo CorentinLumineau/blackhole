@@ -446,8 +446,8 @@ instructions: |
       the entry index, never a bare ENOENT — fails loudly instead of the pre-#760 silent-`[]` bug
       when a relative manifest path happened to resolve against the wrong cwd; log it the same way
       as the zero-byte case above. A staged `decisions-index-row.md` must match the target index
-      header's column count (and, for an ADR-style header, one of its two recognised row shapes),
-      or the carry refuses it and exits 1 too; every entry is checked before any file is written,
+      header's column count (blackhole header) or one of its two recognised row shapes (ADR-style
+      header), or the carry refuses it and exits 1 too; every entry is checked before any file is written,
       so a refusal leaves the worktree untouched (issue #1478) — fix the fragment and re-run.
   *   **What the script dispatches** (ported verbatim from this section's pre-#715 prose, not
       restated here): `new_file` entries copy verbatim except an investigator analyze/investigate

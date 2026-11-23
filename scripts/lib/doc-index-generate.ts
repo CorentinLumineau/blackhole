@@ -35,19 +35,28 @@ export const buildDocIndexRows = (docsDir: string): RootIndexRow[] => {
   const rows: RootIndexRow[] = walkMdFilesAbs(docsDir)
     .map((abs) => path.relative(docsDir, abs).split(path.sep).join('/'))
     .filter((relPath) => !isExcludedPath(relPath))
-    .map((relPath) => {
-      const content = fs.readFileSync(path.join(docsDir, relPath), 'utf-8');
-      const fm = parseFrontmatterFields(parseMdFrontmatter(content).frontmatter);
-      return {
-        path: relPath,
-        summary: fm.summary ? decodeYamlScalar(fm.summary) : '',
-        type: fm.type ?? '',
-        status: fm.status ?? '',
-        reviewTrigger: fm.review_trigger ? decodeYamlScalar(fm.review_trigger) : '',
-      };
-    });
+    .map((relPath) => docIndexRow(relPath, fs.readFileSync(path.join(docsDir, relPath), 'utf-8')));
 
   return rows.sort(byPathByteOrder);
+};
+
+/**
+ * The root-index row for one doc, from its own frontmatter. `relPath` is relative to
+ * `documentation/`. Returns null when the path is excluded from the root index (decisions/**,
+ * milestones/_archived/**, INDEX.md itself).
+ */
+export const rootIndexRowFor = (relPath: string, content: string): RootIndexRow | null =>
+  isExcludedPath(relPath) ? null : docIndexRow(relPath, content);
+
+const docIndexRow = (relPath: string, content: string): RootIndexRow => {
+  const fm = parseFrontmatterFields(parseMdFrontmatter(content).frontmatter);
+  return {
+    path: relPath,
+    summary: fm.summary ? decodeYamlScalar(fm.summary) : '',
+    type: fm.type ?? '',
+    status: fm.status ?? '',
+    reviewTrigger: fm.review_trigger ? decodeYamlScalar(fm.review_trigger) : '',
+  };
 };
 
 export const renderDocIndexTable = (rows: RootIndexRow[]): string => rows.map(renderIndexRowLine).join('\n');

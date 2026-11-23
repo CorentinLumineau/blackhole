@@ -372,6 +372,41 @@ describe('carryManifest — a refused append_row writes nothing (all-or-nothing,
     carryBodyThenRow(adrIndex, '| ADR-002 | Two | accepted |', UnclassifiableAdrFragmentError);
   });
 
+  test('a new_file whose summary would break the regenerated root index refuses before writing it', () => {
+    withTempDir('carry-atomic-index', (repoRoot) => {
+      const stagedDir = '.blackhole/staged/1478';
+      fs.mkdirSync(path.join(repoRoot, stagedDir), { recursive: true });
+      const doc = '---\ntype: reference\nsummary: "a\\nb"\nstatus: current\nreview_trigger: "on file change"\n---\n# Doc\n';
+      fs.writeFileSync(path.join(repoRoot, stagedDir, 'doc.md'), doc);
+      const manifest = {
+        issue: 1478,
+        updated_at: '2026-11-23T00:00:00.000Z',
+        entries: [designEntry(`${stagedDir}/doc.md`, 'documentation/reference/doc.md', 'new_file')],
+      } as Manifest;
+      expect(() => carryManifest(manifest, repoRoot)).toThrow(/summary.*embedded newline/);
+      expect(fs.existsSync(path.join(repoRoot, 'documentation/reference/doc.md'))).toBe(false);
+      expect(fs.existsSync(path.join(repoRoot, 'documentation/INDEX.md'))).toBe(false);
+    });
+  });
+
+  test('a new_file followed by an entry whose staged_path is absent writes nothing', () => {
+    withTempDir('carry-atomic-missing', (repoRoot) => {
+      const stagedDir = '.blackhole/staged/1478';
+      fs.mkdirSync(path.join(repoRoot, stagedDir), { recursive: true });
+      fs.writeFileSync(path.join(repoRoot, stagedDir, 'ADR-002-two.md'), adrBody);
+      const manifest = {
+        issue: 1478,
+        updated_at: '2026-11-23T00:00:00.000Z',
+        entries: [
+          designEntry(`${stagedDir}/ADR-002-two.md`, 'documentation/decisions/ADR-002-two.md', 'new_file'),
+          designEntry(`${stagedDir}/missing.md`, 'documentation/decisions/INDEX.md', 'append_row'),
+        ],
+      } as Manifest;
+      expect(() => carryManifest(manifest, repoRoot)).toThrow(/not found under stagingRoot/);
+      expect(fs.existsSync(path.join(repoRoot, 'documentation/decisions/ADR-002-two.md'))).toBe(false);
+    });
+  });
+
   test('two append_row entries into the same index both land, the second applied on top of the first', () => {
     withTempDir('carry-atomic-chain', (repoRoot) => {
       const bh = '| path | summary | type | status | review_trigger |\n|---|---|---|---|---|\n';

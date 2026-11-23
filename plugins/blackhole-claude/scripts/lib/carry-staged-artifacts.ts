@@ -1,11 +1,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { appendAdrIndexRowIfAbsent, appendIndexRowIfAbsent, assertIndexFragmentShape, isAdrIndexHeader, parseIndexTableRows, type RootIndexRow } from './check-common.ts';
+import { appendAdrIndexRowIfAbsent, appendIndexRowIfAbsent, assertIndexFragmentShape, isAdrIndexHeader, parseIndexTableRows, renderIndexRowLine, type RootIndexRow } from './check-common.ts';
 import { parseFrontmatterFields, parseMdFrontmatter } from './build/content.ts';
 import { readJsonFile } from './fs.ts';
 import { fencedLineMask, markdownHeadings, openFenceAtEnd, sectionEnd, type MarkdownHeading } from './markdown-headings.ts';
 import { isCarryTargetAllowed } from './carry-target-allowlist.ts';
-import { ROOT_DOC_INDEX_PATH, isRegenerableRootIndex, renderRootIndexFile } from './doc-index-generate.ts';
+import { ROOT_DOC_INDEX_PATH, isRegenerableRootIndex, renderRootIndexFile, rootIndexRowFor } from './doc-index-generate.ts';
 
 // Mechanizes the mechanical two-thirds of `implementer.md` § Carry Staged Artifacts: the
 // manifest shape guard, `target_kind` dispatch, the 9-row frontmatter rewrite mapping
@@ -346,7 +346,7 @@ export const carryManifest = (
   // the trigger to auto-regenerate documentation/INDEX.md once, after the loop, instead of the
   // retired per-entry `append_row` staging convention.
   let regenerateRootIndex = false;
-  const planned: { index: number; entry: ValidEntry; targetAbs: string; content: string }[] = [];
+  const planned: { index: number; entry: ValidEntry; targetAbs: string }[] = [];
   const pendingContent = new Map<string, string>();
 
   for (const entry of valid) {
@@ -393,7 +393,13 @@ export const carryManifest = (
     if (entry.target_kind === 'new_file') {
       const raw = fs.readFileSync(stagedAbs, 'utf-8');
       const content = decideCopyMode(entry) === 'rewrite' ? rewriteInvestigatorFrontmatter(raw, entry, today) : raw;
-      planned.push({ index, entry, targetAbs, content });
+      // The root index is regenerated after the writes, so a frontmatter value it cannot render
+      // (an embedded newline in `summary`, say) must refuse here, before anything is on disk.
+      if (entry.target_path.startsWith('documentation/')) {
+        const row = rootIndexRowFor(entry.target_path.slice('documentation/'.length), content);
+        if (row) renderIndexRowLine(row);
+      }
+      planned.push({ index, entry, targetAbs });
       pendingContent.set(targetAbs, content);
       continue;
     }
@@ -418,7 +424,7 @@ export const carryManifest = (
         ? appendConstraintBulletIfAbsent(existing, fragment)
         : appendPipeTableRowIfAbsent(existing, fragment, { today });
     if (result.appended) {
-      planned.push({ index, entry, targetAbs, content: result.content });
+      planned.push({ index, entry, targetAbs });
       pendingContent.set(targetAbs, result.content);
     }
   }
@@ -427,8 +433,15 @@ export const carryManifest = (
   // worktree-shaped `.git` (ENOTDIR) or any other write failure skips this one entry instead of
   // throwing and denying the rest of the manifest. Distinct from the throws in the planning pass
   // above, which stay fatal and fire before anything is written.
-  for (const { index, entry, targetAbs, content } of planned) {
-    const written = writeCarryTarget(targetAbs, content);
+  // Each target is written once, with its final content; a later entry on the same target shares
+  // that one write's outcome.
+  const writeOutcomes = new Map<string, ReturnType<typeof writeCarryTarget>>();
+  for (const { index, entry, targetAbs } of planned) {
+    let written = writeOutcomes.get(targetAbs);
+    if (!written) {
+      written = writeCarryTarget(targetAbs, pendingContent.get(targetAbs) ?? '');
+      writeOutcomes.set(targetAbs, written);
+    }
     if (!written.ok) {
       skipped.push({ index, reason: `write failed for target_path "${entry.target_path}": ${written.message}` });
       continue;
