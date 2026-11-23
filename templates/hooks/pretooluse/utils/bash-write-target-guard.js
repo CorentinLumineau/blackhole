@@ -40,7 +40,7 @@
 
 const path = require('path');
 const { computeMaskedSpans, computeHeredocBodyMask } = require('./bash-context');
-const { skipQuotedSpan, isRedirectAmpersand, decodeAnsiC } = require('./shell-lexer');
+const { skipQuotedSpan, isRedirectAmpersand, decodeAnsiC, shellWordEnd } = require('./shell-lexer');
 const {
   readAssignedWorktreeRoot,
   mainCloneRoot,
@@ -449,7 +449,7 @@ const maskRedirectNoise = (visible, allowed) => {
   return chars.join('');
 };
 
-const REDIRECT_RE = /(&>>|&>|>>|>&|>\||>)\s*(\S+)?/g;
+const REDIRECT_RE = /(&>>|&>|>>|>&|>\||>)\s*/g;
 
 /** After a `>&` operator, a digit or `-` is fd duplication/close (`>&2`, `>&-`); anything else is a
  * file path (`>&file` is `&>file`). */
@@ -466,7 +466,10 @@ const findRedirectTargets = (visible) => {
   REDIRECT_RE.lastIndex = 0;
   let match = REDIRECT_RE.exec(visible);
   while (match !== null) {
-    const raw = match[2];
+    // The target is one shell word: it ends at an unquoted `;`, `&` or `|`, never inside quotes.
+    const end = shellWordEnd(visible, REDIRECT_RE.lastIndex);
+    const raw = visible.slice(REDIRECT_RE.lastIndex, end) || undefined;
+    REDIRECT_RE.lastIndex = end;
     const isFdDup = match[1] === '>&' ? raw && isFdDupOperand(raw) : raw && isFdDuplicationTarget(raw);
     if (raw && !isFdDup) {
       targets.push(targetWord(raw));

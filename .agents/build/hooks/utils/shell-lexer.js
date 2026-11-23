@@ -93,6 +93,24 @@ const isRedirectAmpersand = (text, i) => {
   return prev === '>' || next === '>';
 };
 
+/**
+ * End index (exclusive) of the shell word starting at `start` in `text`, bounded by `endBound`:
+ * the word ends at the first unquoted whitespace or clause operator character (`;`, `&`, `|`), as
+ * bash ends it. A quoted span (`skipQuotedSpan`) is consumed whole, so `"f; "` stays one word, and
+ * a backslash keeps the next character in the word (`f\;`). Returns `start` when the word is empty.
+ */
+const shellWordEnd = (text, start, endBound = text.length) => {
+  let j = start;
+  while (j < endBound) {
+    const ch = text[j];
+    if (ch === "'" || ch === '"') j = skipQuotedSpan(text, j, endBound);
+    else if (ch === '\\' && j + 1 < endBound) j += 2;
+    else if (/[\s;&|]/.test(ch)) break;
+    else j++;
+  }
+  return j;
+};
+
 /** One-letter ANSI-C escapes (`\n`, `\t`, …); `\e`, `\E` are ESC, `\a` is BEL. */
 const ANSI_C_SIMPLE = { a: '\x07', b: '\b', e: '\x1b', E: '\x1b', f: '\f', n: '\n', r: '\r', t: '\t', v: '\v' };
 
@@ -118,4 +136,4 @@ const decodeAnsiC = (body) => {
   return nul === -1 ? text : text.slice(0, nul);
 };
 
-module.exports = { skipQuotedSpan, isRedirectAmpersand, decodeAnsiC };
+module.exports = { skipQuotedSpan, isRedirectAmpersand, decodeAnsiC, shellWordEnd };
