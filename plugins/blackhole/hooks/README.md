@@ -28,7 +28,8 @@ so nothing signaled the divergence.
 
 1. Bump `package.json`'s `version` field (a plain patch/minor bump is enough — this is a version
    *change*, not a semantic-versioning judgment call for this purpose).
-2. Run `bun run build` — this regenerates all 5 version-carrying manifests from
+2. Run `bun run build` — this regenerates every version-carrying manifest listed in
+   `VERSIONED_MANIFESTS` (`scripts/lib/build/manifests.ts`) from
    `package.json`'s version, `.claude-plugin/plugin.json` included, with no separate tooling
    needed (`scripts/release.ts`'s `prepareRelease`).
 3. `/plugin marketplace update <name>` inside Claude Code, then reinstall the plugin.
