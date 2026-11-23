@@ -6,7 +6,7 @@ itself stay in `phase-loop.md` § Merge protocol (on the `rest` or `mcp` forge c
 command here and there runs through its row in `forge-channels.md`); this doc is consulted from that
 section's own **step 0** as a single delegated precondition (`mergeEligible(issue)` — `false` stops
 the protocol before step 1), never inlined and never satisfied merely by citation from a different
-heading.
+heading. The merge method and the low-risk automerge gate (formerly § 9) live in `merge-risk.md`.
 
 **`merge_mode: leave-open` bypass note** (ADR-006, narrowed by ADR-026 D5): for issues under
 this mode, `mergeEligible(issue)` is never invoked at all, and the campaign never calls
@@ -128,9 +128,8 @@ degrades to immediate-mode behavior for a single-issue scope.
 **Scope is re-evaluated every orchestrator turn**, not frozen when the batch wait begins — the same
 design already used for wave computation (`queue-dag.md` Step 4). An issue entering or leaving scope
 mid-wait (label added/removed, milestone reassigned) is picked up naturally on the next
-`mergeEligible` evaluation; there is no separate "batch snapshot" state to keep in sync. This is
-documented explicitly here per ADR-005's Key Assumptions "Oversimplified" marker — treat it as the
-intended design, not an omission.
+`mergeEligible` evaluation; there is no separate "batch snapshot" state to keep in sync. Per
+ADR-005's Key Assumptions "Oversimplified" marker, this is the intended design, not an omission.
 
 ## 2. Cross-graph cycle detection
 
@@ -149,8 +148,7 @@ remain distinct fields with distinct semantics (implementation-start gate vs. me
 On detecting a cycle involving issues `A` and `B` (self-referential — `A`
 listing itself — is a degenerate 1-node cycle of the same class):
 
-1. Set `status: blocked` on **both** `A` and `B` (all issues on the cycle, for
-   cycles longer than 2).
+1. Set `status: blocked` on **both** `A` and `B` (every issue on the cycle, if longer than 2).
 2. Set each one's `notes` to `merge-order cycle with #N` (`N` = the other
    issue's number; for cycles >2 nodes, name the next node in the cycle).
 3. Surface via the existing `AskQuestion` user gate (`coordinator.md` /
@@ -200,8 +198,7 @@ completion path (a human merges the LGTM'd PR blackhole intentionally left open)
 `V-MERGE-01` or `V-MERGE-02` for these issues; reconcile `queue.json` to `status: merged`,
 `phase: done` via the existing generic forge-sync reconciliation path (`forge-sync.md` § Reconcile
 existing queue entries) with no V-code logged. This carve-out takes precedence over the
-`merged_by`-attribution bullets above whenever `merge_mode == "leave-open"` — those bullets classify
-drift only for non-`leave-open` issues.
+`merged_by`-attribution bullets above, which classify drift only for non-`leave-open` issues.
 
 Both cases are audit-only: the ledger row records what happened, it does not and cannot reverse the
 merge. This single detection point (§3) is the sole trigger for both `V-MERGE-01` and `V-MERGE-02` —
@@ -228,7 +225,7 @@ multi-PR operation. Compute the merge order and execute sequentially:
    minus cycles since § 2 already guarantees none remain unresolved at this point).
 3. For each issue in that order: re-check `mergeEligible(issue)` (a `merge_after` entry may resolve
    mid-batch as earlier PRs merge), then run the normal `phase-loop.md` § Merge protocol for that
-   one PR (merge method per § 9), then persist `queue.json` (`status: merged`, `refreshed_at` bump)
+   one PR (merge method per `merge-risk.md`), then persist `queue.json` (`status: merged`, `refreshed_at` bump)
    **before** moving to the next issue in the order.
 4. If the merged PR had open stacked children, run step 4.6's recovery (§ 7) for each of them
    inside this loop, before the next issue's turn. A recovered child gets a new head, so it must
@@ -500,57 +497,6 @@ mistaken for a verified base-ref landing.
 | Post-merge `git log <target_branch> --grep=#<PR>` finds nothing after the retry budget | Terminal (§ 8, step 4.7, exit `1`) — the merge did not land on the base ref; never reclassified as replication lag, `merged_into` stays absent, and the issue does not advance to `done` |
 | Post-merge `git fetch`/`git log` exits non-zero, or `target_branch` resolves to no ref | Exit `3` (§ 8, step 4.7) — reported as *verification could not run*, never as a miss and never as `ok`; `merged_into` stays absent and the issue does not advance to `done`, but the failure names the transport, not the landing |
 | `merged_into` absent on an older `merged` row | `mergedIntoVerdict()` reports `unknown`, not `base` — an unverified landing stays visibly unverified rather than being backfilled by assumption |
-| Green CI, low-risk campaign PR (`blackhole/issue-N` or `blackhole/issue-N-<slug>`, none of the § 9 categories) | `phase-loop.md` step 4 squash-merges (`automerge: true`) |
-| Green CI, but the diff touches a § 9 high-risk category (or head is not `blackhole/issue-N[-slug]`) | Step 4 **does not merge**. Label `needs-chef`, comment the script's `comment` field, leave the PR open for Chef |
-| `needs-chef` already on the PR from a prior turn | Do not post a second `needs-chef:` comment; re-evaluate next turn if the diff changed |
-| `DELETE FROM` / `DROP TABLE` only in a test, fixture or markdown file, or in the classifier's own source (including its built copies) | Not `deletes-data` — `isTestPath()`, `isDocPath()` (any `.md`/`.mdx`) and the matcher's own path suffix are exempt; a `.sql`/`.dump` or migration path is always scanned, even under a test or docs directory |
-| `merge_mode: leave-open`, high-risk, CI green | Same hold half (label + comment); still no `gh pr merge` |
-
-## 9. `classifyMergeRisk(pr) -> automerge | needs-chef` — low-risk merge gate
-
-**Merge method.** Blackhole merges with `--squash` by default. A PR that has open stacked
-children is merged with `--merge` (a merge commit) when the repo allows it, because the child then
-already contains the parent's tip and recovery (§ 7) is a retarget with no commit, no push and no
-CI rerun. When the repo allows no merge commit, it stays `--squash` and § 7's replay is mandatory.
-`bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/stack-repair.ts merge-method --queue <abs queue.json> --repo-slug <owner/repo>
---forge <config.forge> --issue <N>` prints the choice as JSON (`method`, `flag`, `reason`); with unreadable repo settings and open stacked children it prints `hold: true` and exits 3 instead of choosing squash; `phase-loop.md` step 4 runs it.
-
-Blackhole may merge **its own** PRs only when CI is already green (step 1 / C3) **and** the
-diff is low-risk. Any other PR that has reached this point stays open for Chef (the orchestrator /
-owner) with label `needs-chef` and a short comment saying why. This is a PR-quality signal, not a
-fourth `mergeEligible()` condition (same shape as § 6 / Step 0.6).
-
-**Own PR:** head ref is `blackhole/issue-N` or `blackhole/issue-N-<slug>` (`V-BRANCH-03`). An omitted head ref is treated as own
-(the merge protocol already only considers campaign issues). Any other head is a hold.
-
-**Low-risk:** the changed-file list (and optional unified diff) touches **none** of:
-
-| Category | Typical paths / content |
-|----------|-------------------------|
-| `auth-login` | `auth/`, `login`, `oauth`, `sso`, `passport`, `*password*`, `*jwt*` |
-| `secrets-env` | `.env*`, `secrets`, `credentials`, `*.pem`/`*.key`, `.ssh/`, `.aws/credentials` |
-| `prod-db` | paths combining prod/production with db/database/sql/postgres/mysql/mongo |
-| `migrations` | `migrations/`, `migrate/`, `prisma/migrations/`, alembic, knexfile, flyway |
-| `github-workflows` | `.github/workflows/**` |
-| `release-tag` | `scripts/release.ts`, `scripts/release-cadence.ts`, `scripts/lib/release-cadence.ts`, `.github/releases/`, `git-create-release`, `package.json` version bump |
-| `deletes-data` | deleted `data/`/`dumps/`/`*.sql`/`*.csv` files, or `DROP TABLE`/`TRUNCATE TABLE x`/`DELETE FROM`, or `TRUNCATE` followed by a table name (`TRUNCATE x`, `TRUNCATE ${t}`; the word `truncate` followed by a quote, comma or `(`, as in shell command lists and calls, does not count), in a patch to a `.sql`/`.dump`/migration file or to non-test, non-markdown code (the classifier's own source and its built copies are exempt) |
-
-Mechanical check (exit `0` automerge, `1` hold, `2` usage) — judgment is above, arithmetic is not
-here:
-
-```
-bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/merge-risk.ts --name-status <abs> [--patches <abs unified diff>] --head-ref <branch>
-bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/merge-risk.ts --files <abs json>
-```
-
-`--files` JSON is `{ files: [{path, status, previousPath?}], patches?: [{path, patch}], headRef? }`.
-`--name-status` is `gh pr diff <n> --name-status` (or `git diff --name-status`). `--patches` is
-`gh pr diff <n>`; without it, `deletes-data` is path/status only. Stdout is the verdict JSON
-including a ready-to-post `comment` that starts with `needs-chef:`.
-
-Hold mechanics (`phase-loop.md` step 4, not here): create label `needs-chef` if missing, add it to
-the PR, comment once (skip if a `needs-chef:` comment already exists), set `queue.json` `notes` to
-`needs-chef: <categories>`, do not call `gh pr merge`.
 
 ## Consulted by
 
@@ -559,7 +505,7 @@ the PR, comment once (skip if a `needs-chef:` comment already exists), set `queu
 - `phase-loop.md` § Merge protocol, **Step 0.6** — hard `pipelineVerdict(pr, queue)` (§ 6) check between Step 0.5 and step 1.
 - `phase-loop.md` § Merge protocol, **Step 0.7** and **step 4.6** — stacked-child tip capture check before the merge and replay-merge recovery after it (§ 7).
 - `phase-loop.md` § Merge protocol, **Step 0.8** — hard pre-merge base assertion (§ 8) between Step 0.7 and step 1.
-- `phase-loop.md` § Merge protocol, **step 4** — low-risk automerge gate (§ 9) immediately before `gh pr merge` with the method § 9 names; hold path applies `needs-chef`.
+- `phase-loop.md` § Merge protocol, **step 4** — low-risk automerge gate (`merge-risk.md`) immediately before `gh pr merge` with the method it names; hold path applies `needs-chef`.
 - `phase-loop.md` § Merge protocol, **step 4.7** — post-merge landing verification (§ 8) after step 4.6's stacked-child repair.
 - `forge-sync.md` — cycle detection (§ 2), drift reconciliation (§ 3), and pipeline detection (§ 5.6, feeds § 6).
 - `orchestrator.md` Phase 5 — pointer reference only, no inline logic.

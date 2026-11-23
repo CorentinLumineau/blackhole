@@ -1,7 +1,7 @@
 // Stack lifecycle decisions that sit above the git mechanics in `stack-merge.ts`: which merge
 // method a parent gets, what recovery each merge mode runs for each way a parent can land, and
 // whether an open PR must be restacked because it newly overlaps an older one. Pure functions;
-// the prose half is `merge-gate.md` § 4, § 7, § 9 and `phase-loop.md` Step 0.4.
+// the prose half is `merge-gate.md` § 4, § 7, `merge-risk.md` and `phase-loop.md` Step 0.4.
 
 import type { PrLanding } from './forge-adapter/pr-landing.ts';
 import type { RepoMergeSettings } from './forge-adapter/types.ts';
@@ -22,7 +22,7 @@ const choice = (method: MergeMethod, reason: string): MergeMethodChoice => ({ me
 /**
  * A parent with open stacked children is merged with a merge commit when the repo allows one: the
  * child then already contains the parent's tip and needs a retarget only. Every other PR keeps the
- * squash default of `merge-gate.md` § 9. Unreadable settings fall back to squash, the only method
+ * squash default of `merge-risk.md`. Unreadable settings fall back to squash, the only method
  * every repo this campaign has met accepts, and say so.
  */
 export const parentMergeMethod = (input: { hasOpenChildren: boolean; settings: RepoMergeSettings | null }): MergeMethodChoice => {

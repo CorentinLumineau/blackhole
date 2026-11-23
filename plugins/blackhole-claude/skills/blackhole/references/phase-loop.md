@@ -5,7 +5,7 @@
 ```
 - [ ] Auto forge sync (native — no user prompt)
 - [ ] BLOCK/WARN unresolved? → phase implement (same issue)
-- [ ] LGTM AND mergeEligible(issue) AND low-risk own PR? → merge (method per `merge-gate.md` § 9); else `needs-chef` (Chef decides)
+- [ ] LGTM AND mergeEligible(issue) AND low-risk own PR? → merge (method per `merge-risk.md`); else `needs-chef` (Chef decides)
 - [ ] queue.json: status merged, phase done
 - [ ] Resolve/defer ledger entries for this issue/PR
 - [ ] forge-sync.md protocol
@@ -179,7 +179,7 @@ D5 narrowing as Step 0.5 above).
    (`merge-gate.md` §5) — exit non-zero blocks merge the same way. Inert when either governance
    flag is `false`. Bypassed under `merge_mode: leave-open`.
 3. Run the project's build command in main clone (if applicable)
-4. **Low-risk automerge gate** (`merge-gate.md` § 9), then merge. Snapshot the PR's
+4. **Low-risk automerge gate** (`merge-risk.md`), then merge. Snapshot the PR's
    files (`gh pr diff <n> --name-status`) and run
    `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/merge-risk.ts --name-status <abs> [--patches <abs>] --head-ref <branch>`
    (pass `--patches` from `gh pr diff <n>` so `deletes-data` sees SQL, not only deleted paths).
@@ -187,7 +187,7 @@ D5 narrowing as Step 0.5 above).
    (`blackhole/issue-N[-slug]`), and the diff touches none of the high-risk categories — `gh pr merge
    <flag>` where `<flag>` comes from `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/stack-repair.ts merge-method --queue <abs
    queue.json> --repo-slug <owner/repo> --forge <config.forge> --issue <N>`: `--merge` when the PR has open stacked
-   children and the repo allows merge commits, `--squash` otherwise; exit 3 (`hold: true`) when the repo's merge settings are unreadable and the PR has open stacked children: do not merge this turn (`merge-gate.md` § 9; use `&&`
+   children and the repo allows merge commits, `--squash` otherwise; exit 3 (`hold: true`) when the repo's merge settings are unreadable and the PR has open stacked children: do not merge this turn (`merge-risk.md`; use `&&`
    only, never `;`). Immediately after this command succeeds, in the
    **same** atomic `queue.json` write that sets `status: merged`, also set `merged_by: blackhole`
    on the issue (ADR-005 — see `merge-gate.md` § 3 for why: this is the sole signal

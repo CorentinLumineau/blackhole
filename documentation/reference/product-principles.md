@@ -69,7 +69,7 @@ rulings_revision: 7
     default. AC item 1 ("set explicitly, whatever the chosen value") is satisfied on this repo
     as of this ruling.
   - **Compensating controls for the retained `immediate` posture (AC item 3)**: blackhole's own
-    merge protocol gates every autonomous merge on CI-green and low-risk (`merge-gate.md` § 9)
+    merge protocol gates every autonomous merge on CI-green and low-risk (`merge-risk.md`)
     before `gh pr merge --squash` runs; any other PR stays open with `needs-chef` for Chef
     (`phase-loop.md` § Merge protocol steps 1-2; `merge-gate.md`'s `mergeEligible()`). Verified
     directly against this repo at ruling time: `main` carries **no GitHub branch protection**

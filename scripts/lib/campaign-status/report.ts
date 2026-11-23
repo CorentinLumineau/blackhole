@@ -147,7 +147,7 @@ function groupBlocked(blocked: IssueRow[], issues: Record<string, QueueIssue>): 
 // and CI green, on a PR that stays open for the owner. Offline by design — no forge call here.
 const DELIVERED_PREFIX = 'delivered-at-LGTM';
 
-// The hold marker of the low-risk merge gate (merge-gate.md § 9, written by phase-loop.md § Merge
+// The hold marker of the low-risk merge gate (merge-risk.md, written by phase-loop.md § Merge
 // protocol step 4): the PR reached LGTM with green CI and the campaign will not merge it itself.
 // Like DELIVERED_PREFIX it means "the next move is the owner's", so both feed the same list.
 const HELD_NOTE = /^needs-chef(?::\s*(.*))?$/s;
