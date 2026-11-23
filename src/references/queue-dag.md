@@ -92,13 +92,15 @@ bun run scripts/queue-migrate.ts            # dry run: prints each change, write
 bun run scripts/queue-migrate.ts --apply    # snapshots queue.json to archive/, installs through the guard
 ```
 
-`--campaign-dir <dir>` points it at a campaign directory other than `./.blackhole`.
+`--campaign-dir <dir>` points it at a campaign directory other than `./.blackhole`. Run `--apply`
+only while no orchestrator runs: the orchestrator is the single writer of `queue.json`
+(`blackhole-state.md` § Single-writer invariant).
 
 | Field | Legacy value | Becomes |
 |-------|--------------|---------|
-| `status` | `done` | `merged` when the entry records a numeric `pr`, else `closed`; the phase becomes `done` |
+| `status` | `done` | `merged` when the entry records a numeric `pr` (even if that PR was closed unmerged; the legacy entry does not say), else `closed`; the phase becomes `done` |
 | `status` | `in-review` | `in-flight`, with the phase set to `review` |
-| `status` | `excluded` | `blocked`, with `legacy-status:excluded` prepended to `notes`, so it is never picked up again silently |
+| `status` | `excluded` | `blocked`, with `notes` starting `awaiting-user-clarification: legacy status excluded…` (any earlier note kept after `; `). It is an owner gate, so the promotion rule below never moves it to `ready` until the owner answers |
 | `phase` | `loop` | `done` |
 
 Every entry is kept. Any other undocumented value stops the migration, naming the entry, to be

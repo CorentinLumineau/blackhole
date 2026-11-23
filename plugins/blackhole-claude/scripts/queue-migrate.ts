@@ -14,6 +14,9 @@ const USAGE = 'Usage: bun run scripts/queue-migrate.ts [--campaign-dir <dir>] [-
 
 type Entry = Record<string, unknown>;
 
+/** The note a migrated `excluded` entry carries: the owner gate first, then why. */
+export const EXCLUDED_NOTE = 'awaiting-user-clarification: legacy status excluded, confirm whether it rejoins the campaign';
+
 /** Legacy phase -> documented phase. `loop` was the post-merge phase that `done` replaced. */
 export const LEGACY_PHASE_MAP: Readonly<Record<string, string>> = { loop: 'done' };
 
@@ -23,11 +26,13 @@ export const LEGACY_STATUS_MAP: Readonly<Record<string, (entry: Entry) => Entry>
   done: (entry) => ({ status: typeof entry.pr === 'number' ? 'merged' : 'closed', phase: 'done' }),
   // A review in progress is status in-flight with phase review (`queue-dag.md` § Per-issue fields).
   'in-review': () => ({ status: 'in-flight', phase: 'review' }),
-  // Blocked, not ready: the owner had taken it out of the campaign, so it must not be picked up
-  // again silently; the note keeps the reason visible on the status page.
+  // Blocked behind the documented owner gate, not ready: the owner had taken it out of the
+  // campaign, so the promotion rule (`queue-dag.md` § Step 2, "user gates pass") must not pick it
+  // up again until the owner answers. The leading `awaiting-user-clarification` token is what the
+  // status page and the resume signal read as an owner gate.
   excluded: (entry) => ({
     status: 'blocked',
-    notes: typeof entry.notes === 'string' && entry.notes ? `legacy-status:excluded; ${entry.notes}` : 'legacy-status:excluded',
+    notes: typeof entry.notes === 'string' && entry.notes ? `${EXCLUDED_NOTE}; ${entry.notes}` : EXCLUDED_NOTE,
   }),
 };
 
@@ -90,16 +95,26 @@ export function runQueueMigration(
   return { changes, applied: true };
 }
 
-if (import.meta.main) {
-  const flags = parseFlags(process.argv.slice(2));
+/** Parses the CLI flags; an error string means print usage and exit 2. */
+export function parseCliArgs(argv: string[], cwd: string = process.cwd()): { campaignDir: string; apply: boolean } | { error: string } {
+  const flags = parseFlags(argv);
   const unknown = unknownFlagKeys(flags, ['campaign-dir', 'apply']);
-  if (unknown.length) {
-    console.error(`Unknown flag(s): ${unknown.join(', ')}\n${USAGE}`);
+  if (unknown.length) return { error: `Unknown flag(s): ${unknown.join(', ')}` };
+  const dir = flags['campaign-dir'];
+  if (dir === true) return { error: '--campaign-dir needs a value' };
+  if (flags.apply !== undefined && flags.apply !== true) return { error: '--apply takes no value' };
+  return { campaignDir: path.resolve(cwd, dir ?? '.blackhole'), apply: flags.apply === true };
+}
+
+if (import.meta.main) {
+  const args = parseCliArgs(process.argv.slice(2));
+  if ('error' in args) {
+    console.error(`${args.error}\n${USAGE}`);
     process.exit(2);
   }
-  const campaignDir = path.resolve(process.cwd(), typeof flags['campaign-dir'] === 'string' ? flags['campaign-dir'] : '.blackhole');
+  const { campaignDir } = args;
   try {
-    const { changes, applied } = runQueueMigration(campaignDir, { apply: flags.apply === true });
+    const { changes, applied } = runQueueMigration(campaignDir, { apply: args.apply });
     for (const c of changes) console.log(`#${c.issue} ${c.field}: ${c.from} -> ${c.to}`);
     const issues = new Set(changes.map((c) => c.issue)).size;
     if (changes.length === 0) console.log('queue-migrate: no legacy values, nothing to do');
