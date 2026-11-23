@@ -22,8 +22,15 @@ const git = (cwd: string, args: string[]) => {
   return r.stdout.trim();
 };
 
-const cli = (args: string[]) => {
-  const r = spawnSync('bun', ['run', scriptPath, ...args], { cwd: root, encoding: 'utf-8' });
+/** The host session id env var; unset unless a test passes one, so the outer session's id never leaks in. */
+const HOST_ENV = 'CLAUDE_CODE_SESSION_ID';
+const savedHostSession = process.env[HOST_ENV];
+
+const cli = (args: string[], hostSession?: string) => {
+  const env: Record<string, string | undefined> = { ...process.env };
+  delete env[HOST_ENV];
+  if (hostSession !== undefined) env[HOST_ENV] = hostSession;
+  const r = spawnSync('bun', ['run', scriptPath, ...args], { cwd: root, encoding: 'utf-8', env });
   return { code: r.status, stdout: r.stdout, stderr: r.stderr };
 };
 
@@ -35,6 +42,7 @@ const writeJson = (file: string, value: unknown) => {
 const registryFiles = () => (fs.existsSync(registry) ? fs.readdirSync(registry).filter((f) => f.endsWith('.json')) : []);
 
 beforeAll(() => {
+  delete process.env[HOST_ENV];
   root = makeTempDir('peer-campaigns');
   wt1 = path.join(root, 'main');
   wt2 = path.join(root, 'wt2');
@@ -55,6 +63,7 @@ beforeAll(() => {
 });
 
 afterAll(() => {
+  if (savedHostSession !== undefined) process.env[HOST_ENV] = savedHostSession;
   fs.rmSync(root, { recursive: true, force: true });
 });
 
@@ -122,6 +131,30 @@ describe('peer-campaigns CLI', () => {
   test('after release in worktree 1, worktree 2 is solo with reach clone', () => {
     expect(cli(['release', '--campaign-dir', campaign(wt1)]).code).toBe(0);
     expect(JSON.parse(cli(['detect', '--campaign-dir', campaign(wt2)]).stdout)).toEqual({ verdict: 'solo', reach: 'clone', unreadable: 0, unreadable_files: [], peers: [] });
+  });
+
+  test('two host sessions on one campaign dir keep two records and see each other', () => {
+    const a = 'aaaaaaaa-1111-4000-8000-000000000001';
+    const b = 'bbbbbbbb-2222-4000-8000-000000000002';
+    const before = registryFiles();
+    expect(cli(['heartbeat', '--campaign-dir', campaign(wt1), '--turn', '3'], a).code).toBe(0);
+    expect(cli(['heartbeat', '--campaign-dir', campaign(wt1), '--turn', '5'], b).code).toBe(0);
+    expect(registryFiles().filter((f) => !before.includes(f)).sort()).toEqual([`${a}.json`, `${b}.json`]);
+    // Peers in this same worktree (worktree 2's session from the earlier tests is still live too).
+    type Peer = { session: string; turn: number; worktree: string };
+    const sameWorktree = (hostSession: string): [string, number][] =>
+      (JSON.parse(cli(['detect', '--campaign-dir', campaign(wt1)], hostSession).stdout).peers as Peer[])
+        .filter((p) => p.worktree === fs.realpathSync(wt1))
+        .map((p) => [p.session, p.turn]);
+    expect(JSON.parse(cli(['detect', '--campaign-dir', campaign(wt1)], a).stdout).verdict).toBe('peers');
+    expect(sameWorktree(a)).toEqual([[b, 5]]);
+    expect(sameWorktree(b)).toEqual([[a, 3]]);
+    // A's next heartbeat keeps B's record and turn.
+    expect(cli(['heartbeat', '--campaign-dir', campaign(wt1), '--turn', '4'], a).code).toBe(0);
+    expect(sameWorktree(a)).toEqual([[b, 5]]);
+    expect(cli(['release', '--campaign-dir', campaign(wt1)], a).code).toBe(0);
+    expect(cli(['release', '--campaign-dir', campaign(wt1)], b).code).toBe(0);
+    expect(registryFiles()).toEqual(before);
   });
 
   test('a campaign dir outside any git repo exits 1', () => {

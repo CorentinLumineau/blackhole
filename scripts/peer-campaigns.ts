@@ -30,7 +30,9 @@ import {
 //
 // All take --campaign-dir (default ./.blackhole). Records live in
 // `<git common dir>/blackhole/campaigns/<session>.json`, shared by every worktree of the clone and
-// never pushed. This session's id lives in `<campaign dir>/.tmp/campaign-session.json`.
+// never pushed. This session's id is the host session id (`CLAUDE_CODE_SESSION_ID`) when the host
+// sets one, so two sessions on one campaign dir keep two records; otherwise it lives in
+// `<campaign dir>/.tmp/campaign-session.json`, shared by every session on that campaign dir.
 // Exit 0 on success; 1 when the git common dir cannot be resolved, or when heartbeat refuses a
 // worktree, host or host session its peers could not read (nothing is written), or when the record
 // cannot be written (one line with the errno code); 2 on a usage error.
@@ -39,7 +41,9 @@ const USAGE =
   'Usage: bun run scripts/peer-campaigns.ts <heartbeat --turn <n> [--host-session <id>] | detect | release> [--campaign-dir <dir>]';
 /** The registry dir, relative to the git common dir. */
 export const REGISTRY_DIR = path.join('blackhole', 'campaigns');
-/** This session's id (`{"session": "<id>"}`), relative to the campaign dir. */
+/** The env var carrying the host's own session id (Claude Code), used as this session's id when valid. */
+export const HOST_SESSION_ENV = 'CLAUDE_CODE_SESSION_ID';
+/** This session's id (`{"session": "<id>"}`) when the host sets none, relative to the campaign dir. */
 export const SESSION_TOKEN_FILE = path.join('.tmp', 'campaign-session.json');
 
 export type RegistryDeps = {
@@ -48,6 +52,8 @@ export type RegistryDeps = {
   hostname: () => string;
   nowMs: () => number;
   newSession: () => string;
+  /** The host's own session id, or null when the host sets none. */
+  hostSessionId: () => string | null;
 };
 
 /** The real git, hostname, clock and UUID source; tests pass their own `RegistryDeps`. */
@@ -59,6 +65,7 @@ export const realDeps: RegistryDeps = {
   hostname: () => os.hostname(),
   nowMs: () => Date.now(),
   newSession: () => randomUUID(),
+  hostSessionId: () => process.env[HOST_SESSION_ENV] ?? null,
 };
 
 type Clone = { worktree: string; registry: string };
@@ -93,6 +100,16 @@ export const readSessionToken = (campaignDir: string): string | null => {
   const session = (readOptionalJson(path.join(campaignDir, SESSION_TOKEN_FILE)) as { session?: unknown } | null)?.session;
   return isSessionId(session) ? session : null;
 };
+
+/**
+ * This session's id: the host session id when the host sets a valid one (`hostScoped`), else the
+ * campaign dir's token (null when none was minted yet).
+ */
+export function sessionIdentity(campaignDir: string, deps: RegistryDeps = realDeps): { session: string | null; hostScoped: boolean } {
+  const host = deps.hostSessionId();
+  if (isSessionId(host)) return { session: host, hostScoped: true };
+  return { session: readSessionToken(campaignDir), hostScoped: false };
+}
 
 /**
  * Every `*.json` entry of the registry (`*.json.tmp` writes in progress are skipped); `dirError`
@@ -146,7 +163,8 @@ const readCoordination = (campaignDir: string): Coordination => {
 
 /** This session's identity. Read-only: an absent token matches no record by session, only by worktree. */
 function selfIdentity(campaignDir: string, clone: Clone, entries: RegistryEntry[], deps: RegistryDeps): SelfIdentity {
-  const session = readSessionToken(campaignDir) ?? '';
+  const id = sessionIdentity(campaignDir, deps);
+  const session = id.session ?? '';
   const own = recordsOf(entries).find((r) => r.session === session);
   return {
     session,
@@ -154,6 +172,7 @@ function selfIdentity(campaignDir: string, clone: Clone, entries: RegistryEntry[
     host: deps.hostname(),
     host_session: own?.host_session ?? null,
     manager_session: readCoordination(campaignDir).manager_session,
+    host_scoped: id.hostScoped,
   };
 }
 
@@ -180,7 +199,8 @@ function heartbeat(campaignDir: string, clone: Clone, turn: number, hostSession:
       `worktree ${JSON.stringify(clone.worktree)}, host ${JSON.stringify(host)} or --host-session cannot be recorded: peers would read the record as unreadable (no ", $, backtick, \\ or control characters)`,
     );
   }
-  let session = readSessionToken(campaignDir);
+  const id = sessionIdentity(campaignDir, deps);
+  let session = id.session;
   if (!session) {
     session = deps.newSession();
     fs.mkdirSync(path.join(campaignDir, '.tmp'), { recursive: true });
@@ -188,9 +208,9 @@ function heartbeat(campaignDir: string, clone: Clone, turn: number, hostSession:
   }
   fs.mkdirSync(clone.registry, { recursive: true });
   const records = recordsOf(readRegistry(clone.registry, deps.nowMs()).entries);
-  const self: SelfIdentity = { session, worktree: clone.worktree, host, host_session: null, manager_session: null };
+  const self: SelfIdentity = { session, worktree: clone.worktree, host, host_session: null, manager_session: null, host_scoped: id.hostScoped };
   const own = records.find((r) => r.session === session);
-  // An older session's record in this worktree is this campaign before its token was lost.
+  // Without a host-scoped id, an older session's record in this worktree is this campaign before its token was lost.
   for (const r of records) if (r.session !== session && isSelf(r, self)) fs.rmSync(path.join(clone.registry, `${r.session}.json`), { force: true });
   const now = new Date(deps.nowMs()).toISOString();
   const record: PeerRecord = {
@@ -209,8 +229,8 @@ function heartbeat(campaignDir: string, clone: Clone, turn: number, hostSession:
   return `Heartbeat: session ${session}, turn ${turn}, ${record.claims.length} claim${record.claims.length === 1 ? '' : 's'}.`;
 }
 
-function release(campaignDir: string, clone: Clone): string {
-  const session = readSessionToken(campaignDir);
+function release(campaignDir: string, clone: Clone, deps: RegistryDeps): string {
+  const { session } = sessionIdentity(campaignDir, deps);
   const file = session ? path.join(clone.registry, `${session}.json`) : null;
   if (!file || !fs.existsSync(file)) return 'Release: no record for this session.';
   fs.rmSync(file, { force: true });
@@ -243,7 +263,7 @@ export function run(argv: string[], deps: RegistryDeps = realDeps): { code: numb
       throw error;
     }
   }
-  if (sub === 'release') return { code: 0, out: release(campaignDir, clone) };
+  if (sub === 'release') return { code: 0, out: release(campaignDir, clone, deps) };
   return { code: 0, out: JSON.stringify(detectIn(campaignDir, clone, deps), null, 2) };
 }
 

@@ -38,13 +38,21 @@ export type PeerRecord = {
 /** One `*.json` file of the registry dir: its name, its text (null when it could not be read) and its mtime. */
 export type RegistryEntry = { file: string; text: string | null; mtimeMs: number };
 
-/** Who "self" is. A record matching `session`, or the same `worktree` on the same `host`, is self. */
+/**
+ * Who "self" is. A record matching `session` is self. Without a host-scoped id (`host_scoped`
+ * false), a record from the same `worktree` on the same `host` is self as well.
+ */
 export type SelfIdentity = {
   session: string;
   worktree: string;
   host: string;
   host_session: string | null;
   manager_session: string | null;
+  /**
+   * The session id comes from the host session, not from the campaign dir's shared token, so two
+   * sessions on one campaign dir differ and a same-worktree record is another session's.
+   */
+  host_scoped: boolean;
 };
 
 export type DetectedPeer = Pick<
@@ -132,9 +140,12 @@ export function parseRecord(text: string): PeerRecord | null {
   };
 }
 
-/** True for this session's record, or an older session's record left in this same worktree on this host. */
+/**
+ * True for this session's record or, when the id is the campaign dir's token (not host-scoped), an
+ * older session's record left in this same worktree on this host.
+ */
 export const isSelf = (r: PeerRecord, self: SelfIdentity): boolean =>
-  r.session === self.session || (r.worktree === self.worktree && r.host === self.host);
+  r.session === self.session || (!self.host_scoped && r.worktree === self.worktree && r.host === self.host);
 
 /** A heartbeat dated more than one lease ahead is not trusted (capped at now + lease). */
 const tooFuture = (r: PeerRecord, nowMs: number): boolean => Date.parse(r.heartbeat_at) - nowMs > PEER_LEASE_MS;

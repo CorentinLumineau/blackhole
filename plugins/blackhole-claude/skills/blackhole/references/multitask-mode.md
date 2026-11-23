@@ -155,9 +155,12 @@ written by `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/peer-campaigns.ts hear
 record names the worktree, host, role, `manager_session`, turn and `claims[]`: every non-done
 queue entry that is `in-flight`, or carries a `pr` and is not held for a peer
 (`another session:`, [forge-sync.md](forge-sync.md) § Queue builder script). It stays live for 40 minutes after its last
-heartbeat, the same lease as § Grant lease. This session's own id lives in
-`.blackhole/.tmp/campaign-session.json`; a record from the same worktree on the same host also
-reads as self, so a lost token never reports this campaign as its own peer.
+heartbeat, the same lease as § Grant lease. This session's own id is the host session id
+(`CLAUDE_CODE_SESSION_ID`) where the host sets one, so two sessions running one campaign directory
+keep two records and each sees the other as a peer. Where the host sets none, the id lives in
+`.blackhole/.tmp/campaign-session.json`, which every session on that campaign directory shares;
+there a record from the same worktree on the same host also reads as self, so a lost token never
+reports this campaign as its own peer, and a second session on that directory stays unseen.
 
 `detect` prints `{verdict, reach: "clone", unreadable, unreadable_files, peers[]}`. It is read-only and only reaches
 this clone: a campaign in another clone or on another machine is not seen. It fails closed: a

@@ -39,6 +39,7 @@ const self: SelfIdentity = {
   host: 'box',
   host_session: null,
   manager_session: null,
+  host_scoped: false,
 };
 
 /** A registry file holding `r` (or raw text), written `mtimeAgo` minutes before NOW. */
@@ -105,6 +106,11 @@ describe('livePeers', () => {
 
   test('another session on the same worktree and host is a superseded self, excluded', () => {
     expect(livePeers([record({ worktree: self.worktree, host: self.host })], self, NOW)).toEqual([]);
+  });
+
+  test('with a host-scoped id, another session on the same worktree and host is a peer', () => {
+    expect(livePeers([record({ worktree: self.worktree, host: self.host })], { ...self, host_scoped: true }, NOW)).toHaveLength(1);
+    expect(livePeers([record({ session: self.session })], { ...self, host_scoped: true }, NOW)).toEqual([]);
   });
 
   test('the same worktree path on another host is a peer', () => {

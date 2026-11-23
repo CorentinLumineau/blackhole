@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
 import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -161,6 +161,15 @@ describe('forge-sync --lane', () => {
 });
 
 describe('forge-sync peer holds (ADR-057)', () => {
+  // The outer host session's id would replace the campaign-dir token these tests write.
+  const HOST_ENV = 'CLAUDE_CODE_SESSION_ID';
+  const savedHostSession = process.env[HOST_ENV];
+  beforeAll(() => {
+    delete process.env[HOST_ENV];
+  });
+  afterAll(() => {
+    if (savedHostSession !== undefined) process.env[HOST_ENV] = savedHostSession;
+  });
   const PEER = 'a1b2c3d4-0000-4000-8000-000000000001';
   const own = prRow(10, { headRefName: 'blackhole/issue-1-export', body: 'Closes #1' });
   const adapter = () => fakeForge({ issues: [issue(1), issue(2)], prs: { all: [own], open: [own] }, views: { 10: own }, checks: { 10: [] } });
