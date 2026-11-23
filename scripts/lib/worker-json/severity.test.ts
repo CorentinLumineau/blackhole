@@ -23,6 +23,13 @@ describe('normalizeSeverity', () => {
   test('an unknown value passes through unchanged (validators report it, this does not guess)', () => {
     expect(normalizeSeverity('bogus')).toBe('bogus');
   });
+
+  test('an inherited Object.prototype key is not an alias', () => {
+    for (const key of ['toString', 'constructor', '__proto__', 'hasOwnProperty']) {
+      expect(normalizeSeverity(key)).toBe(key);
+      expect(severityRank(key)).toBe(0);
+    }
+  });
 });
 
 describe('severityRank', () => {

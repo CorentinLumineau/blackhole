@@ -29,11 +29,17 @@ export const LEGACY_SEVERITY_ALIASES: Readonly<Record<string, (typeof SEVERITIES
   NOTE: 'INFO',
   ...MERCURE_SEVERITY_TIERS,
 };
-export const normalizeSeverity = (severity: string): string => LEGACY_SEVERITY_ALIASES[severity] ?? severity;
+/** True when `severity` is an own key of the alias table (not an inherited `toString` etc.). */
+export const isLegacySeverity = (severity: unknown): severity is string =>
+  typeof severity === 'string' && Object.hasOwn(LEGACY_SEVERITY_ALIASES, severity);
+export const normalizeSeverity = (severity: string): string =>
+  isLegacySeverity(severity) ? LEGACY_SEVERITY_ALIASES[severity] : severity;
 const SEVERITY_RANK: Readonly<Record<string, number>> = { BLOCK: 3, WARN: 2, INFO: 1 };
 /** BLOCK 3, WARN 2, INFO 1, legacy aliases as their target, anything else 0. */
-export const severityRank = (severity: string | undefined): number =>
-  SEVERITY_RANK[normalizeSeverity(severity ?? '')] ?? 0;
+export const severityRank = (severity: string | undefined): number => {
+  const normalized = normalizeSeverity(severity ?? '');
+  return Object.hasOwn(SEVERITY_RANK, normalized) ? SEVERITY_RANK[normalized] : 0;
+};
 export const ROUTE_STATUSES = ['routed', 'error', PARTIAL_STATUS] as const;
 export const TASK_TYPES = ['feature', 'bugfix', 'refactor', 'docs'] as const;
 export const DECISION_RECORD_KINDS = ['root-cause', 'approach', 'refactor', 'improvement', 'reuse'] as const;

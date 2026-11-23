@@ -27,6 +27,10 @@ describe('mapMercureSeverityToBlackholeAction', () => {
     expect(mapMercureSeverityToBlackholeAction('MEDIUM')).toBe('WARN');
     expect(mapMercureSeverityToBlackholeAction('LOW')).toBe('WARN');
   });
+
+  test('an inherited Object.prototype key falls back to WARN', () => {
+    expect(mapMercureSeverityToBlackholeAction('toString')).toBe('WARN');
+  });
 });
 
 describe('findVcodeParityMismatches', () => {

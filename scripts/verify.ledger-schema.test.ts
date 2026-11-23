@@ -54,6 +54,12 @@ describe('findLedgerSchemaDrift', () => {
     expect(drift[0]).not.toContain('migrate-ledger-schema');
   });
 
+  test('an inherited Object.prototype key as severity gets no migration hint', () => {
+    const drift = findLedgerSchemaDrift([{ id: 'F-p', issue_ref: 1, severity: 'toString' }]);
+    expect(drift).toHaveLength(1);
+    expect(drift[0]).not.toContain('migrate-ledger-schema');
+  });
+
   // Issue #1455 — a mercure-style severity has a remedy: the migration names it.
   test('a mercure-style HIGH/MEDIUM/LOW severity is drift that names the migration', () => {
     for (const severity of ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']) {

@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { LEGACY_SEVERITY_ALIASES, OUTCOME_STATUSES, SEVERITIES, VERIFICATION_MODES } from '../lib/worker-json/constants.ts';
+import { isLegacySeverity, OUTCOME_STATUSES, SEVERITIES, VERIFICATION_MODES } from '../lib/worker-json/constants.ts';
 import { root, type CheckResult } from './check-utils.ts';
 import { readJsonFile } from '../lib/fs.ts';
 
@@ -63,7 +63,7 @@ export const findLedgerSchemaDrift = (findings: unknown[]): string[] => {
     }
     // One optional severity, INFO; legacy NOTE and mercure tiers have a migration, other values none.
     if ('severity' in row && !(SEVERITIES as readonly unknown[]).includes(row.severity)) {
-      const legacy = typeof row.severity === 'string' && row.severity in LEGACY_SEVERITY_ALIASES;
+      const legacy = isLegacySeverity(row.severity);
       violations.push(
         `${id}: severity is ${JSON.stringify(row.severity)} (expected ${SEVERITIES.join('|')})` +
           (legacy ? '; run scripts/migrate-ledger-schema.ts to rewrite it' : ''),

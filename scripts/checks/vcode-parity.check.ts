@@ -41,7 +41,7 @@ type MercureVcodeSnapshotFile = {
 // ("LOW" !== "WARN") would flag every shared code as a false "disagreement" — see plan Design
 // Decisions D1 for the full table this mapping reproduces as a consequence, not an exclude list.
 export const mapMercureSeverityToBlackholeAction = (mercureSeverity: string): 'BLOCK' | 'WARN' =>
-  MERCURE_SEVERITY_TIERS[mercureSeverity] ?? 'WARN';
+  Object.hasOwn(MERCURE_SEVERITY_TIERS, mercureSeverity) ? MERCURE_SEVERITY_TIERS[mercureSeverity] : 'WARN';
 
 // One named, cited, removable allowlist (same shape as vcode-severity-sync.check.ts's
 // KNOWN_SEVERITY_EXEMPTIONS, V-INT-01) — the two codes plan Design Decisions D1 identified as
