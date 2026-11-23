@@ -133,7 +133,10 @@ export function hasAssistantTurn(jsonl: string): boolean {
   return assistantContentBlocks(jsonl).length > 0;
 }
 
-export function readTranscriptTail(path: string, maxBytes = 64_000): string | null {
+/** Bytes read from the end of a transcript; shared by the hook fallback and `--recover-transcript`. */
+export const TRANSCRIPT_TAIL_BYTES = 200_000;
+
+export function readTranscriptTail(path: string, maxBytes = TRANSCRIPT_TAIL_BYTES): string | null {
   try {
     const stat = fs.statSync(path);
     const start = Math.max(0, stat.size - maxBytes);

@@ -136,7 +136,7 @@ function runRecoverTranscript(
   role: Role,
   transcriptPath: string,
 ): number {
-  const tail = readTranscriptTail(transcriptPath, 200_000);
+  const tail = readTranscriptTail(transcriptPath);
   if (tail === null) {
     console.error(`transcript not found or unreadable: ${transcriptPath}`);
     return 1;

@@ -773,10 +773,9 @@ describe('extractWorkerJson', () => {
     expect(extractWorkerJson(text)).toEqual(routerJson);
   });
 
-  test('prefers the bare return over a trailing example object in prose', () => {
-    const routerJson = readFixture('router-routed.json');
-    const text = JSON.stringify(routerJson) + '\n\nFor example {"needs_split": true} would mean a split.';
-    expect(extractWorkerJson(text)).toEqual(routerJson);
+  test('a non-empty final object without status wins over an earlier example that has one', () => {
+    const text = 'Example: {"status":"complete","pr":1}\nMy return:\n{"pr":42,"branch":"x"}';
+    expect(extractWorkerJson(text)).toEqual({ pr: 42, branch: 'x' });
   });
 });
 
@@ -984,6 +983,20 @@ describe('extractFromHookInput', () => {
 
     expect(result.status).toBe('routed');
     expect(result.trigger).toBe('initial');
+  });
+
+  test('reads a final assistant line longer than 64 KB, the same tail budget as --recover-transcript', () => {
+    const routerJson = readFixture('router-routed.json');
+    const transcriptPath = path.join(tmpDir, 'long-final-line.jsonl');
+    const text = 'x'.repeat(100_000) + '\n```json\n' + JSON.stringify(routerJson) + '\n```';
+    fs.writeFileSync(
+      transcriptPath,
+      JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text }] } }),
+      'utf-8',
+    );
+    const input = { summary: 'no structured output here', agent_transcript_path: transcriptPath };
+
+    expect(extractFromHookInput(input)).toEqual(routerJson);
   });
 
   test('does not fall back to raw JSONL envelopes when the last assistant turn carries no JSON', () => {
@@ -1429,7 +1442,6 @@ describe('recover-transcript CLI mode', () => {
     const routerJson = readFixture('router-routed.json');
     const exampleText = '```json\n{"status":"routed","route":{"needs_split":false}}\n```';
     const transcriptPath = writeTranscript('router-split-turn.jsonl', [
-      jsonlLine({ type: 'assistant', message: { id: 'msg_last', content: [{ type: 'text', text: exampleText }] } }),
       jsonlLine({
         type: 'assistant',
         message: {
@@ -1437,6 +1449,7 @@ describe('recover-transcript CLI mode', () => {
           content: [{ type: 'tool_use', name: 'SubagentHandback', input: { message: JSON.stringify(routerJson) } }],
         },
       }),
+      jsonlLine({ type: 'assistant', message: { id: 'msg_last', content: [{ type: 'text', text: exampleText }] } }),
     ]);
 
     const result = await runValidateWorkerCli([
