@@ -414,3 +414,13 @@ describe('Scope Amendments apply after the package_root join (#1462 review)', ()
     expect(paths.filter((p) => p === 'apps/invest/lib/foo.ts')).toHaveLength(1);
   });
 });
+
+describe('a plan path normalizing above the repo root is dropped (#1462 review)', () => {
+  test('underRoot returns null and planTouchPaths omits it', () => {
+    expect(underRoot('apps/invest', '../../../etc/x')).toBeNull();
+    expect(underRoot('', '../x.ts')).toBeNull();
+    expect(planTouchPaths('---\npackage_root: apps/invest\n---\n## Touch-Paths\n- `lib/a.ts`\n- `../../../etc/x.ts`\n')).toEqual([
+      'apps/invest/lib/a.ts',
+    ]);
+  });
+});

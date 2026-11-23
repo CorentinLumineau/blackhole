@@ -92,13 +92,18 @@ export const planPackageRoot = (plan: string): string => {
 /**
  * One plan path in repo-relative form: a leading `/` marks an explicit repo-root path (the slash is
  * dropped and the root is not joined); a path equal to or under `root` is kept; any other path is
- * joined to `root`. A leading `./` is ignored and the result is normalized.
+ * joined to `root`. A leading `./` is ignored and the result is normalized; null when it
+ * normalizes above the repo root (`..`), so no such path is ever matched.
  */
-export const underRoot = (root: string, p: string): string => {
-  if (p.startsWith('/')) return path.posix.normalize(p.replace(/^\/+/, ''));
+export const underRoot = (root: string, p: string): string | null => {
   const rel = p.replace(/^(\.\/)+/, '');
-  const joined = root === '' || rel === root || rel.startsWith(`${root}/`) ? rel : `${root}/${rel}`;
-  return path.posix.normalize(joined);
+  const joined = p.startsWith('/')
+    ? p.replace(/^\/+/, '')
+    : root === '' || rel === root || rel.startsWith(`${root}/`)
+      ? rel
+      : `${root}/${rel}`;
+  const out = path.posix.normalize(joined);
+  return out === '..' || out.startsWith('../') ? null : out;
 };
 
 /**
@@ -110,13 +115,15 @@ export const underRoot = (root: string, p: string): string => {
  */
 export const planTouchPaths = (plan: string): string[] => {
   const root = planPackageRoot(plan);
-  const paths = new Set(extractBacktickPaths(planSection(plan, 'touch-paths')).map((p) => underRoot(root, p)));
+  const resolve = (p: string): string | null => underRoot(root, p);
+  const paths = new Set(extractBacktickPaths(planSection(plan, 'touch-paths')).map(resolve));
   for (const line of planSection(plan, 'scope amendments').split('\n')) {
     const m = AMENDMENT.exec(line.trim());
-    if (m?.[1] === 'widen') paths.add(underRoot(root, m[2]));
-    else if (m) paths.delete(underRoot(root, m[2]));
+    if (m?.[1] === 'widen') paths.add(resolve(m[2]));
+    else if (m) paths.delete(resolve(m[2]));
   }
-  return [...paths];
+  paths.delete(null);
+  return [...paths] as string[];
 };
 
 /**
