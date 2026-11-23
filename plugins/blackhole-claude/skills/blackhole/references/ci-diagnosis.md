@@ -18,7 +18,7 @@ The orchestrator runs diagnosis **inline** — no worker spawn (precedent: `revi
 Docs-only PRs):
 
 ```bash
-bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/ci-diagnosis.ts --pr <n> [--repo owner/name]
+bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/ci-diagnosis.ts --pr <n> [--repo owner/name]
 ```
 
 - **Foreground only** — the orchestrator awaits stdout JSON before mutating `queue.json` or the
@@ -82,7 +82,7 @@ A genuine failure that is not the PR's own. `failing_checks[]` in the diagnosis 
 digits, hashes and timestamps removed). After diagnosing every red PR in the queue, the
 orchestrator writes one `{ pr, failingChecks, touchedFiles }` entry per red PR (its
 `failing_checks[]` plus its changed files) to a JSON file and runs
-`bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/trunk-red.ts --prs <file>` — exit 0 `per-pr`, 1 `trunk-red` (result JSON with
+`bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/trunk-red.ts --prs <file>` — exit 0 `per-pr`, 1 `trunk-red` (result JSON with
 the PR `groups` on stdout either way), 2 malformed input, which is never read as `per-pr`. A group of `TRUNK_RED_MIN_PRS` (2) or more PRs sharing a check and
 fingerprint, none touching a failing path, is `trunk-red`; one PR, or a failing path inside the
 PR's own diff, stays `genuine`.

@@ -22,7 +22,7 @@ question channel is used (`clarify-gates.md` § C3 adapter). `askOrPark(config)`
 - `park` — otherwise: do not call any question tool. Park the question instead:
 
 ```bash
-bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts park --question "<the question as it would have been asked>" \
+bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-record.ts park --question "<the question as it would have been asked>" \
   --options "<label>: <consequence>|<label>|…" --recommended "<label>" \
   --refs <blocked issues/PRs> --gate <clarify|plan-approval|design-approval|split-sign-off|mockup|ruling> \
   [--evidence "<one line>"]
@@ -33,7 +33,7 @@ Then set each blocked item `status: blocked`, `notes: "awaiting-owner-on-return"
 again with the same options adds its new blocked items to the existing record; it is never listed
 twice. The same question with different options is refused — reword it or reuse the options.
 
-`bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts ask` prints which of the two applies, read from `config.json`.
+`bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-record.ts ask` prints which of the two applies, read from `config.json`.
 
 **Owner-initiated rounds ask directly.** Rounds the owner starts are the answer channel itself,
 so `askOrPark()` does not apply to them: the launch configuration gate on an interactive start
@@ -68,7 +68,7 @@ Schema and fixture: `pending-decisions.ts`, `fixtures/decision-parking/pending-d
 
 ## Decide round
 
-1. `bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts decide` prints the round as JSON. Parking stays as it was, and
+1. `bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-record.ts decide` prints the round as JSON. Parking stays as it was, and
    the keep-awake hold is untouched (the owner may answer from a phone while the machine runs
    on). The only write is this round's baseline, `.blackhole/decide-baseline.json`
    (`{at, done, weekly_pct}`: when, the issues done then, the weekly usage % then), which the next
@@ -84,7 +84,7 @@ Schema and fixture: `pending-decisions.ts`, `fixtures/decision-parking/pending-d
 3. Ask each entry of `cards` (at most four questions, the most-blocking first) as **one**
    AskUserQuestion call (or one set of decision cards, `project-thread-mode.md`), the recommended
    option first; more than four decisions means more cards, never a dropped question.
-4. For each answer: `bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts resolve --id PD-<n> --answer "<label or text>"`.
+4. For each answer: `bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-record.ts resolve --id PD-<n> --answer "<label or text>"`.
    It removes the decision, records it in `owner-decisions.json` with its blocked items as `refs`,
    and prints the items to unblock — promote them `blocked → ready` in the same turn.
 

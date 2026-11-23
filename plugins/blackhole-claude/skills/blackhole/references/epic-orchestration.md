@@ -35,7 +35,7 @@ Blocked by #N (if any)
 ## Touch hints
 - path/glob" \
   --label "size:s" \
-  $(bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/forge-scope.ts create-args)
+  $(bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/forge-scope.ts create-args)
 ```
 
 - Target `size:s` or `size:m` per child. If a child is still too large, split again.

@@ -61,7 +61,7 @@ When `status: blocked`, `failing_checks` lists failed items:
 - `touch_paths_declared` — Touch-Paths section present (`V-SCOPE-02`)
 - `schema_baseline` — API/schema changes specified for standard track (`V-API-01`)
 - `tdd_tasks` — TDD baseline and failing-test tasks present (`V-TEST-01/02`)
-- `ac_mapping` — acceptance criteria mapped to tasks; sibling mechanical checks `critical_files_exist` / `mitigation_concrete` — Critical Files Glob-miss and Execution Strategy vague-mitigation (Standard track only, mercure `x-plan` parity, issue #459); all three computed by `bun run --cwd <repo_root> "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/plan-quality-gate.ts --plan-file <path> --repo-root <repo_root>` (issue #716; `--repo-root` required as of issue #891), copied verbatim into `failing_checks`
+- `ac_mapping` — acceptance criteria mapped to tasks; sibling mechanical checks `critical_files_exist` / `mitigation_concrete` — Critical Files Glob-miss and Execution Strategy vague-mitigation (Standard track only, mercure `x-plan` parity, issue #459); all three computed by `bun run --cwd <repo_root> "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/plan-quality-gate.ts --plan-file <path> --repo-root <repo_root>` (issue #716; `--repo-root` required as of issue #891), copied verbatim into `failing_checks`
 - `ac_sweep_conflict` / `ac_sweep_scope` / `touch_paths_ssot_gap` — advisory-only plan-time heuristics (sweep/retain overlap, unscoped sweep AC, Touch-Paths SSOT gaps via `findTouchPathSsotGaps`) — `ADVISORY:` rows or Quick Track `## Touch-Paths Completeness Advisory`; never `failing_checks` (#575)
 - `clarification_limit` — at most 2 `[NEEDS CLARIFICATION]` markers
 - `base_commit` — `plan_base_commit` stamped in frontmatter
@@ -597,7 +597,7 @@ Each `findings[]` entry additionally carries `issue_ref: number` and `pr_ref: nu
 stamped by the script (issue #754) — never present on the raw `reviewer` input's Finding shape
 above, only on this aggregator's stamped output.
 
-CLI: `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/review-aggregate.ts --reviewer-file <path> --issue-ref <N> [--pr-ref <P>] [--prior-file <ledger-rows.json>] [--verification-file <verification-entries.json>] [--review-iteration <N>] [--base-ref <PR base branch>] [--repo-dir <PR worktree>] [--head <PR head ref>]`
+CLI: `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/review-aggregate.ts --reviewer-file <path> --issue-ref <N> [--pr-ref <P>] [--prior-file <ledger-rows.json>] [--verification-file <verification-entries.json>] [--review-iteration <N>] [--base-ref <PR base branch>] [--repo-dir <PR worktree>] [--head <PR head ref>]`
 
 `--base-ref` (ADR-134) enables the slop citation check. Without it, or when it does not resolve, every `V-UX-09`/`V-UX-10` `BLOCK` downgrades with an `[unverified slop citation: no-base-ref]` or `ref-unresolved` caveat.
 
@@ -639,7 +639,7 @@ tree by the CLI entrypoint's `resolveAdrAmendmentTruth`, never self-reported) is
 `amendment_acknowledged` is `false`. No new V-code — same convention as the four other reasons,
 none of which carry one either.
 
-CLI: `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/design-aggregate.ts --input-file <path> [--repo-root <path>]`
+CLI: `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/design-aggregate.ts --input-file <path> [--repo-root <path>]`
 
 ## Partial result (`status: partial`, `stop --now` leg B, issue #492)
 

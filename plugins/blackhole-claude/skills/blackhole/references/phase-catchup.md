@@ -22,15 +22,15 @@ Set `catchup.lane` per account before a second account runs on the same repo (th
    check), which writes nothing: print the resolved repository and campaign directory, and ask
    Continue here / Stop when the session's stated target names another repository. Then resolve
    the run context (`run-context.md`), as for any `run`.
-2. **Read usage.** `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/usage.ts` prints one normalized reading. On a host with only an app
+2. **Read usage.** `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/usage.ts` prints one normalized reading. On a host with only an app
    usage tool (no statusline cache), write that tool's output to a file as is (the raw desktop `get_usage` payload is accepted) and pass it to `usage` and
    `pace-floor` as `--usage <file>`, and to the gate as `--usage-file <file>` (the gate's own
    `--usage` takes inline JSON).
-3. **Compute the floor.** `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/pace-floor.ts [--usage <file>]` prints `status`, `floor_pct`,
+3. **Compute the floor.** `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/pace-floor.ts [--usage <file>]` prints `status`, `floor_pct`,
    `elapsed_h`, `target_pct` and `shortfall_pct`. `unreadable` or `no-weekly` means log the reason and
    exit. A `floor_pct` of 0 (the instant the week starts) is a valid floor: pass it to the gate, which
    returns `STOP-CAMPAIGN`.
-4. **Gate.** `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/usage-budget.ts --parallel-max <n> --floor <pct> [--usage-file <file>]`
+4. **Gate.** `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/usage-budget.ts --parallel-max <n> --floor <pct> [--usage-file <file>]`
    (the sibling pace gate, `pace-gate.ts`, is unchanged and runs beside it in every spawn round).
    `--floor` is for this invocation only, forces the gate on and never writes `config.json`:
 

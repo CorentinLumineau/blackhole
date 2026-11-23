@@ -103,7 +103,7 @@ See `${CLAUDE_PLUGIN_ROOT}/skills/blackhole/references/phase-stop.md`.
 
 Invoked as part of § Background worker barrier → Triage step 2's per-role ledger mutations, for the `implementer` role only — never a separate barrier phase.
 
-For each completed `implementer` worker carrying a non-empty `decision_records[]`, the orchestrator — and only the orchestrator, serially, one worker at a time, post-barrier — invokes `bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/decision-log-append.ts --log <worktree>/documentation/reference/decision-log.md --records-file <path>` against that worker's own still-open worktree, never the main clone (which cannot commit to `main`, `V-BRANCH-02`), then `git -C <worktree> add`/`commit`/`push` the result onto that worker's own PR branch — the rows ride along in the PR they document. If that worktree was already released, skip the append and flag it for a manual follow-up rather than writing to the main clone.
+For each completed `implementer` worker carrying a non-empty `decision_records[]`, the orchestrator — and only the orchestrator, serially, one worker at a time, post-barrier — invokes `bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/decision-log-append.ts --log <worktree>/documentation/reference/decision-log.md --records-file <path>` against that worker's own still-open worktree, never the main clone (which cannot commit to `main`, `V-BRANCH-02`), then `git -C <worktree> add`/`commit`/`push` the result onto that worker's own PR branch — the rows ride along in the PR they document. If that worktree was already released, skip the append and flag it for a manual follow-up rather than writing to the main clone.
 
 Rotation trigger (500-row threshold, `_archive/` destination) is documented in `documentation/reference/decision-log.md` § Rotation, not re-specified here (`V-DRY`).
 
@@ -126,7 +126,7 @@ Per `checkpoint-protocol.md` — **Turn-end checklist** (when any issue is `in-f
       (`status-page.md` § What the orchestrator records)
 - [ ] Every owner answer relayed to you directly this turn, not through the coordinator (which
       records those itself), recorded as a decision, and any scope change it made; in Pattern C
-      that is every answer (`bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts`, `clarify-gates.md` § Chat feedback
+      that is every answer (`bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-record.ts`, `clarify-gates.md` § Chat feedback
       intake, item 6)
 - [ ] orchestrator_turn_id incremented (monotonic); post-recovery first turn increments per compaction recovery
 - [ ] Session handoff includes CHECKPOINT line (turn N | in-flight issues | LEDGER OPEN count)
@@ -169,7 +169,7 @@ See `${CLAUDE_PLUGIN_ROOT}/skills/blackhole/references/orchestrator-runtime.md` 
 *   **Calculate Priority**:
     $$\text{Priority} = \text{Gain} \times (11 - \text{Effort})$$
 *   **Gating Cut-off**:
-    *   If $\text{Priority} \ge 30$, execute `gh issue create --title "[Discovery] <Name>" --body "..." $(bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/forge-scope.ts create-args)` to push it to the GitHub forge, and log it as `deferred`.
+    *   If $\text{Priority} \ge 30$, execute `gh issue create --title "[Discovery] <Name>" --body "..." $(bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/forge-scope.ts create-args)` to push it to the GitHub forge, and log it as `deferred`.
     *   If $\text{Priority} < 30$, set status in ledger to `archived` and skip issue creation to avoid backlog noise.
 *   **Ready Queue Sorting**: Automatically sort the ready set in `queue.json` in descending order of their Priority score, ensuring high-ROI issues are scheduled for implementation first.
 

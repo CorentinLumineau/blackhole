@@ -43,7 +43,7 @@ Mutations to `.blackhole/queue.json` and
 | `status-artifact.json` | `{url, kind, created_at, template_version, template_sha256, last_probe?}` of the campaign's one published status page; the optional `last_probe` (`{at, ok, url, reason?}`) is the launch gate's reachability probe, written only by `scripts/status-probe.ts record` (**tracked** — commit it, un-ignore it with `!.blackhole/status-artifact.json` under a `.blackhole/*` ignore, so every session and machine redeploys the same link; see `status-page.md`) |
 | `decide-baseline.json` | `{at, done, weekly_pct}` — when the last `/blackhole decide` round ran, the issues done then and the weekly usage % then; the next round's report measures against it. Written only by `scripts/campaign-record.ts decide` (gitignored; travels on the state branch; see `decision-parking.md` § Decide round) |
 | `.tmp/keep-awake-hold.json` | `{pid, tool, started_at, identity}` of the keep-awake inhibitor a running campaign holds on a local host, written and removed by `scripts/campaign-record.ts keep-awake` (a record at the retired `.tmp/sleep-hold.json` is moved here on first read; gitignored, local only; see `keep-awake.md`) |
-| `.tmp/status.html` | Latest rendered status page, rewritten by `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts --html` (gitignored, local only) |
+| `.tmp/status.html` | Latest rendered status page, rewritten by `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts --html` (gitignored, local only) |
 
 Outside `.blackhole/`, the peer campaign registry (ADR-057) lives in the clone's git common dir,
 `<git common dir>/blackhole/campaigns/<session>.json`: one heartbeat record per live campaign
@@ -78,7 +78,7 @@ mutation happened not to run in the same incident.
 2. Write the candidate output to `<file>.tmp`.
 3. Validate the `.tmp` file before installing it:
    ```
-   bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/lib/state-write-guard.ts --tmp <file>.tmp --live <file> --entity-key <key> [--allow-shrink]
+   bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/lib/state-write-guard.ts --tmp <file>.tmp --live <file> --entity-key <key> [--allow-shrink]
    ```
 
    **Consumer-repo invocation** (issue #796): `scripts/lib/state-write-guard.ts` does not
@@ -89,7 +89,7 @@ mutation happened not to run in the same incident.
    `vendor/blackhole`, else `node_modules/blackhole`. From a consumer repo:
 
    ```bash
-   bun run --cwd "${BLACKHOLE_PLUGIN_ROOT:-vendor/blackhole}" "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/lib/state-write-guard.ts \
+   bun run --cwd "${BLACKHOLE_PLUGIN_ROOT:-vendor/blackhole}" "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/lib/state-write-guard.ts \
      --tmp <consumer-repo-abs-path>.tmp --live <consumer-repo-abs-path> --entity-key <key>
    ```
 
@@ -337,7 +337,7 @@ consumer repo's.
 
 Existence-gated: when `scripts/checks/doc-health.check.ts` exists at repo root (blackhole
 self-hosting its own campaign), refresh `.blackhole/doc-health.json` via
-`bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/doc-health-signal.ts`; absent, this step is inert — no error, no attempted
+`bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/doc-health-signal.ts`; absent, this step is inert — no error, no attempted
 invocation. Scope-2 (a consumer repo's tree) is enforced at review time by `reviewer.md` § Doc-Governance Judgment Audit.
 
 `doc_debt: "yes"` is visibility only: no ledger append, no phase gate. `V-DOCHEALTH-03` stays
@@ -389,7 +389,7 @@ proves one:
 
 Existence-gated: when `scripts/plugin-drift-signal.ts` is available (blackhole's own repo, or
 an installed plugin that ships it), refresh `.blackhole/plugin-drift.json` via
-`bun run --cwd <abs repo-root> "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/plugin-drift-signal.ts --repo-root <abs repo-root>`;
+`bun run --cwd <abs repo-root> "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/plugin-drift-signal.ts --repo-root <abs repo-root>`;
 `--repo-root` names the campaign repo, an existing git checkout whose settings are read and
 whose `.blackhole/` gets the signal. Without it, an installed plugin refuses to run rather than
 describe its own cache folder. Absent the script, this step is inert — no error, no attempted

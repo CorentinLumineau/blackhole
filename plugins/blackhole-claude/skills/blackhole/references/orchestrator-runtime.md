@@ -27,9 +27,9 @@ parallel planners, implementers, reviewers):
 Every spawn round, and again at Triage, refreshes the peer heartbeat (§ Session resume & recovery
 step 8), so a long turn keeps its claims live.
 
-1. Every spawn round, run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/pace-gate.ts --current <planned batch> --max <parallel_max>`,
+1. Every spawn round, run `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/pace-gate.ts --current <planned batch> --max <parallel_max>`,
    which reads the cached statusline `rate_limits`, and
-   `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/usage-budget.ts --parallel-max <parallel_max> [--usage '<usage-probe JSON>']`,
+   `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/usage-budget.ts --parallel-max <parallel_max> [--usage '<usage-probe JSON>']`,
    whose `--usage` is the harness usage probe's output (#1201; without it the same cache is read).
    This round's target is the **smallest** of the pace target, the usage `workers` and (step 2) the
    resource `batch_size`.
@@ -55,12 +55,12 @@ step 8), so a long turn keeps its claims live.
    - bump `failed_attempts` or any retry counter
    - route to `stop --abandon`, or kill or abort a worker
 2. When the round includes test/build-bearing workers (implementers, or any worker that runs
-   `build`/`verify`/`test`), run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/resource-gate.ts --requested <target>` and spawn
+   `build`/`verify`/`test`), run `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/resource-gate.ts --requested <target>` and spawn
    at most its `batch_size`; it can only cut the target, never raise it: `go` keeps it, `degrade`
    cuts it to one, `defer` spawns none this turn (log the reasons and retry next turn),
    `unavailable` keeps it and logs the reason. A non-zero exit (bad flags or a malformed config)
    is handled as `unavailable`, with its stderr line logged. Thresholds: `resource_policy.gate`.
-3. Record the round: `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/pace-log.ts --planned <planned batch> --pace '<pace-gate JSON>'
+3. Record the round: `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/pace-log.ts --planned <planned batch> --pace '<pace-gate JSON>'
    [--resource '<resource-gate JSON>'] [--usage '<usage-budget JSON>']` appends the pace verdict,
    resource verdict, usage verdict (with its 5-hour %, weekly %, `workers` and `wake_at`), planned
    batch, effective concurrency (the smallest of the gates) and reasons to
@@ -76,7 +76,7 @@ step 8), so a long turn keeps its claims live.
    usage gate are handled the same way; the usage drain-and-wake verdicts add the wake below.
 4. Log `WAVE <N>: issues [...]` before the first spawn.
 5. Take the keep-awake hold for the workers now in flight:
-   `bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts keep-awake --workers <n>` (`keep-awake.md`); idempotent, and an
+   `bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-record.ts keep-awake --workers <n>` (`keep-awake.md`); idempotent, and an
    inhibitor problem is reported in one line, never a reason not to spawn.
 6. Record each worker in `campaign-checkpoint.md` `## In-flight workers` with role, issue `#N`, spawn turn id, and (issue #422, gated by `docs_governance.enabled`/`companion_files`) the rulings ledger's `rulings_revision` at spawn time — see `checkpoint-protocol.md` § In-flight workers row format.
 
@@ -110,7 +110,7 @@ below, classify each worker into exactly one of:
    is the exact spawn `name` this worker was given (`orchestrator-delegation.md` § Worker spawn
    model, deterministic spawn name). On more than one match, take the most recently modified; on
    a tied or unavailable `mtime`, abort this rung and fall through to rung 2 rather than risk
-   applying a stale prior-turn return. Run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/validate-worker-json.ts
+   applying a stale prior-turn return. Run `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/validate-worker-json.ts
    --recover-transcript <path> --role <role>`. Exit `0` → parse stdout as the recovered return
    JSON, tag `notes: recovered-via-transcript`, done. **Claude desktop**: there the transcript is
    the session's `tasks/<task id>.output` (`/tmp/claude-<uid>/<project slug>/$CLAUDE_CODE_SESSION_ID/tasks/`,
@@ -235,7 +235,7 @@ after reading checkpoint and forge sync:
    the current revision and are not stale.
 4. Inspect worktrees per `recovery-protocol.md` §2.
 5. Refresh the advisory plugin-cache drift signal (issue #800, ADR-030): run
-   `bun run --cwd <abs repo-root> "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/plugin-drift-signal.ts --repo-root <abs repo-root>`,
+   `bun run --cwd <abs repo-root> "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/plugin-drift-signal.ts --repo-root <abs repo-root>`,
    where `<abs repo-root>` is the campaign repo's main clone. `--repo-root` is required in a
    consumer: without it the script describes its own folder, which is the plugin cache there,
    not the campaign repo, and the script refuses to run. Existence-gated on
@@ -244,10 +244,10 @@ after reading checkpoint and forge sync:
    **Local-only**: skip it when the run context routes `state_store: branch`. That machine
    installed the plugin fresh for this session and is reclaimed afterwards, so there is no
    long-lived cache to drift; say "plugin drift: skipped (ephemeral machine)" once in the turn.
-   Surfaced on the `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts` dashboard when it reports content drift; full mechanism:
+   Surfaced on the `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts` dashboard when it reports content drift; full mechanism:
    `blackhole-state.md` § Plugin-Drift Signal.
 6. **Ingest hook events at turn start** (ADR-042, issue #893): run
-   `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/lib/hook-event-triage.ts`, existence-gated on that script being present
+   `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/lib/hook-event-triage.ts`, existence-gated on that script being present
    (a consumer repo without it simply has nothing to run — no error). This closes the gap Triage
    step 1b alone leaves open — a fail-open recorded between worker batches (or in a turn that
    spawns no workers at all) previously sat unread until the next background-worker barrier;
@@ -274,7 +274,7 @@ after reading checkpoint and forge sync:
    - bump `failed_attempts` or any retry counter
    - kill, abort or `--abandon` a worker
 
-8. **Peer heartbeat** (ADR-057): run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/peer-campaigns.ts heartbeat --turn <n>`
+8. **Peer heartbeat** (ADR-057): run `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/peer-campaigns.ts heartbeat --turn <n>`
    (`--host-session <id>` where the host has a cross-session transport, `claude-code-native.md`
    § Cross-session budget transport), then `detect`: a live peer naming this `solo` session as
    its `manager_session` makes it act as manager (`multitask-mode.md` § Shared usage budget),

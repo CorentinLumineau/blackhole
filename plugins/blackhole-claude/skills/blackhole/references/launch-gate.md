@@ -24,7 +24,7 @@ Bootstrap order, every `run` start:
    `warn:` line saying the running plugin is older than an installed version is part of its output:
    restate it verbatim, never drop it.
 3. Peer detection (ADR-057, `multitask-mode.md` § Peer campaign registry): run
-   `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/peer-campaigns.ts heartbeat --turn 0` (add `--host-session <id>` on a host
+   `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/peer-campaigns.ts heartbeat --turn 0` (add `--host-session <id>` on a host
    with a cross-session transport), so a peer bootstrapping at the same moment sees this one.
    The summary's Peers row then reads `detect` itself. A non-zero exit means no record was
    written, so a peer could not see this session: restate its stderr line and stop the bootstrap
@@ -34,7 +34,7 @@ Bootstrap order, every `run` start:
 5. The summary and the status-page probe (§ Probe procedure).
 6. The questions (§ Questions), unless print-only (§ Print-only mode).
 7. The rest is `coordinator.md`'s, in its order: publish or refresh the status page, then
-   `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/doctor.ts` before the spawn (a non-zero exit stops it), then spawn or resume the
+   `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/doctor.ts` before the spawn (a non-zero exit stops it), then spawn or resume the
    orchestrator.
 
 ## Target check
@@ -43,7 +43,7 @@ A start with no scope argument resolves the campaign from the working directory,
 the repository the owner meant. Before any write, run:
 
 ```bash
-bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts target [--stated <repo>] [--json]
+bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts target [--stated <repo>] [--json]
 ```
 
 It runs first, ahead of the run context and the state-branch pull (both write under `.blackhole/`). It prints `Target: <owner/repo> · <absolute campaign dir>`: `config.json`'s `repo`, else the
@@ -68,13 +68,13 @@ The summary heading repeats the target, `## Launch summary — <owner/repo> · <
 
 ## The summary
 
-Run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts --summary` and print its output; never hand-format the table. Its flags,
+Run `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts --summary` and print its output; never hand-format the table. Its flags,
 rows and `--json` shape are documented once, in `coordinator-dashboard.md` § Command (Launch summary). The
 gate adds two steps of its own:
 
 - Before the summary, refresh the Budget row's usage source on hosts that have one. On a Claude
   cloud or Remote session, pipe the newest `rate_limit_event` from `list_events` to
-  `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/usage-probe.ts --from-events -` (`run-context.md`, Claude usage sources). On
+  `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/usage-probe.ts --from-events -` (`run-context.md`, Claude usage sources). On
   Cursor there is no source, so the row reads `not probed: cursor: no readable usage source,
   usage-aware pacing not applied` and, with `usage_budget` on, its consequence is `Usage not
   probed: workers are sized from parallel_max (<n>).`
@@ -84,7 +84,7 @@ gate adds two steps of its own:
   (`scripts/lib/campaign-status/launch-config-rows.ts`).
 - The summary carries the same plugin-version warning as a `> ` line under its heading, in every
   mode including print-only; it never becomes a question.
-- Also run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts config-summary` once: the coordinator's docs-governance drift guard
+- Also run `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts config-summary` once: the coordinator's docs-governance drift guard
   copies its `Docs governance` lines verbatim into the spawn text.
 
 ## Catchup form
@@ -92,7 +92,7 @@ gate adds two steps of its own:
 `/blackhole catchup` (`phase-catchup.md`) runs this gate with the full config, and the pacing preset
 (`catchup` block, `config-template.md`) pre-fills what the run gate leaves to `usage_budget`:
 
-- Run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts --summary --mode catchup [--usage-file <path>] --json` instead of the plain
+- Run `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts --summary --mode catchup [--usage-file <path>] --json` instead of the plain
   summary. The rows are the run's 13, with the run's Pacing row swapped for the catchup's **Pacing**: the usage reading, the floor (`floor 45.71% (96 h / 168 h x 80%)`: hours elapsed of the week times the weekly target), the shortfall,
   the 5h caps and the lane. The Budget row judges by the floor budget.
 - Every value stays adjustable for this invocation only, as in a run: re-print the summary with
@@ -115,8 +115,8 @@ longer opens must surface before the first spawn, not on the first failed refres
    the recorder (`scripts/status-probe.ts`):
 
    ```bash
-   bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/status-probe.ts record --ok
-   bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/status-probe.ts record --fail --reason "<why>"
+   bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/status-probe.ts record --ok
+   bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/status-probe.ts record --fail --reason "<why>"
    ```
 
    `--url` defaults to the stored `url`. It writes atomically, keeps every other key, and leaves
@@ -156,7 +156,7 @@ With `merge_mode` unset the Merge card has no Accept option (R-002): the owner m
 The Peers question has no Accept option either: a live peer campaign in this clone is never
 ignored, and this session never starts as `solo` beside it.
 
-- **Stop**: run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/peer-campaigns.ts release`, then end the bootstrap.
+- **Stop**: run `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/peer-campaigns.ts release`, then end the bootstrap.
 - **Join as peer**: offered only when an uncoordinated live peer gives a manager to join (a host
   listed in `claude-code-native.md` § Cross-session budget transport records `host_session`). The
   option names it: a live `manager` record, else the manager a live peer follows, else a solo
@@ -185,7 +185,7 @@ answers become the `usage_budget` block `campaign-status.ts usage-caps` prints.
 ## Print-only mode
 
 Print-only mode applies when this invocation is `--unattended`
-(`bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts --summary --unattended …`), or the run context has no
+(`bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts --summary --unattended …`), or the run context has no
 question channel (its route reports questions `none`, e.g. a headless run). `--unattended` is
 per invocation and never stored: a forgotten flag cannot silently skip the next interactive gate,
 and no config makes the gate print-only. Default parking (`decisions.mode`,
@@ -210,7 +210,7 @@ exception, the peer question:
   refuses the same question with a different option set). Join is always listed; the evidence
   says whether it applies, and the row's details (worktree, turn, heartbeat age, unreadable files)
   go in `--evidence` only:
-  `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts park --gate peers --question "Another campaign may be running
+  `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-record.ts park --gate peers --question "Another campaign may be running
   in this clone: stop, join it, or take over after it drains?" --options "Stop|Join as peer: only
   when the evidence names a manager to join|Take over after drain" --recommended "Take over after
   drain" --evidence "<the Peers row value>; join: <id, or none>"` (`none` whenever the row offers no
