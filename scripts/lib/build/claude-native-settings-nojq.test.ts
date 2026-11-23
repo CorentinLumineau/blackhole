@@ -7,6 +7,7 @@ import {
   bashCommand,
   hookEventFiles,
   pathWithoutJq,
+  resolveSelfContained,
   runWrapperWithStubExit,
 } from './claude-native-settings.fixtures.ts';
 
@@ -46,6 +47,28 @@ describe('fail-open record does not depend on jq', () => {
       const eventsDir = path.join(dir, '.blackhole', 'hook-events');
       expect(fs.readdirSync(eventsDir)).toEqual([]);
       expect(stderr).toMatch(/record NOT written/);
+    });
+  });
+});
+
+describe('pathWithoutJq tool resolution', () => {
+  test('skips a #! shim that re-dispatches by PATH lookup and links the next self-contained binary', () => {
+    withTempDir('blackhole-claude-wrapper-', (dir) => {
+      const shimDir = path.join(dir, 'shim');
+      const realDir = path.join(dir, 'real');
+      fs.mkdirSync(shimDir);
+      fs.mkdirSync(realDir);
+      fs.writeFileSync(path.join(shimDir, 'rm'), '#!/bin/sh\nexec rm "$@"\n', { mode: 0o755 });
+      fs.copyFileSync(fs.realpathSync(Bun.which('cat') as string), path.join(realDir, 'rm'));
+      fs.chmodSync(path.join(realDir, 'rm'), 0o755);
+      expect(resolveSelfContained('rm', `${shimDir}:${realDir}`)).toBe(path.join(realDir, 'rm'));
+    });
+  });
+
+  test('falls back to the first PATH hit when no self-contained candidate exists', () => {
+    withTempDir('blackhole-claude-wrapper-', (dir) => {
+      fs.writeFileSync(path.join(dir, 'tool'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+      expect(resolveSelfContained('tool', dir)).toBe(path.join(dir, 'tool'));
     });
   });
 });

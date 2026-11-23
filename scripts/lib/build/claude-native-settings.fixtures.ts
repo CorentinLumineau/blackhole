@@ -86,11 +86,46 @@ export const assertFailOpenRecord = (
   expect(String(events[0].detail).length).toBeGreaterThan(0);
 };
 
+const isExecutableFile = (p: string): boolean => {
+  try {
+    if (!fs.statSync(p).isFile()) return false;
+    fs.accessSync(p, fs.constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const startsWithShebang = (p: string): boolean => {
+  const fd = fs.openSync(p, 'r');
+  try {
+    const head = Buffer.alloc(2);
+    return fs.readSync(fd, head, 0, 2, 0) === 2 && head.toString('latin1') === '#!';
+  } finally {
+    fs.closeSync(fd);
+  }
+};
+
+/**
+ * Resolve `tool` to the first self-contained executable on `searchPath`: a `#!` script is skipped
+ * when a later candidate is not one, because a shim that re-dispatches by PATH lookup (e.g. a
+ * hosted session's `rm` guard that execs "the next rm on PATH") cannot run once symlinked into an
+ * isolated PATH holding no other copy. Falls back to the first executable hit.
+ */
+export const resolveSelfContained = (tool: string, searchPath: string = process.env.PATH ?? ''): string | null => {
+  const candidates = searchPath
+    .split(path.delimiter)
+    .filter((d) => d.length > 0)
+    .map((d) => path.join(d, tool))
+    .filter(isExecutableFile);
+  return candidates.find((c) => !startsWithShebang(c)) ?? candidates[0] ?? null;
+};
+
 /** A PATH holding only the tools the wrapper needs — deliberately no `jq`. */
 export const pathWithoutJq = (binDir: string): string => {
   fs.mkdirSync(binDir, { recursive: true });
   for (const tool of ['bun', 'git', 'mktemp', 'date', 'tail', 'tr', 'mv', 'rm', 'mkdir', 'bash', 'cat', 'sleep']) {
-    const resolved = Bun.which(tool);
+    const resolved = resolveSelfContained(tool);
     if (!resolved) throw new Error(`test setup: ${tool} not found on PATH`);
     fs.symlinkSync(resolved, path.join(binDir, tool));
   }
