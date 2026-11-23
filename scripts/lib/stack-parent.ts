@@ -67,10 +67,24 @@ export type StackParentOptions = {
   parentFiles?: Record<string, string[]>;
 };
 
-/** Backtick paths under a plan's `## Touch-Paths` heading, deduplicated; empty when the plan has none. */
+const AMENDMENT = /^- .*? — (widen|narrow) — `([^`]+)`/;
+
+/** The text of the first section whose heading is exactly `name` (case-insensitive), or ''. */
+const planSection = (plan: string, name: string): string =>
+  headingSectionsOnce(plan, (h) => h.text.toLowerCase() === name, () => false).primary?.text ?? '';
+
+/**
+ * A plan's effective Touch-Paths: the backtick paths under `## Touch-Paths`, plus each `widen` and
+ * minus each `narrow` line under `## Scope Amendments` (plan-template.md), in order, deduplicated.
+ */
 export const planTouchPaths = (plan: string): string[] => {
-  const { primary } = headingSectionsOnce(plan, (h) => /^touch-paths\b/i.test(h.text), () => false);
-  return primary ? [...new Set(extractBacktickPaths(primary.text))] : [];
+  const paths = new Set(extractBacktickPaths(planSection(plan, 'touch-paths')));
+  for (const line of planSection(plan, 'scope amendments').split('\n')) {
+    const m = AMENDMENT.exec(line.trim());
+    if (m?.[1] === 'widen') paths.add(m[2]);
+    else if (m) paths.delete(m[2]);
+  }
+  return [...paths];
 };
 
 /**

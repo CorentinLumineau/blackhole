@@ -271,8 +271,8 @@ worktree, run `bun run scripts/stack-parent.ts --queue .blackhole/queue.json --i
 reads each open PR's files from the turn's open-PR snapshot, one fetch and no per-PR API call,
 unless `--parent-files '{"<parent>": [...]}'` is passed; optionally
 `--default-touch-paths '[...]'` from config). An issue whose plan (`plans/issue-<N>.md` beside the
-queue, or `--plans-dir <abs>`) declares `## Touch-Paths` is matched on those paths instead of its
-queue `touch_paths` (`withPlanTouchPaths`), so a planned issue never stacks on the default globs. The same script re-checks a PR that already exists
+queue, or `--plans-dir <abs>`) declares `## Touch-Paths` is matched on those paths, with `## Scope Amendments` `widen` lines added and
+`narrow` lines removed, instead of its queue `touch_paths` (`withPlanTouchPaths`), so a planned issue never stacks on the default globs. The same script re-checks a PR that already exists
 (`phase-loop.md` Step 0.4). When it names a
 parent — the **tip** of the chain rooted at the lowest-numbered other issue with an open PR and
 overlapping paths, in any `merge_mode` — then:

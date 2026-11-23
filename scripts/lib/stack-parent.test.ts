@@ -263,3 +263,32 @@ describe('plan Touch-Paths replace the queue default globs', () => {
     expect(planned['1376']!.touch_paths).toEqual(['src/**', 'scripts/**', 'fixtures/**']);
   });
 });
+
+describe('plan Scope Amendments and heading match', () => {
+  const amended = [
+    '## Touch-Paths',
+    '',
+    '- `scripts/lib/foo.test.ts`',
+    '- `scripts/lib/old.ts`',
+    '',
+    '## Scope Amendments',
+    '',
+    '- 2026-11-23 — widen — `scripts/lib/bar.ts` — needed for the fix',
+    '- 2026-11-23 — narrow — `scripts/lib/old.ts` — out of scope',
+  ].join('\n');
+
+  test('widen adds a path and narrow drops one', () => {
+    expect(planTouchPaths(amended)).toEqual(['scripts/lib/foo.test.ts', 'scripts/lib/bar.ts']);
+  });
+  test('a widened path stacks on the open PR touching it', () => {
+    const q = {
+      '1381': { status: 'in-flight', pr: 1385 },
+      '1376': { status: 'ready', pr: null, touch_paths: ['src/**', 'scripts/**', 'fixtures/**'] },
+    };
+    const planned = withPlanTouchPaths(q, (n) => (n === 1376 ? amended : null));
+    expect(pickStackParent(planned, 1376, { parentFiles: { '1381': ['scripts/lib/bar.ts'] } })?.parent).toBe(1381);
+  });
+  test('a Touch-Paths Completeness Advisory heading is not the Touch-Paths section', () => {
+    expect(planTouchPaths('## Touch-Paths Completeness Advisory\n\n- `scripts/lib/build/facts.ts`\n')).toEqual([]);
+  });
+});
