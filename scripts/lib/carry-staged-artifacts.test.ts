@@ -61,6 +61,17 @@ describe('loadManifest — shape guard (absent vs. zero-byte/unparseable, blackh
     });
   });
 
+  test.each([['null', 'null'], ['42', 'number'], ['"s"', 'string']])(
+    'a %s manifest throws a shape error naming its type',
+    (contents, label) => {
+      withTempDir('carry-shape', (dir) => {
+        const manifestPath = path.join(dir, 'manifest.json');
+        fs.writeFileSync(manifestPath, contents);
+        expect(() => loadManifest(manifestPath)).toThrow(new RegExp(`got ${label}$`));
+      });
+    },
+  );
+
   test('a valid manifest loads', () => {
     withTempDir('carry-shape', (dir) => {
       const manifestPath = path.join(dir, 'manifest.json');
