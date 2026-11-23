@@ -18,10 +18,11 @@ preflight lists them).
 
 Bootstrap order, every `run` start:
 
-1. Resolve the run context (`run-context.md`); on `state_store: branch`, pull the state branch. A
+1. The target check (§ Target check). It writes nothing and needs neither the run context nor
+   the state branch; a Stop answer ends the bootstrap here, before any write.
+2. Resolve the run context (`run-context.md`); on `state_store: branch`, pull the state branch. A
    `warn:` line saying the running plugin is older than an installed version is part of its output:
    restate it verbatim, never drop it.
-2. The target check (§ Target check), before any write: a Stop answer ends the bootstrap here.
 3. Peer detection (ADR-057, `multitask-mode.md` § Peer campaign registry): run
    `bun run scripts/peer-campaigns.ts heartbeat --turn 0` (add `--host-session <id>` on a host
    with a cross-session transport), so a peer bootstrapping at the same moment sees this one.
@@ -45,17 +46,22 @@ the repository the owner meant. Before any write, run:
 bun run scripts/campaign-status.ts target [--stated <repo>] [--json]
 ```
 
-It prints `Target: <owner/repo> · <absolute campaign dir>`: `config.json`'s `repo`, else the
-origin remote of the campaign's repository, so it works before a first bootstrap. Restate that line
+It runs first, ahead of the run context and the state-branch pull (both write under `.blackhole/`). It prints `Target: <owner/repo> · <absolute campaign dir>`: `config.json`'s `repo`, else the
+origin remote of the campaign's repository (the whole path after its host, so a GitLab nested group
+stays whole; an origin with no host, a local path or `file://`, gives `no repo`), so it works
+before a first bootstrap and before the state branch is pulled. Restate that line
 first. Pass `--stated` when the host gives the session a title, or the owner's request states
 another intent, that names a repository: the bare name, `owner/repo` or its URL as written there.
 Naming that repository is a judgment, so pass nothing when the title names none.
 
 - Exit `0`: no stated target, or it names the resolved repository. Continue.
 - Exit `3`: it names another one. Ask the one question its `--json` `card` carries, **Continue
-  here** or **Stop**, before peer detection and before any config write. Continue here records the
-  answer as a decision and goes on; Stop ends the bootstrap with nothing written.
+  here** or **Stop**, before anything else runs. Continue here goes on and,
+  once the run context is resolved, records the answer as a decision; Stop ends the bootstrap with
+  nothing written.
 - Exit `2`: usage error.
+- Exit `1`: `config.json` exists but is not valid JSON. Restate its one stderr line and stop the
+  bootstrap; the owner fixes the file.
 
 The summary heading repeats the target, `## Launch summary — <owner/repo> · <campaign dir>`, and
 `--summary --json` carries it as `target`.
@@ -193,7 +199,7 @@ the summary, asks nothing and never waits. It does not park its rows either: the
 exception, the peer question:
 
 - every row counts as accepted;
-- the target check exits `3`: refuse to start, with its two lines, and write nothing; never run a
+- the target check exits `3` or `1`: refuse to start, with its two lines, and write nothing; never run a
   campaign on a repository the stated target does not name;
 - `merge_mode` unset: refuse to start, with one line, `merge_mode is unset; print-only mode cannot
   ask for it (R-002)` — never pick a merge mode for the owner;

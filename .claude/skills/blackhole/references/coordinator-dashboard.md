@@ -31,14 +31,15 @@ Launch summary — the launch gate's executive-summary table (`launch-gate.md` �
 bun run scripts/campaign-status.ts --summary [--mode run|catchup] [--usage <json>] [--now <epoch s>] [--json] [--campaign-dir <dir>] [--no-gh]
 ```
 
-Target check (`launch-gate.md` § Target check), the first step of a `run` or `catchup` start:
+Target check (`launch-gate.md` § Target check), the first step of a `run` or `catchup` start, ahead of the run context:
 
 ```bash
 bun run scripts/campaign-status.ts target [--stated <repo>] [--json] [--campaign-dir <dir>]
 ```
 
 It prints `Target: <owner/repo> · <campaign dir>` and needs no campaign yet (the origin remote
-stands in for `config.json`'s `repo`). Exit `3` when `--stated` names another repository; `--json`
+stands in for `config.json`'s `repo`). Exit `3` when `--stated` names another repository, `1` when
+`config.json` is not valid JSON, `2` on a usage error; `--json`
 prints `{repo, campaign_dir, source, stated, mismatch}` plus, on a mismatch, the Continue here /
 Stop `card`. The summary heading names the same target.
 

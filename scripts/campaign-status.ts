@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { readScope } from './forge-scope.ts';
-import { parseStatusArgs } from './lib/campaign-status/cli.ts';
+import { defaultCampaignDir, parseStatusArgs } from './lib/campaign-status/cli.ts';
 import { readLaneConfig } from './lib/lane.ts';
 import { formatDashboard, renderConfigSummary } from './lib/campaign-status/dashboard.ts';
 import { buildBudgetPanel, givenBudgetPanel, readBudgetPanel, resolveBudgetSettings } from './lib/campaign-status/budget.ts';
@@ -414,7 +414,8 @@ const TARGET_USAGE = 'Usage: campaign-status.ts target [--stated <repo name, own
  * `target`: the first step of a `run` or `catchup` start, before any write (`launch-gate.md`
  * § Target check). Prints the resolved repository and campaign directory; reads `config.json` when
  * present and never needs a campaign. Exit 0: no stated target, or it names the resolved repository.
- * Exit 3: it names another one (the output carries the one Continue here / Stop question). Exit 2: usage.
+ * Exit 3: it names another one (the output carries the one Continue here / Stop question). Exit 2:
+ * usage. Exit 1: `config.json` exists but cannot be read as JSON.
  */
 function printTarget(argv: string[]): void {
   let flags: ReturnType<typeof parseFlags>;
@@ -428,9 +429,15 @@ function printTarget(argv: string[]): void {
     console.error(`status target: ${error instanceof Error ? error.message : String(error)}`);
     process.exit(2);
   }
-  const campaignDir = typeof flags['campaign-dir'] === 'string' ? path.resolve(flags['campaign-dir']) : path.join(process.cwd(), '.blackhole');
+  const campaignDir = typeof flags['campaign-dir'] === 'string' ? path.resolve(flags['campaign-dir']) : defaultCampaignDir();
   const configPath = path.join(campaignDir, 'config.json');
-  const config = fs.existsSync(configPath) ? (readJsonFile(configPath, configPath) as { repo?: unknown }) : {};
+  let config: { repo?: unknown } = {};
+  try {
+    if (fs.existsSync(configPath)) config = (readJsonFile(configPath, configPath) ?? {}) as { repo?: unknown };
+  } catch (error) {
+    console.error(`status target: ${configPath} is unreadable: ${(error instanceof Error ? error.message : String(error)).split('\n')[0]}`);
+    process.exit(1);
+  }
   const target = readLaunchTarget(campaignDir, typeof config.repo === 'string' ? config.repo : undefined);
   const stated = typeof flags.stated === 'string' ? flags.stated.trim() : null;
   const mismatch = stated !== null && !statedTargetMatches(stated, target);

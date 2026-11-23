@@ -1253,6 +1253,22 @@ describe('the launch target (issue #1410)', () => {
     }
   });
 
+  test('a malformed config.json exits 1 with one line naming the file, never a stack trace', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-target-bad-'));
+    try {
+      fs.writeFileSync(path.join(dir, 'config.json'), '{ not json');
+      const proc = status('target', '--campaign-dir', dir);
+      expect(proc.exitCode).toBe(1);
+      expect(proc.stdout.toString()).toBe('');
+      const err = proc.stderr.toString().trim();
+      expect(err.split('\n')).toHaveLength(1);
+      expect(err).toStartWith('status target: ');
+      expect(err).toContain(path.join(dir, 'config.json'));
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('target refuses an unknown flag or an empty --stated with exit 2', () => {
     expect(status('target', '--campaign-dir', FULL, '--state', 'x').exitCode).toBe(2);
     expect(status('target', '--campaign-dir', FULL, '--stated', '').exitCode).toBe(2);

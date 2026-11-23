@@ -1,41 +1,31 @@
 import { describe, expect, test } from 'bun:test';
-import { repoSlugFromOrigin, resolveLaunchTarget, statedTargetMatches, targetCard, targetHeading, targetLine } from './launch-target.ts';
+import { resolveLaunchTarget, statedTargetMatches, targetCard, targetHeading, targetLine } from './launch-target.ts';
 
 const DIR = '/home/user/blackhole/.blackhole';
-
-describe('repoSlugFromOrigin', () => {
-  test('reads owner/repo from the usual origin shapes', () => {
-    expect(repoSlugFromOrigin('git@github.com:CorentinLumineau/blackhole.git')).toBe('CorentinLumineau/blackhole');
-    expect(repoSlugFromOrigin('https://github.com/CorentinLumineau/blackhole')).toBe('CorentinLumineau/blackhole');
-    expect(repoSlugFromOrigin('https://github.com/CorentinLumineau/blackhole.git/')).toBe('CorentinLumineau/blackhole');
-    expect(repoSlugFromOrigin('http://proxy@127.0.0.1:4000/git/CorentinLumineau/monorepo')).toBe('CorentinLumineau/monorepo');
-    expect(repoSlugFromOrigin('ssh://git@git.example.lan:2222/AI/mercure.git')).toBe('AI/mercure');
-  });
-
-  test('null when there is no origin or no owner/repo in it', () => {
-    expect(repoSlugFromOrigin(null)).toBeNull();
-    expect(repoSlugFromOrigin('')).toBeNull();
-    expect(repoSlugFromOrigin('blackhole')).toBeNull();
-  });
-});
 
 describe('resolveLaunchTarget', () => {
   test('config.json repo wins over the origin remote', () => {
     expect(resolveLaunchTarget({ campaignDir: DIR, configRepo: 'a/b', originUrl: 'git@github.com:c/d.git' })).toEqual({ repo: 'a/b', campaignDir: DIR, source: 'config' });
   });
 
-  test('falls back to the origin remote, then to no repo', () => {
+  test('falls back to the whole path of the origin remote, GitLab nested groups included', () => {
     expect(resolveLaunchTarget({ campaignDir: DIR, configRepo: undefined, originUrl: 'git@github.com:c/d.git' })).toEqual({ repo: 'c/d', campaignDir: DIR, source: 'origin' });
+    expect(resolveLaunchTarget({ campaignDir: DIR, configRepo: undefined, originUrl: 'https://gitlab.com/grp/sub/repo.git' })).toEqual({ repo: 'grp/sub/repo', campaignDir: DIR, source: 'origin' });
+  });
+
+  test('no repo when there is no origin, or an origin with no host (local path, file://)', () => {
     expect(resolveLaunchTarget({ campaignDir: DIR, configRepo: undefined, originUrl: null })).toEqual({ repo: null, campaignDir: DIR, source: 'none' });
+    expect(resolveLaunchTarget({ campaignDir: DIR, configRepo: undefined, originUrl: '/srv/git/o/r.git' })).toEqual({ repo: null, campaignDir: DIR, source: 'none' });
+    expect(resolveLaunchTarget({ campaignDir: DIR, configRepo: undefined, originUrl: 'file:///srv/git/o/r.git' })).toEqual({ repo: null, campaignDir: DIR, source: 'none' });
   });
 });
 
 describe('statedTargetMatches', () => {
   const target = { repo: 'CorentinLumineau/blackhole', campaignDir: DIR, source: 'config' as const };
 
-  test('a bare name or a full slug naming the resolved repository matches, case-insensitively', () => {
+  test('a bare name, a full path or a URL naming the resolved repository matches, case-insensitively', () => {
     expect(statedTargetMatches('blackhole', target)).toBe(true);
-    expect(statedTargetMatches('BlackHole', target)).toBe(true);
+    expect(statedTargetMatches('BlackHole.GIT', target)).toBe(true);
     expect(statedTargetMatches('corentinlumineau/blackhole', target)).toBe(true);
     expect(statedTargetMatches('https://github.com/CorentinLumineau/blackhole.git', target)).toBe(true);
   });
@@ -44,6 +34,15 @@ describe('statedTargetMatches', () => {
     expect(statedTargetMatches('monorepo', target)).toBe(false);
     expect(statedTargetMatches('CorentinLumineau/monorepo', target)).toBe(false);
     expect(statedTargetMatches('other/blackhole', target)).toBe(false);
+  });
+
+  test('GitLab nested groups compare the whole path', () => {
+    const nested = { repo: 'grp/sub/repo', campaignDir: DIR, source: 'origin' as const };
+    expect(statedTargetMatches('grp/sub/repo', nested)).toBe(true);
+    expect(statedTargetMatches('https://gitlab.com/grp/sub/repo', nested)).toBe(true);
+    expect(statedTargetMatches('repo', nested)).toBe(true);
+    expect(statedTargetMatches('sub/repo', nested)).toBe(false);
+    expect(statedTargetMatches('grp/other/repo', nested)).toBe(false);
   });
 
   test('no resolved repository never matches a stated target: it cannot be confirmed', () => {
