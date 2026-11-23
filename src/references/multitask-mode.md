@@ -158,15 +158,16 @@ queue entry that is `in-flight`, or carries a `pr` and is not held for a peer
 heartbeat, the same lease as § Grant lease. This session's own id is the host session id
 (`CLAUDE_CODE_SESSION_ID`) where the host sets one, so two sessions running one campaign directory
 keep two records and each sees the other as a peer. The record also carries the host process id
-(`CLAUDE_PID`), and `.blackhole/.tmp/campaign-session.json` then names the campaign directory's
-last session. A record in this worktree on this host from an earlier session of this campaign (a
-resume in a new session, `/clear`, a fork after the old session exited) is superseded, not a peer:
-its host process is this one or is gone, or, with no pid recorded, it is that last session and has
-not heartbeated since this session's first heartbeat. `heartbeat` removes it. Where the host sets
-no session id, the id lives in `.blackhole/.tmp/campaign-session.json`, which every session on that
-campaign directory shares; there a record from the same worktree on the same host also reads as
-self, so a lost token never reports this campaign as its own peer, and a second session on that
-directory stays unseen.
+(`CLAUDE_PID`), and such a session writes its id to `.blackhole/.tmp/campaign-last-session.json`.
+Where the host sets no session id, the id lives in `.blackhole/.tmp/campaign-session.json`, which
+every session on that campaign directory shares; a host-scoped session never writes it. A record
+in this worktree on this host is this campaign's earlier session, read as self and removed by
+`heartbeat`, when its recorded host process is this one (`/clear`) or is gone (a resume or fork in
+a new process). A record with no recorded pid is an earlier session for a token id (a lost token),
+and, for a host id, only when it carries the last-session or token id and has not heartbeated
+since this session's first heartbeat. A record whose host process is alive is always a peer, so a
+token-mode session sees a live host-scoped one; two token-mode sessions on one directory still
+share one id and stay unseen.
 
 `detect` prints `{verdict, reach: "clone", unreadable, unreadable_files, peers[]}`. It is read-only and only reaches
 this clone: a campaign in another clone or on another machine is not seen. It fails closed: a

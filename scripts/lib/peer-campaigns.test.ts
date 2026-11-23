@@ -41,7 +41,6 @@ const self: SelfIdentity = {
   host: 'box',
   host_session: null,
   manager_session: null,
-  host_scoped: false,
   superseded: [],
 };
 
@@ -115,18 +114,10 @@ describe('livePeers', () => {
     expect(livePeers([record({ session: self.session })], self, NOW)).toEqual([]);
   });
 
-  test('another session on the same worktree and host is a superseded self, excluded', () => {
-    expect(livePeers([record({ worktree: self.worktree, host: self.host })], self, NOW)).toEqual([]);
-  });
-
-  test('with a host-scoped id, another session on the same worktree and host is a peer', () => {
-    expect(livePeers([record({ worktree: self.worktree, host: self.host })], { ...self, host_scoped: true }, NOW)).toHaveLength(1);
-    expect(livePeers([record({ session: self.session })], { ...self, host_scoped: true }, NOW)).toEqual([]);
-  });
-
-  test('a session the CLI judged superseded is self, host-scoped or not', () => {
+  test('another session on the same worktree and host is a peer unless judged superseded', () => {
     const r = record({ worktree: self.worktree, host: self.host });
-    expect(livePeers([r], { ...self, host_scoped: true, superseded: [r.session] }, NOW)).toEqual([]);
+    expect(livePeers([r], self, NOW)).toHaveLength(1);
+    expect(livePeers([r], { ...self, superseded: [r.session] }, NOW)).toEqual([]);
   });
 
   test('the same worktree path on another host is a peer', () => {
@@ -135,7 +126,7 @@ describe('livePeers', () => {
 });
 
 describe('supersededSessions', () => {
-  const me = { session: self.session, worktree: self.worktree, host: self.host, pid: 100, marker: null as string | null, startedAtMs: null as number | null };
+  const me = { session: self.session, worktree: self.worktree, host: self.host, hostScoped: true, pid: 100 as number | null, markers: [] as string[], startedAtMs: null as number | null };
   const here = (over: Partial<PeerRecord>) => record({ worktree: self.worktree, host: self.host, ...over });
   const alive = (pid: number) => pid === 200;
 
@@ -153,12 +144,22 @@ describe('supersededSessions', () => {
 
   test('without a pid, the last owner of the campaign dir is superseded until it heartbeats after this session started', () => {
     const r = here({ heartbeat_at: minutesAgo(5) });
-    expect(supersededSessions([r], { ...me, marker: r.session }, alive)).toEqual([r.session]);
+    expect(supersededSessions([r], { ...me, markers: [r.session] }, alive)).toEqual([r.session]);
     // Its last heartbeat came before this session's first one: superseded.
-    expect(supersededSessions([r], { ...me, marker: r.session, startedAtMs: NOW - 1 * 60_000 }, alive)).toEqual([r.session]);
+    expect(supersededSessions([r], { ...me, markers: [r.session], startedAtMs: NOW - 1 * 60_000 }, alive)).toEqual([r.session]);
     // It heartbeated after this session started: it is running concurrently, a peer.
-    expect(supersededSessions([r], { ...me, marker: r.session, startedAtMs: NOW - 10 * 60_000 }, alive)).toEqual([]);
-    expect(supersededSessions([r], { ...me, marker: 'someone-else' }, alive)).toEqual([]);
+    expect(supersededSessions([r], { ...me, markers: [r.session], startedAtMs: NOW - 10 * 60_000 }, alive)).toEqual([]);
+    expect(supersededSessions([r], { ...me, markers: ['someone-else'] }, alive)).toEqual([]);
+  });
+
+  test('with a token id, any pid-less same-worktree record is this campaign before its token was lost', () => {
+    const token = { ...me, hostScoped: false, pid: null };
+    expect(supersededSessions([here({})], token, alive)).toEqual([here({}).session]);
+    expect(supersededSessions([here({ host_pid: 300 })], token, alive)).toEqual([here({}).session]);
+  });
+
+  test("with a token id, a live host-scoped session's record is a peer, never this campaign's", () => {
+    expect(supersededSessions([here({ host_pid: 200 })], { ...me, hostScoped: false, pid: null }, alive)).toEqual([]);
   });
 
   test('another worktree, another host and this session itself are never superseded', () => {

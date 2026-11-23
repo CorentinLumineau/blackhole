@@ -197,20 +197,29 @@ Disclosures:
     is the session id (`sessionIdentity`, `scripts/peer-campaigns.ts`). A set but unusable value
     falls back to the token and prints a stderr warning; an absent one falls back silently. A
     Task-spawned orchestrator shares its coordinator's id, so one campaign keeps one record.
-  - **Self rule**: with a host id (`SelfIdentity.host_scoped`), a record from the same worktree
+  - **Self rule**: self is now the session's own record plus the earlier sessions
+    `supersededSessions` (`scripts/lib/peer-campaigns.ts`) names; a record from the same worktree
     on the same host is no longer self by that fact alone, so a concurrent session on the same
     campaign directory is a peer and the launch gate asks the peer question.
   - **Predecessor marker**: to keep this ADR's discriminating CRITICAL closed (a state-lost
     session must not read its own claims as a peer's), each record carries `host_pid`
-    (`CLAUDE_PID`, optional, older records read as null) and the token file names the campaign
-    directory's last session. `supersededSessions` (`scripts/lib/peer-campaigns.ts`) reads a
-    same-worktree, same-host record as this campaign's earlier session when its host process is
-    this one (`/clear`) or is gone (resume in a new process), or, with no pid, when it is the
-    last session and has not heartbeated since this session's first heartbeat. `heartbeat`
-    removes it.
-  - **Residuals**: with no host session id (Cursor, Codex), the token rule is unchanged and a
-    second session on one campaign directory stays unseen. With a host id but no `CLAUDE_PID`, a
-    second session's first heartbeat reads a live last session as superseded and removes its
-    record until that session's next heartbeat recreates it. A reused pid reads a gone
-    predecessor as alive, so it shows as a peer until its 40-minute lease ends. A pre-upgrade
-    token-only record in the same worktree is superseded only through the marker rule.
+    (`CLAUDE_PID`, optional, older records read as null), and a host-scoped session writes its id
+    to its own file, `<campaign dir>/.tmp/campaign-last-session.json`; the token file stays
+    token-mode only, so a token-mode session never adopts a host session's id. A same-worktree,
+    same-host record is this campaign's earlier session, read as self and removed by `heartbeat`,
+    when its host process is this one (`/clear`) or is gone (a resume or fork in a new process).
+    With no pid recorded, it is an earlier session for a token id (the original lost-token rule),
+    and for a host id only when it carries the last-session or token id and has not heartbeated
+    since this session's first heartbeat. A record whose host process is alive is always a peer,
+    token mode included.
+  - **Residuals**:
+    - With no host session id (Cursor, Codex, a plain shell), two token-mode sessions on one
+      campaign directory still share one id and stay unseen.
+    - With a host session id but no `CLAUDE_PID`, the second session's first heartbeat has no
+      start time of its own, so it reads the live last session as superseded and removes its
+      record, and `detect` at that session's launch gate returns `solo`: the #1408 symptom. It
+      lasts until the other session's next heartbeat recreates its record. Exposure is limited
+      because Claude Code sets both variables.
+    - Liveness is `kill(pid, 0)` only: a reused pid reads a gone predecessor as alive, so it
+      shows as a peer until its 40-minute lease ends. Comparing the process start time would
+      harden this; it is a known limit, not implemented.

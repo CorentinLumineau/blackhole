@@ -34,8 +34,8 @@ import {
 // `<git common dir>/blackhole/campaigns/<session>.json`, shared by every worktree of the clone and
 // never pushed. This session's id is the host session id (`CLAUDE_CODE_SESSION_ID`) when the host
 // sets one, so two sessions on one campaign dir keep two records; otherwise it lives in
-// `<campaign dir>/.tmp/campaign-session.json`, shared by every session on that campaign dir. With
-// a host id, that file names the campaign dir's last session instead, and a record left in this
+// `<campaign dir>/.tmp/campaign-session.json`, shared by every session on that campaign dir. A
+// host-scoped session writes `.tmp/campaign-last-session.json` instead, and a record left in this
 // worktree by an earlier session of this campaign is superseded (`supersededSessions`), not a peer.
 // Exit 0 on success; 1 when the git common dir cannot be resolved, or when heartbeat refuses a
 // worktree, host or host session its peers could not read (nothing is written), or when the record
@@ -49,6 +49,8 @@ export const REGISTRY_DIR = path.join('blackhole', 'campaigns');
 export const HOST_SESSION_ENV = 'CLAUDE_CODE_SESSION_ID';
 /** The env var carrying the host process id (Claude Code), recorded so a successor can tell a gone predecessor from a live peer. */
 export const HOST_PID_ENV = 'CLAUDE_PID';
+/** The last host-scoped session of this campaign dir (`{"session": "<id>"}`), relative to the campaign dir; never read as a token. */
+export const LAST_SESSION_FILE = path.join('.tmp', 'campaign-last-session.json');
 /** This session's id (`{"session": "<id>"}`) when the host sets none, relative to the campaign dir. */
 export const SESSION_TOKEN_FILE = path.join('.tmp', 'campaign-session.json');
 
@@ -118,11 +120,13 @@ const readOptionalJson = (file: string): unknown => {
   }
 };
 
-/** This session's id from its token file; null when none was minted yet. */
-export const readSessionToken = (campaignDir: string): string | null => {
-  const session = (readOptionalJson(path.join(campaignDir, SESSION_TOKEN_FILE)) as { session?: unknown } | null)?.session;
+const readSessionFile = (campaignDir: string, file: string): string | null => {
+  const session = (readOptionalJson(path.join(campaignDir, file)) as { session?: unknown } | null)?.session;
   return isSessionId(session) ? session : null;
 };
+
+/** This session's id from its token file; null when none was minted yet. */
+export const readSessionToken = (campaignDir: string): string | null => readSessionFile(campaignDir, SESSION_TOKEN_FILE);
 
 /**
  * This session's id: the host session id when the host sets a valid one (`hostScoped`), else the
@@ -141,9 +145,8 @@ export function sessionIdentity(
   return { session: readSessionToken(campaignDir), hostScoped: false, warning };
 }
 
-/** Earlier sessions of this campaign in this worktree, for a host-scoped id; none for a token id (the worktree rule covers it). */
+/** Earlier sessions of this campaign in this worktree (`supersededSessions`). */
 function predecessors(campaignDir: string, clone: Clone, session: string, hostScoped: boolean, records: PeerRecord[], deps: RegistryDeps): string[] {
-  if (!hostScoped) return [];
   const own = records.find((r) => r.session === session);
   return supersededSessions(
     records,
@@ -151,8 +154,9 @@ function predecessors(campaignDir: string, clone: Clone, session: string, hostSc
       session,
       worktree: clone.worktree,
       host: deps.hostname(),
-      pid: deps.hostPid(),
-      marker: readSessionToken(campaignDir),
+      hostScoped,
+      pid: hostScoped ? deps.hostPid() : null,
+      markers: [readSessionFile(campaignDir, LAST_SESSION_FILE), readSessionToken(campaignDir)].filter((m): m is string => m !== null),
       startedAtMs: own ? Date.parse(own.started_at) : null,
     },
     deps.pidAlive,
@@ -221,7 +225,6 @@ function selfIdentity(campaignDir: string, clone: Clone, entries: RegistryEntry[
     host: deps.hostname(),
     host_session: own?.host_session ?? null,
     manager_session: readCoordination(campaignDir).manager_session,
-    host_scoped: id.hostScoped,
     superseded: predecessors(campaignDir, clone, session, id.hostScoped, records, deps),
   };
 }
@@ -264,7 +267,6 @@ function heartbeat(campaignDir: string, clone: Clone, turn: number, hostSession:
     host,
     host_session: null,
     manager_session: null,
-    host_scoped: id.hostScoped,
     superseded: predecessors(campaignDir, clone, session, id.hostScoped, records, deps),
   };
   const own = records.find((r) => r.session === session);
@@ -285,10 +287,10 @@ function heartbeat(campaignDir: string, clone: Clone, turn: number, hostSession:
     claims: claimsOf(readOptionalJson(path.join(campaignDir, 'queue.json')) as QueueJson | null),
   };
   writeJsonAtomic(path.join(clone.registry, `${session}.json`), record);
-  // With a host id, the token file names this campaign dir's last session, for the next one's predecessor check.
-  if (id.hostScoped && readSessionToken(campaignDir) !== session) {
+  // A host-scoped session records itself as this campaign dir's last session, for the next one's predecessor check.
+  if (id.hostScoped && readSessionFile(campaignDir, LAST_SESSION_FILE) !== session) {
     fs.mkdirSync(path.join(campaignDir, '.tmp'), { recursive: true });
-    writeJsonAtomic(path.join(campaignDir, SESSION_TOKEN_FILE), { session });
+    writeJsonAtomic(path.join(campaignDir, LAST_SESSION_FILE), { session });
   }
   return `Heartbeat: session ${session}, turn ${turn}, ${record.claims.length} claim${record.claims.length === 1 ? '' : 's'}.`;
 }

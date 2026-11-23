@@ -40,22 +40,13 @@ export type PeerRecord = {
 /** One `*.json` file of the registry dir: its name, its text (null when it could not be read) and its mtime. */
 export type RegistryEntry = { file: string; text: string | null; mtimeMs: number };
 
-/**
- * Who "self" is. A record matching `session` or listed in `superseded` is self. Without a
- * host-scoped id (`host_scoped` false), a record from the same `worktree` on the same `host` is
- * self as well.
- */
+/** Who "self" is: a record matching `session` or listed in `superseded`. */
 export type SelfIdentity = {
   session: string;
   worktree: string;
   host: string;
   host_session: string | null;
   manager_session: string | null;
-  /**
-   * The session id comes from the host session, not from the campaign dir's shared token, so two
-   * sessions on one campaign dir differ and a same-worktree record is another session's.
-   */
-  host_scoped: boolean;
   /** Earlier sessions of this same campaign (`supersededSessions`), read as self, never as peers. */
   superseded: string[];
 };
@@ -149,34 +140,34 @@ export function parseRecord(text: string): PeerRecord | null {
   };
 }
 
-/**
- * True for this session's record or, when the id is the campaign dir's token (not host-scoped), an
- * older session's record left in this same worktree on this host.
- */
-export const isSelf = (r: PeerRecord, self: SelfIdentity): boolean =>
-  r.session === self.session ||
-  self.superseded.includes(r.session) ||
-  (!self.host_scoped && r.worktree === self.worktree && r.host === self.host);
+/** True for this session's record or an earlier session of this campaign (`supersededSessions`). */
+export const isSelf = (r: PeerRecord, self: SelfIdentity): boolean => r.session === self.session || self.superseded.includes(r.session);
 
-/** What `supersededSessions` knows about this host-scoped session. */
+/** What `supersededSessions` knows about this session. */
 export type SuccessorView = {
   session: string;
   worktree: string;
   host: string;
+  /**
+   * The id comes from the host session, not from the campaign dir's shared token, so two sessions
+   * on one campaign dir differ and a same-worktree record may be another live session's.
+   */
+  hostScoped: boolean;
   /** This session's host process id, or null when unknown. */
   pid: number | null;
-  /** The last session that heartbeated this campaign dir (`.tmp/campaign-session.json`), or null. */
-  marker: string | null;
+  /** Ids a host-scoped session's predecessor may carry: the campaign dir's last session and its legacy token. */
+  markers: string[];
   /** When this session's own record started, or null before its first heartbeat. */
   startedAtMs: number | null;
 };
 
 /**
  * The records in this worktree on this host that are this campaign's own earlier sessions (a
- * resume in a new session, `/clear`, `--fork-session` after the old one exited), not a peer.
- * With a recorded host pid: superseded when it is this same host process or that process is
- * gone. Without one: superseded when it is the campaign dir's last owner (`marker`) and did not
- * heartbeat after this session's first heartbeat. Anything else in this worktree is a live peer.
+ * resume in a new session, `/clear`, `--fork-session` after the old one exited, a lost token),
+ * not a peer. With a recorded host pid: superseded when it is this same host process or that
+ * process is gone, so a live host-scoped session is always a peer. Without one: for a token id,
+ * always (the campaign before its token was lost); for a host-scoped id, when it carries one of
+ * `markers` and did not heartbeat after this session's first heartbeat.
  */
 export function supersededSessions(records: PeerRecord[], me: SuccessorView, pidAlive: (pid: number) => boolean): string[] {
   return records
@@ -184,7 +175,7 @@ export function supersededSessions(records: PeerRecord[], me: SuccessorView, pid
     .filter((r) =>
       r.host_pid !== null
         ? r.host_pid === me.pid || !pidAlive(r.host_pid)
-        : r.session === me.marker && (me.startedAtMs === null || Date.parse(r.heartbeat_at) <= me.startedAtMs),
+        : !me.hostScoped || (me.markers.includes(r.session) && (me.startedAtMs === null || Date.parse(r.heartbeat_at) <= me.startedAtMs)),
     )
     .map((r) => r.session);
 }

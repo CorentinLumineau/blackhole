@@ -193,6 +193,24 @@ describe('peer-campaigns CLI', () => {
     expect(cli(['release', '--campaign-dir', campaign(wt1)], b, process.pid).code).toBe(0);
   });
 
+  test("a token-mode session never adopts a live host session's id, overwrites or releases its record", () => {
+    const a = 'aaaaaaaa-9999-4000-8000-000000000009';
+    const tokenFile = path.join(campaign(wt1), '.tmp', 'campaign-session.json');
+    fs.rmSync(tokenFile, { force: true });
+    expect(cli(['heartbeat', '--campaign-dir', campaign(wt1), '--turn', '2'], a, process.pid).code).toBe(0);
+    // A plain shell (no host session id) on the same campaign dir.
+    expect(cli(['heartbeat', '--campaign-dir', campaign(wt1), '--turn', '1']).code).toBe(0);
+    const token = JSON.parse(fs.readFileSync(tokenFile, 'utf-8')).session;
+    expect(token).not.toBe(a);
+    expect(registryFiles().sort()).toEqual([`${a}.json`, `${token}.json`].sort());
+    expect(JSON.parse(fs.readFileSync(path.join(registry, `${a}.json`), 'utf-8'))).toMatchObject({ turn: 2, host_pid: process.pid });
+    const peers = JSON.parse(cli(['detect', '--campaign-dir', campaign(wt1)]).stdout).peers.map((p: { session: string }) => p.session);
+    expect(peers).toEqual([a]);
+    expect(cli(['release', '--campaign-dir', campaign(wt1)]).code).toBe(0);
+    expect(registryFiles()).toEqual([`${a}.json`]);
+    expect(cli(['release', '--campaign-dir', campaign(wt1)], a, process.pid).code).toBe(0);
+  });
+
   test('an unusable host session id warns on stderr and falls back to the campaign-dir token', () => {
     const r = cli(['heartbeat', '--campaign-dir', campaign(wt1), '--turn', '1'], 'not a session id!');
     expect(r.code).toBe(0);
