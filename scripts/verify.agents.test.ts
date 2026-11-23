@@ -1,8 +1,12 @@
 import { describe, expect, test } from 'bun:test';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { parseFrontmatterFields } from './lib/build/content.ts';
 import {
   AGENT_FRONTMATTER_POLICY,
   AGENT_TOOL_POLICY_DENY_MATRIX,
+  checkAgentFrontmatter,
   runChecks,
   validateAgentEffortFrontmatter,
   validateAgentToolPolicyFrontmatter,
@@ -71,13 +75,32 @@ effort: low`);
     expect(errors.some((e) => e.includes('effort: low'))).toBe(true);
   });
 
-  test('fail: planner with stray effort is reported', () => {
+  test('fail: planner with the wrong effort is reported', () => {
     const errors = validateAgentEffortFrontmatter(
       'planner.md',
       parseFrontmatterFields('model: opus[1m]\neffort: high'),
       AGENT_FRONTMATTER_POLICY['planner.md']!,
     );
-    expect(errors.some((e) => e.includes('unexpected effort'))).toBe(true);
+    expect(errors.some((e) => e.includes('expected effort: medium'))).toBe(true);
+  });
+
+  test('every roster agent declares an effort (issue 1378)', () => {
+    for (const [file, policy] of Object.entries(AGENT_FRONTMATTER_POLICY)) {
+      expect([file, policy.effort]).toEqual([file, expect.stringMatching(/^(low|medium|high)$/)]);
+    }
+  });
+
+  test('fail: V-AGENT-01 fails an agents dir holding an agent with no policy row and no effort', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agents-fixture-'));
+    try {
+      fs.writeFileSync(path.join(dir, 'newagent.md'), '---\nname: newagent\ndescription: fixture\n---\nbody\n');
+      const result = checkAgentFrontmatter(dir);
+      expect(result.ok).toBe(false);
+      expect(result.detail).toContain('newagent.md: no row in agents.check.ts AGENT_FRONTMATTER_POLICY');
+      expect(result.detail).toContain('newagent.md: missing effort');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   test('pass: orchestrator pins both effort: low and model: opus[1m]', () => {
