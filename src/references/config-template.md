@@ -296,40 +296,47 @@ adds its row here, and a new panel bumps the template's `bh-template-version`
 `scripts/checks/status-coverage.check.ts`) on a block with no row, a dataset the plugin does not
 write or no template panel draws, a row the dataset does not emit, or `none` without a reason.
 
-| Block | Status page | Row | Reason |
-|-------|-------------|-----|--------|
-| `repo` | `links` | — | The quick links (open PRs, issues, CI runs) are built from it |
-| `target_branch` | none | — | The merge target; every PR card already links its PR on the forge |
-| `forge` | `links` | — | Picks the forge the quick links point at |
-| `parallel_max` | `config` | Concurrency | |
-| `scratchpad_dir` | none | — | Where worktrees live on this machine; nothing the owner acts on |
-| `size_label_prefix` | none | — | Label spelling the sync reads; sizes appear on no panel |
-| `default_touch_paths` | none | — | Per-issue plan scope; each plan carries its own |
-| `issue_labels` | none | — | Label put on issues the run files; the filed issues show on the board |
-| `scope_milestone` | `config` | Issue filter | |
-| `scope_labels` | `config` | Issue filter | |
-| `auto_sync` | none | — | Sync cadence; its result is the board itself and the `forge not checked` header |
-| `adaptive_routing` | none | — | Per-issue routing internals; the text dashboard's Routing section shows each route |
-| `router_confidence_thresholds` | none | — | Routing internals, as `adaptive_routing` |
-| `docs_governance` | `config` | Docs governance | |
-| `docs_governance.write_governance` | `run` | Doc carry | Artifacts promised vs staged vs carried; `off` when governance is off |
-| `kaizen` | `config` | Kaizen | |
-| `incident_mode` | `config` | Concurrency | |
-| `autonomy` | `config` | Autonomy | |
-| `worker_model_policy` | `config` | Workers | |
-| `worker_effort_policy` | `config` | Workers | |
-| `decisions` | `run` | Decisions | |
-| `sleep_mode` | `run` | Decisions | Retired: the row names it as ignored |
-| `entry_mode` | none | — | Session layout fixed at bootstrap; the Run route row names the pattern that runs |
-| `merge_mode` | `config` | Merge mode | |
-| `display_targets` | `config` | Verification | |
-| `merge_ready` | none | — | Read by the merge step's CI verdict only; the merge decision it feeds is already shown on the PR cards |
-| `status_page` | `streams` | — | Configures the page itself: its streams and links; `enabled: false` publishes no page |
-| `campaign_scope` | `scope` | — | |
-| `wave_scheduling` | none | — | How a wave is sharded; the board shows what is in flight |
-| `resource_policy` | `config` | Verification | The test-lock carve-out; the host pace line is on the `--html` Host section |
-| `usage_budget` | `budget` | Workers allowed, Weekly, Weekly target, Pace | Verdict, weekly %, target, pace against the target and reset |
-| `usage_budget.coordination` | `run` | Coordination | |
-| `catchup` | none | — | The pacing preset is shown on the launch summary's Pacing row; the budget panel keeps the verdict |
-| `stop_budget_cleared_at` | none | — | Audit timestamp of a past owner action |
-| `issue_484_disposition` | none | — | One campaign's historical pin; the parked issue shows on the board |
+The `Launch summary` column holds the same promise for the launch gate (`launch-gate.md` § The
+summary): each top-level block names every launch summary row whose `LAUNCH_ROW_CLAIMS`
+(`scripts/lib/campaign-status/launch-config-rows.ts`) cover it, or `Other config` when no row does;
+a sub-block may use `—`. `V-CONFIG-03` also fails on an empty cell, a label that is no launch
+summary row, a row that does not claim the block, `Other config` on a claimed block, or a claim the
+cell leaves out.
+
+| Block | Status page | Row | Reason | Launch summary |
+|-------|-------------|-----|--------|----------------|
+| `repo` | `links` | — | The quick links (open PRs, issues, CI runs) are built from it | Scope |
+| `target_branch` | none | — | The merge target; every PR card already links its PR on the forge | Other config |
+| `forge` | `links` | — | Picks the forge the quick links point at | Other config |
+| `parallel_max` | `config` | Concurrency | | Budget |
+| `scratchpad_dir` | none | — | Where worktrees live on this machine; nothing the owner acts on | Other config |
+| `size_label_prefix` | none | — | Label spelling the sync reads; sizes appear on no panel | Other config |
+| `default_touch_paths` | none | — | Per-issue plan scope; each plan carries its own | Other config |
+| `issue_labels` | none | — | Label put on issues the run files; the filed issues show on the board | Other config |
+| `scope_milestone` | `config` | Issue filter | | Scope |
+| `scope_labels` | `config` | Issue filter | | Scope |
+| `auto_sync` | none | — | Sync cadence; its result is the board itself and the `forge not checked` header | Other config |
+| `adaptive_routing` | none | — | Per-issue routing internals; the text dashboard's Routing section shows each route | Other config |
+| `router_confidence_thresholds` | none | — | Routing internals, as `adaptive_routing` | Other config |
+| `docs_governance` | `config` | Docs governance | | Kaizen and staging |
+| `docs_governance.write_governance` | `run` | Doc carry | Artifacts promised vs staged vs carried; `off` when governance is off | Kaizen and staging |
+| `kaizen` | `config` | Kaizen | | Kaizen and staging |
+| `incident_mode` | `config` | Concurrency | | Other config |
+| `autonomy` | `config` | Autonomy | | Autonomy |
+| `worker_model_policy` | `config` | Workers | | Other config |
+| `worker_effort_policy` | `config` | Workers | | Other config |
+| `decisions` | `run` | Decisions | | Decisions |
+| `sleep_mode` | `run` | Decisions | Retired: the row names it as ignored | Decisions |
+| `entry_mode` | none | — | Session layout fixed at bootstrap; the Run route row names the pattern that runs | Other config |
+| `merge_mode` | `config` | Merge mode | | Merge |
+| `display_targets` | `config` | Verification | | Other config |
+| `merge_ready` | none | — | Read by the merge step's CI verdict only; the merge decision it feeds is already shown on the PR cards | Other config |
+| `status_page` | `streams` | — | Configures the page itself: its streams and links; `enabled: false` publishes no page | Status page |
+| `campaign_scope` | `scope` | — | | Other config |
+| `wave_scheduling` | none | — | How a wave is sharded; the board shows what is in flight | Wave scheduling |
+| `resource_policy` | `config` | Verification | The test-lock carve-out; the host pace line is on the `--html` Host section | Resource policy |
+| `usage_budget` | `budget` | Workers allowed, Weekly, Weekly target, Pace | Verdict, weekly %, target, pace against the target and reset | Pacing, Peers |
+| `usage_budget.coordination` | `run` | Coordination | | Peers |
+| `catchup` | none | — | The pacing preset is shown on the launch summary's Pacing row; the budget panel keeps the verdict | Pacing |
+| `stop_budget_cleared_at` | none | — | Audit timestamp of a past owner action | Other config |
+| `issue_484_disposition` | none | — | One campaign's historical pin; the parked issue shows on the board | Other config |
