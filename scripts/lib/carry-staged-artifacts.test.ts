@@ -16,7 +16,7 @@ import {
   type Manifest,
 } from './carry-staged-artifacts.ts';
 import { isCarryTargetAllowed } from './carry-target-allowlist.ts';
-import { IndexFragmentShapeError, parseIndexTableRows } from './check-common.ts';
+import { IndexFragmentShapeError, UnclassifiableAdrFragmentError, parseIndexTableRows } from './check-common.ts';
 
 // Issue #715 (R-10) — mechanizes implementer.md § Carry Staged Artifacts' manifest shape guard,
 // target_kind dispatch, 9-row frontmatter rewrite, and append_row dedup for both discriminator
@@ -323,6 +323,112 @@ describe('append_row — fragment shape must match a blackhole header (issue #14
       } as Manifest;
       expect(() => carryManifest(manifest, repoRoot)).toThrow(IndexFragmentShapeError);
       expect(fs.readFileSync(indexAbs, 'utf-8')).toBe(bh);
+    });
+  });
+});
+
+describe('carryManifest — a refused append_row writes nothing (all-or-nothing, issue #1478)', () => {
+  const adrBody = '---\nstatus: accepted\n---\n# ADR-002 Two\n';
+  const designEntry = (staged_path: string, target_path: string, target_kind: 'new_file' | 'append_row') => ({
+    route: 'design',
+    sub_mode: null,
+    produced_by: 'planner',
+    declared_at: '2026-11-23T00:00:00.000Z',
+    staged_path,
+    target_path,
+    target_kind,
+  });
+
+  const carryBodyThenRow = (indexContent: string, rowFragment: string, expected: new (...args: never[]) => Error) => {
+    withTempDir('carry-atomic', (repoRoot) => {
+      const indexAbs = path.join(repoRoot, 'documentation/decisions/INDEX.md');
+      fs.mkdirSync(path.dirname(indexAbs), { recursive: true });
+      fs.writeFileSync(indexAbs, indexContent);
+      const stagedDir = '.blackhole/staged/1478';
+      fs.mkdirSync(path.join(repoRoot, stagedDir), { recursive: true });
+      fs.writeFileSync(path.join(repoRoot, stagedDir, 'ADR-002-two.md'), adrBody);
+      fs.writeFileSync(path.join(repoRoot, stagedDir, 'decisions-index-row.md'), `${rowFragment}\n`);
+      const manifest = {
+        issue: 1478,
+        updated_at: '2026-11-23T00:00:00.000Z',
+        entries: [
+          designEntry(`${stagedDir}/ADR-002-two.md`, 'documentation/decisions/ADR-002-two.md', 'new_file'),
+          designEntry(`${stagedDir}/decisions-index-row.md`, 'documentation/decisions/INDEX.md', 'append_row'),
+        ],
+      } as Manifest;
+      expect(() => carryManifest(manifest, repoRoot)).toThrow(expected);
+      expect(fs.existsSync(path.join(repoRoot, 'documentation/decisions/ADR-002-two.md'))).toBe(false);
+      expect(fs.readFileSync(indexAbs, 'utf-8')).toBe(indexContent);
+    });
+  };
+
+  test('a fragment refused by the blackhole-header shape check leaves the earlier new_file unwritten', () => {
+    const bh = '| path | summary | type | status | review_trigger |\n|---|---|---|---|---|\n';
+    carryBodyThenRow(bh, '| ADR-002 | Two | Accepted | 2026-11-23 |', IndexFragmentShapeError);
+  });
+
+  test('a fragment refused as unclassifiable by an ADR-header index leaves the earlier new_file unwritten', () => {
+    const adrIndex = '| ADR | Title | Status | Date |\n|---|---|---|---|\n';
+    carryBodyThenRow(adrIndex, '| ADR-002 | Two | accepted |', UnclassifiableAdrFragmentError);
+  });
+
+  test('a new_file whose summary would break the regenerated root index refuses before writing it', () => {
+    withTempDir('carry-atomic-index', (repoRoot) => {
+      const stagedDir = '.blackhole/staged/1478';
+      fs.mkdirSync(path.join(repoRoot, stagedDir), { recursive: true });
+      const doc = '---\ntype: reference\nsummary: "a\\nb"\nstatus: current\nreview_trigger: "on file change"\n---\n# Doc\n';
+      fs.writeFileSync(path.join(repoRoot, stagedDir, 'doc.md'), doc);
+      const manifest = {
+        issue: 1478,
+        updated_at: '2026-11-23T00:00:00.000Z',
+        entries: [designEntry(`${stagedDir}/doc.md`, 'documentation/reference/doc.md', 'new_file')],
+      } as Manifest;
+      expect(() => carryManifest(manifest, repoRoot)).toThrow(/summary.*embedded newline/);
+      expect(fs.existsSync(path.join(repoRoot, 'documentation/reference/doc.md'))).toBe(false);
+      expect(fs.existsSync(path.join(repoRoot, 'documentation/INDEX.md'))).toBe(false);
+    });
+  });
+
+  test('a new_file followed by an entry whose staged_path is absent writes nothing', () => {
+    withTempDir('carry-atomic-missing', (repoRoot) => {
+      const stagedDir = '.blackhole/staged/1478';
+      fs.mkdirSync(path.join(repoRoot, stagedDir), { recursive: true });
+      fs.writeFileSync(path.join(repoRoot, stagedDir, 'ADR-002-two.md'), adrBody);
+      const manifest = {
+        issue: 1478,
+        updated_at: '2026-11-23T00:00:00.000Z',
+        entries: [
+          designEntry(`${stagedDir}/ADR-002-two.md`, 'documentation/decisions/ADR-002-two.md', 'new_file'),
+          designEntry(`${stagedDir}/missing.md`, 'documentation/decisions/INDEX.md', 'append_row'),
+        ],
+      } as Manifest;
+      expect(() => carryManifest(manifest, repoRoot)).toThrow(/not found under stagingRoot/);
+      expect(fs.existsSync(path.join(repoRoot, 'documentation/decisions/ADR-002-two.md'))).toBe(false);
+    });
+  });
+
+  test('two append_row entries into the same index both land, the second applied on top of the first', () => {
+    withTempDir('carry-atomic-chain', (repoRoot) => {
+      const bh = '| path | summary | type | status | review_trigger |\n|---|---|---|---|---|\n';
+      const indexAbs = path.join(repoRoot, 'documentation/decisions/INDEX.md');
+      fs.mkdirSync(path.dirname(indexAbs), { recursive: true });
+      fs.writeFileSync(indexAbs, bh);
+      const stagedDir = '.blackhole/staged/1478';
+      fs.mkdirSync(path.join(repoRoot, stagedDir), { recursive: true });
+      const rowA = '| ADR-002-two.md | Two | adr | accepted | on protocol change |';
+      const rowB = '| ADR-003-three.md | Three | adr | accepted | on protocol change |';
+      fs.writeFileSync(path.join(repoRoot, stagedDir, 'a.md'), `${rowA}\n`);
+      fs.writeFileSync(path.join(repoRoot, stagedDir, 'b.md'), `${rowB}\n`);
+      const manifest = {
+        issue: 1478,
+        updated_at: '2026-11-23T00:00:00.000Z',
+        entries: [
+          designEntry(`${stagedDir}/a.md`, 'documentation/decisions/INDEX.md', 'append_row'),
+          designEntry(`${stagedDir}/b.md`, 'documentation/decisions/INDEX.md', 'append_row'),
+        ],
+      } as Manifest;
+      carryManifest(manifest, repoRoot);
+      expect(fs.readFileSync(indexAbs, 'utf-8')).toBe(`${bh}${rowA}\n${rowB}\n`);
     });
   });
 });

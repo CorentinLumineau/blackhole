@@ -447,7 +447,10 @@ this section states only what the script does not decide.
     `staged_path` missing under `--staging-root` also exits 1 — the message names both roots and
     the entry index, never a bare ENOENT — fails loudly instead of the pre-#760 silent-`[]` bug
     when a relative manifest path happened to resolve against the wrong cwd; log it the same way
-    as the zero-byte case above.
+    as the zero-byte case above. A staged `decisions-index-row.md` must match the target index
+    header's column count (blackhole header) or one of its two recognised row shapes (ADR-style
+    header), or the carry refuses it and exits 1 too; every entry is checked before any file is written,
+    so a refusal leaves the worktree untouched (issue #1478) — fix the fragment and re-run.
 *   **What the script dispatches** (ported verbatim from this section's pre-#715 prose, not
     restated here): `new_file` entries copy verbatim except an investigator analyze/investigate
     note, which gets the 9-row frontmatter rewrite (working-note schema → `doc-governance.md`

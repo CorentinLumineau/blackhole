@@ -1,11 +1,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { appendAdrIndexRowIfAbsent, appendIndexRowIfAbsent, assertIndexFragmentShape, isAdrIndexHeader, parseIndexTableRows, type RootIndexRow } from './check-common.ts';
+import { appendAdrIndexRowIfAbsent, appendIndexRowIfAbsent, assertIndexFragmentShape, isAdrIndexHeader, parseIndexTableRows, renderIndexRowLine, type RootIndexRow } from './check-common.ts';
 import { parseFrontmatterFields, parseMdFrontmatter } from './build/content.ts';
 import { readJsonFile } from './fs.ts';
 import { fencedLineMask, markdownHeadings, openFenceAtEnd, sectionEnd, type MarkdownHeading } from './markdown-headings.ts';
 import { isCarryTargetAllowed } from './carry-target-allowlist.ts';
-import { ROOT_DOC_INDEX_PATH, isRegenerableRootIndex, renderRootIndexFile } from './doc-index-generate.ts';
+import { ROOT_DOC_INDEX_PATH, isRegenerableRootIndex, renderRootIndexFile, rootIndexRowFor } from './doc-index-generate.ts';
 
 // Mechanizes the mechanical two-thirds of `implementer.md` § Carry Staged Artifacts: the
 // manifest shape guard, `target_kind` dispatch, the 9-row frontmatter rewrite mapping
@@ -323,6 +323,13 @@ const writeCarryTarget = (
  * in the worktree checked out for the PR. `opts.stagingRoot` (default `repoRoot`, matching the
  * existing `opts.today` optional-parameter shape) resolves `staged_path` only — `target_path`
  * always resolves against `repoRoot`, since that is where the PR branch lives.
+ *
+ * All-or-nothing on a refusal: every entry's content is computed before any target is written,
+ * so a throw (an absent staged_path, an `IndexFragmentShapeError`, an
+ * `UnclassifiableAdrFragmentError`) leaves the PR worktree exactly as it was rather than holding
+ * an ADR body without its index row. Entries that append to the same target chain in memory, each
+ * applied on top of the previous one's result. A write failure in the second pass stays
+ * entry-scoped, as below.
  */
 export const carryManifest = (
   manifest: Manifest,
@@ -339,6 +346,8 @@ export const carryManifest = (
   // the trigger to auto-regenerate documentation/INDEX.md once, after the loop, instead of the
   // retired per-entry `append_row` staging convention.
   let regenerateRootIndex = false;
+  const planned: { index: number; entry: ValidEntry; targetAbs: string }[] = [];
+  const pendingContent = new Map<string, string>();
 
   for (const entry of valid) {
     const index = entries.indexOf(entry);
@@ -384,20 +393,14 @@ export const carryManifest = (
     if (entry.target_kind === 'new_file') {
       const raw = fs.readFileSync(stagedAbs, 'utf-8');
       const content = decideCopyMode(entry) === 'rewrite' ? rewriteInvestigatorFrontmatter(raw, entry, today) : raw;
-      // Write-step FS errors (issue #784 AC2/AC3) are entry-scoped, not invocation-scoped — a
-      // worktree-shaped `.git` (ENOTDIR) or any other write failure skips this one entry instead
-      // of throwing and denying the rest of the manifest. Distinct from the "declared staged_path
-      // absent" throw above, which stays fatal — it signals a broken invocation, not adversarial
-      // entry content.
-      const written = writeCarryTarget(targetAbs, content);
-      if (written.ok) {
-        carriedPaths.push(entry.target_path);
-        if (entry.target_path.startsWith('documentation/') && !entry.target_path.startsWith('documentation/decisions/')) {
-          regenerateRootIndex = true;
-        }
-      } else {
-        skipped.push({ index, reason: `write failed for target_path "${entry.target_path}": ${written.message}` });
+      // The root index is regenerated after the writes, so a frontmatter value it cannot render
+      // (an embedded newline in `summary`, say) must refuse here, before anything is on disk.
+      if (entry.target_path.startsWith('documentation/')) {
+        const row = rootIndexRowFor(entry.target_path.slice('documentation/'.length), content);
+        if (row) renderIndexRowLine(row);
       }
+      planned.push({ index, entry, targetAbs });
+      pendingContent.set(targetAbs, content);
       continue;
     }
 
@@ -414,18 +417,42 @@ export const carryManifest = (
     }
 
     const fragment = fs.readFileSync(stagedAbs, 'utf-8').trim();
-    const existing = fs.existsSync(targetAbs) ? fs.readFileSync(targetAbs, 'utf-8') : '';
+    const existing =
+      pendingContent.get(targetAbs) ?? (fs.existsSync(targetAbs) ? fs.readFileSync(targetAbs, 'utf-8') : '');
     const result =
       entry.target_path === 'ARCHITECTURE.md'
         ? appendConstraintBulletIfAbsent(existing, fragment)
         : appendPipeTableRowIfAbsent(existing, fragment, { today });
     if (result.appended) {
-      const written = writeCarryTarget(targetAbs, result.content);
-      if (written.ok) {
-        carriedPaths.push(entry.target_path);
-      } else {
-        skipped.push({ index, reason: `write failed for target_path "${entry.target_path}": ${written.message}` });
-      }
+      planned.push({ index, entry, targetAbs });
+      pendingContent.set(targetAbs, result.content);
+    }
+  }
+
+  // Write-step FS errors (issue #784 AC2/AC3) are entry-scoped, not invocation-scoped — a
+  // worktree-shaped `.git` (ENOTDIR) or any other write failure skips this one entry instead of
+  // throwing and denying the rest of the manifest. Distinct from the throws in the planning pass
+  // above, which stay fatal and fire before anything is written.
+  // Each target is written once, with its final content; a later entry on the same target shares
+  // that one write's outcome.
+  const writeOutcomes = new Map<string, ReturnType<typeof writeCarryTarget>>();
+  for (const { index, entry, targetAbs } of planned) {
+    let written = writeOutcomes.get(targetAbs);
+    if (!written) {
+      written = writeCarryTarget(targetAbs, pendingContent.get(targetAbs) ?? '');
+      writeOutcomes.set(targetAbs, written);
+    }
+    if (!written.ok) {
+      skipped.push({ index, reason: `write failed for target_path "${entry.target_path}": ${written.message}` });
+      continue;
+    }
+    carriedPaths.push(entry.target_path);
+    if (
+      entry.target_kind === 'new_file' &&
+      entry.target_path.startsWith('documentation/') &&
+      !entry.target_path.startsWith('documentation/decisions/')
+    ) {
+      regenerateRootIndex = true;
     }
   }
 
