@@ -3,6 +3,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {
   appendAdrIndexRowIfAbsent,
+  splitUnescapedPipes,
+  UnclassifiableAdrFragmentError,
   appendIndexRowIfAbsent,
   assertNoEmbeddedNewline,
   byPathByteOrder,
@@ -608,6 +610,33 @@ describe('isAdrIndexHeader / appendAdrIndexRowIfAbsent (issue #1390)', () => {
   test('unclassifiable fragment throws and appends nothing', () => {
     expect(() => appendAdrIndexRowIfAbsent(mercure, '| nonsense | Four | x | y |', { today })).toThrow(/did not parse as a table row/);
     expect(() => appendAdrIndexRowIfAbsent(mercure, 'not a row', { today })).toThrow(/did not parse as a table row/);
+  });
+
+  test('escaped pipe in the title stays inside the title cell, columns not shifted', () => {
+    const r = appendAdrIndexRowIfAbsent(mercure, '| ADR-005-x.md | A \\| B | adr | accepted | never |', { today });
+    expect(r.content.split('\n')).toContain('| [ADR-005](./ADR-005-x.md) | A \\| B | Accepted | 2026-11-23 |');
+  });
+
+  test('fragment fitting neither shape is refused with a named error', () => {
+    const shapes = [
+      '| ADR-005-x.md | Five | adr | accepted |',
+      '| ADR-005-x.md | A | B | adr | accepted | never |',
+      '| ADR-005 | Five | accepted |',
+    ];
+    for (const frag of shapes) {
+      let caught: unknown;
+      try {
+        appendAdrIndexRowIfAbsent(mercure, frag, { today });
+      } catch (e) {
+        caught = e;
+      }
+      expect(caught).toBeInstanceOf(UnclassifiableAdrFragmentError);
+      expect((caught as Error).name).toBe('UnclassifiableAdrFragmentError');
+    }
+  });
+
+  test('splitUnescapedPipes keeps backslash-escaped pipes in their cell', () => {
+    expect(splitUnescapedPipes('| a \\| b | c |')).toEqual(['', ' a \\| b ', ' c ', '']);
   });
 
   test('embedded newline in a rendered cell is rejected', () => {
