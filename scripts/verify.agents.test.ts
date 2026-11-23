@@ -71,13 +71,31 @@ effort: low`);
     expect(errors.some((e) => e.includes('effort: low'))).toBe(true);
   });
 
-  test('fail: planner with stray effort is reported', () => {
+  test('fail: planner with the wrong effort is reported', () => {
     const errors = validateAgentEffortFrontmatter(
       'planner.md',
       parseFrontmatterFields('model: opus[1m]\neffort: high'),
       AGENT_FRONTMATTER_POLICY['planner.md']!,
     );
-    expect(errors.some((e) => e.includes('unexpected effort'))).toBe(true);
+    expect(errors.some((e) => e.includes('expected effort: medium'))).toBe(true);
+  });
+
+  test('every roster agent declares an effort (issue 1378)', () => {
+    for (const [file, policy] of Object.entries(AGENT_FRONTMATTER_POLICY)) {
+      expect([file, policy.effort]).toEqual([file, expect.stringMatching(/^(low|medium|high)$/)]);
+    }
+  });
+
+  test('implementer, planner and investigator run at effort: medium', () => {
+    for (const f of ['implementer.md', 'planner.md', 'investigator.md']) {
+      expect(AGENT_FRONTMATTER_POLICY[f]!.effort).toBe('medium');
+    }
+  });
+
+  test('fail: a new agent with no policy row and no effort is reported', () => {
+    const errors = validateAgentEffortFrontmatter('newagent.md', parseFrontmatterFields('name: newagent'), undefined);
+    expect(errors.some((e) => e.includes('no AGENT_FRONTMATTER_POLICY row'))).toBe(true);
+    expect(errors.some((e) => e.includes('missing effort'))).toBe(true);
   });
 
   test('pass: orchestrator pins both effort: low and model: opus[1m]', () => {
