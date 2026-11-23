@@ -32,7 +32,25 @@ describe('listRuntimeScriptEntrypoints', () => {
   });
 });
 
+describe('listRuntimeScriptEntrypoints (bash .sh form)', () => {
+  test('finds bash scripts/x.sh calls and ignores bare citations and consumer-owned scripts', () => {
+    withTempDir('runtime-entry-sh', (dir) => {
+      fs.writeFileSync(
+        path.join(dir, 'a.md'),
+        'Run `bash scripts/detect-doc-schema.sh index documentation/INDEX.md`, then `bash scripts/detect-frontend.sh`. ' +
+          'Cited only: `scripts/detect-monorepo.sh`. Consumer-owned: `./scripts/setup.sh`.',
+      );
+      expect(listRuntimeScriptEntrypoints(dir)).toEqual(['scripts/detect-doc-schema.sh', 'scripts/detect-frontend.sh']);
+    });
+  });
+});
+
 describe('runtimeScriptClosure', () => {
+  test('ships a .sh entry as-is without an import scan, and still throws on a missing one', () => {
+    expect(runtimeScriptClosure(['scripts/detect-doc-schema.sh'])).toEqual(['scripts/detect-doc-schema.sh']);
+    expect(() => runtimeScriptClosure(['scripts/no-such-script.sh'])).toThrow(/does not exist/);
+  });
+
   test('follows relative imports, including extensionless ones', () => {
     const closure = runtimeScriptClosure(['scripts/campaign-resume-signal.ts']);
     expect(closure).toContain('scripts/campaign-resume-signal.ts');
@@ -81,6 +99,17 @@ describe('rewriteScriptInvocations', () => {
     });
   });
 
+  test('rewrites a bash scripts/x.sh call to the plugin root, idempotently', () => {
+    const rewritten = 'bash "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/detect-doc-schema.sh index x';
+    expect(rewriteScriptInvocations('bash scripts/detect-doc-schema.sh index x')).toBe(rewritten);
+    expect(rewriteScriptInvocations(rewritten)).toBe(rewritten);
+  });
+
+  test('leaves a bare citation and a consumer-owned ./scripts/ call untouched', () => {
+    const prose = 'see `scripts/detect-monorepo.sh`; run ./scripts/setup.sh';
+    expect(rewriteScriptInvocations(prose)).toBe(prose);
+  });
+
   test('is idempotent on an already rewritten invocation', () => {
     const once = rewriteScriptInvocations('bun run --cwd <r> scripts/c.ts; bun scripts/a.ts');
     expect(rewriteScriptInvocations(once)).toBe(once);
@@ -95,6 +124,17 @@ describe('claudePluginRuntimeErrors (unrewritten invocations)', () => {
       fs.writeFileSync(path.join(dir, 'x.md'), 'bun run --cwd <r> scripts/plan-quality-gate.ts');
       expect(unrewrittenInvocationErrors(dir)).toEqual(['Claude bundle: x.md:1 runs repo-relative scripts/plan-quality-gate.ts']);
       fs.writeFileSync(path.join(dir, 'x.md'), rewriteScriptInvocations('bun run --cwd <r> scripts/plan-quality-gate.ts'));
+      expect(unrewrittenInvocationErrors(dir)).toEqual([]);
+    });
+  });
+});
+
+describe('unrewrittenInvocationErrors (bash .sh form)', () => {
+  test('flags a repo-relative bash scripts/x.sh call, and is empty after the rewrite', () => {
+    withTempDir('runtime-errors-sh', (dir) => {
+      fs.writeFileSync(path.join(dir, 'x.md'), 'bash scripts/x.sh');
+      expect(unrewrittenInvocationErrors(dir)).toEqual(['Claude bundle: x.md:1 runs repo-relative scripts/x.sh']);
+      fs.writeFileSync(path.join(dir, 'x.md'), rewriteScriptInvocations('bash scripts/x.sh'));
       expect(unrewrittenInvocationErrors(dir)).toEqual([]);
     });
   });
@@ -118,6 +158,40 @@ describe('finalized Claude bundle', () => {
       expect(skill).toContain(PLUGIN_ROOT_NOTE);
       const agent = fs.readFileSync(path.join(destRoot, 'agents', 'router.md'), 'utf-8');
       expect(agent).toContain('${CLAUDE_PLUGIN_ROOT}/rules/blackhole-vcodes.md');
+    });
+  });
+
+  test('ships the detector shell scripts byte-identical and anchors the planner call, runnable from a consumer cwd', () => {
+    withTempDir('runtime-bundle-sh', (destRoot) => {
+      populateClaudeFixtureTree(destRoot);
+      for (const name of ['detect-doc-schema.sh', 'detect-frontend.sh']) {
+        const shipped = path.join(destRoot, 'scripts', name);
+        expect(fs.readFileSync(shipped).equals(fs.readFileSync(path.join(root, 'scripts', name)))).toBe(true);
+        expect(fs.statSync(shipped).mode & 0o111).not.toBe(0);
+      }
+      const planner = fs.readFileSync(path.join(destRoot, 'agents', 'planner.md'), 'utf-8');
+      expect(planner).toContain('bash "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/detect-doc-schema.sh index documentation/INDEX.md');
+      expect(claudePluginRuntimeErrors(destRoot)).toEqual([]);
+
+      withTempDir('runtime-consumer', (consumer) => {
+        fs.mkdirSync(path.join(consumer, 'documentation'));
+        fs.writeFileSync(
+          path.join(consumer, 'documentation', 'INDEX.md'),
+          '| path | summary | type | status | review_trigger |\n|------|---------|------|--------|----------------|\n',
+        );
+        const cmd = rewriteScriptInvocations('bash scripts/detect-doc-schema.sh index documentation/INDEX.md');
+        const r = Bun.spawnSync(['bash', '-c', cmd], {
+          cwd: consumer,
+          env: { ...process.env, BLACKHOLE_PLUGIN_ROOT: destRoot },
+          stdout: 'pipe',
+          stderr: 'pipe',
+        });
+        expect(r.exitCode).toBe(0);
+        expect(r.stdout.toString().trim()).toBe('schema=blackhole');
+      });
+
+      fs.rmSync(path.join(destRoot, 'scripts', 'detect-doc-schema.sh'));
+      expect(claudePluginRuntimeErrors(destRoot).some((e) => e.includes('missing runtime script scripts/detect-doc-schema.sh'))).toBe(true);
     });
   });
 

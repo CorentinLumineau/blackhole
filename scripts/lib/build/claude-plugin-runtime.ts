@@ -39,14 +39,18 @@ export const PLUGIN_ROOT_NOTE =
 // the script path moves to the plugin root, which under self-hosting falls back to `.`, i.e. the
 // pinned tree itself. `<dir>` takes the same shapes cwd-pin-guard.check.ts accepts.
 const INVOCATION_RE = /\bbun(\s+run(?:\s+--cwd\s+(?:<[^>]*>|`[^`]*`|"[^"]*"|\S+))?)?\s+scripts\/([\w./-]+\.ts)/g;
+// `bash scripts/x.sh`: the shell-script form of the same invocation. Only this exact form counts, so
+// a bare citation of a script and a consumer-owned `./scripts/setup.sh` are never shipped or rewritten.
+const SHELL_INVOCATION_RE = /\bbash(\s+)scripts\/([\w./-]+\.sh)\b/g;
 const RELATIVE_IMPORT_RE = /(?:\bfrom|\bimport)\s*\(?\s*['"](\.{1,2}\/[^'"]+)['"]/g;
 
-/** Repo-relative script paths that compiled prose tells an agent to run with bun. */
+/** Repo-relative script paths that compiled prose tells an agent to run with bun or bash. */
 export const listRuntimeScriptEntrypoints = (sourceRoot: string = srcDir): string[] => {
   const found = new Set<string>();
   for (const file of walkFilesAbs(sourceRoot)) {
     if (!file.endsWith('.md')) continue;
-    for (const match of fs.readFileSync(file, 'utf-8').matchAll(INVOCATION_RE)) {
+    const text = fs.readFileSync(file, 'utf-8');
+    for (const match of [...text.matchAll(INVOCATION_RE), ...text.matchAll(SHELL_INVOCATION_RE)]) {
       found.add(`scripts/${match[2]}`);
     }
   }
@@ -74,6 +78,7 @@ export const runtimeScriptClosure = (entrypoints: string[], repoRoot: string = r
     const file = queue.pop() as string;
     if (seen.has(file)) continue;
     seen.add(file);
+    if (!file.endsWith('.ts')) continue;
     for (const match of fs.readFileSync(file, 'utf-8').matchAll(RELATIVE_IMPORT_RE)) {
       const target = resolveImport(file, match[1]);
       if (target) queue.push(target);
@@ -82,10 +87,12 @@ export const runtimeScriptClosure = (entrypoints: string[], repoRoot: string = r
   return [...seen].map((abs) => path.relative(repoRoot, abs).split(path.sep).join('/')).sort();
 };
 
-/** Points every `bun [run [--cwd <dir>]] scripts/…` invocation at the plugin root. */
+/** Points every `bun [run [--cwd <dir>]] scripts/…` and `bash scripts/….sh` invocation at the plugin root. */
 export const rewriteScriptInvocations = (content: string): string =>
-  content.replace(INVOCATION_RE, (_m, run: string | undefined, rel: string) =>
-    `bun${run ?? ''} ${PLUGIN_ROOT_SHELL_EXPR}/scripts/${rel}`);
+  content
+    .replace(INVOCATION_RE, (_m, run: string | undefined, rel: string) =>
+      `bun${run ?? ''} ${PLUGIN_ROOT_SHELL_EXPR}/scripts/${rel}`)
+    .replace(SHELL_INVOCATION_RE, (_m, _ws: string, rel: string) => `bash ${PLUGIN_ROOT_SHELL_EXPR}/scripts/${rel}`);
 
 /** Compiled markdown lines that still run a repo-relative `scripts/…` path after the rewrite,
  * which a plugin-only install cannot resolve. */
@@ -94,7 +101,7 @@ export const unrewrittenInvocationErrors = (destRoot: string): string[] => {
   for (const file of walkFilesAbs(destRoot)) {
     if (!file.endsWith('.md')) continue;
     fs.readFileSync(file, 'utf-8').split('\n').forEach((line, i) => {
-      for (const match of line.matchAll(INVOCATION_RE)) {
+      for (const match of [...line.matchAll(INVOCATION_RE), ...line.matchAll(SHELL_INVOCATION_RE)]) {
         errors.push(`Claude bundle: ${path.relative(destRoot, file)}:${i + 1} runs repo-relative scripts/${match[2]}`);
       }
     });
