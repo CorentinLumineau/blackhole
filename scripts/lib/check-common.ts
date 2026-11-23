@@ -149,13 +149,15 @@ export const expandVcodeTableKey = (key: string): string[] => {
 // column's *interpretation* is not (folder-prefixed vs. bare filename) and stays with each
 // caller. Header/separator rows are skipped by the generic 'path' header value and the
 // dash-only separator pattern — both live INDEX.md files use the literal 'path' header cell.
+// Cells split on unescaped pipes only and come back unescaped, so a value renderIndexRowLine
+// wrote with an escaped `|` reads back to the value it was given.
 export const parseIndexTableRows = (
   content: string,
 ): { path: string; summary: string; type: string; status: string; reviewTrigger: string }[] => {
   const rows: { path: string; summary: string; type: string; status: string; reviewTrigger: string }[] = [];
   for (const line of content.split('\n')) {
     if (!line.trim().startsWith('|')) continue;
-    const cells = line.split('|').map((c) => c.trim());
+    const cells = splitUnescapedPipes(line).map((c) => unescapeTableCell(c.trim()));
     if (cells.length < 6) continue;
     const p = cells[1];
     if (!p || p.toLowerCase() === 'path' || /^:?-+:?$/.test(p)) continue;
@@ -195,13 +197,17 @@ export const assertNoEmbeddedNewline = (value: string, id: number | string, fiel
 // built — covers both of appendIndexRowIfAbsent's write branches below and
 // doc-index-generate.ts's direct calls, since every one of them renders through this one
 // function.
+//
+// Every cell goes through escapeTableCell, so a `|` in a frontmatter value stays inside its cell
+// and parseIndexTableRows reads it back unchanged.
 export const renderIndexRowLine = (row: RootIndexRow): string => {
   assertNoEmbeddedNewline(row.path, row.path, 'path');
   assertNoEmbeddedNewline(row.summary, row.path, 'summary');
   assertNoEmbeddedNewline(row.type, row.path, 'type');
   assertNoEmbeddedNewline(row.status, row.path, 'status');
   assertNoEmbeddedNewline(row.reviewTrigger, row.path, 'reviewTrigger');
-  return `| ${row.path} | ${row.summary} | ${row.type} | ${row.status} | ${row.reviewTrigger} |`;
+  const cells = [row.path, row.summary, row.type, row.status, row.reviewTrigger].map(escapeTableCell);
+  return `| ${cells.join(' | ')} |`;
 };
 
 // Byte-order (UTF-16 code-unit) comparator, deliberately not String.prototype.localeCompare —
@@ -316,9 +322,35 @@ const insertRowSorted = (
   return [...lines.slice(0, separatorIdx + 1), ...sortedLines, ...lines.slice(blockEnd)].join('\n');
 };
 
-// Splits a GFM table line on its cell delimiters only: a backslash-escaped `\|` is cell content,
-// not a delimiter, and stays in its cell verbatim.
-export const splitUnescapedPipes = (line: string): string[] => line.split(/(?<!\\)\|/);
+// Splits a GFM table line on its cell delimiters only: a pipe preceded by an odd run of
+// backslashes is escaped cell content and stays in its cell verbatim; after an even run (`\\|`,
+// an escaped backslash) it is a real delimiter.
+export const splitUnescapedPipes = (line: string): string[] => {
+  const cells: string[] = [];
+  let start = 0;
+  let backslashes = 0;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '|' && backslashes % 2 === 0) {
+      cells.push(line.slice(start, i));
+      start = i + 1;
+    }
+    backslashes = ch === '\\' ? backslashes + 1 : 0;
+  }
+  cells.push(line.slice(start));
+  return cells;
+};
+
+// Escapes a cell value for a GFM pipe-table row: each `|` becomes `\|`, and the backslashes
+// directly before it are doubled so they cannot pair up with the escape. Other backslashes are
+// left alone, so a value with no pipe renders exactly as before.
+export const escapeTableCell = (value: string): string =>
+  value.replace(/(\\*)\|/g, (_m, bs: string) => `${bs}${bs}\\|`);
+
+// Inverse of escapeTableCell, for a cell already split by splitUnescapedPipes (every pipe left in
+// it is preceded by an odd run of backslashes).
+export const unescapeTableCell = (cell: string): string =>
+  cell.replace(/(\\+)\|/g, (_m, bs: string) => `${'\\'.repeat((bs.length - 1) / 2)}|`);
 
 const splitRowCells = (line: string): string[] => {
   const cells = splitUnescapedPipes(line).map((c) => c.trim());

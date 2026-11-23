@@ -260,6 +260,14 @@ describe('append_row — ADR-schema decisions index (issue #1390)', () => {
     expect(second.content).toBe(first.content);
   });
 
+  test('blackhole header keeps an escaped pipe in a carried fragment escaped', () => {
+    const bh = '| path | summary | type | status | review_trigger |\n|---|---|---|---|---|\n';
+    const piped = '| ADR-003-x.md | A \\| B | adr | accepted | on protocol change |';
+    const out = appendPipeTableRowIfAbsent(bh, piped).content;
+    expect(out).toBe(`${bh}${piped}\n`);
+    expect(out).not.toContain('A \\ | B');
+  });
+
   test('blackhole header keeps the 5-column render when today is supplied', () => {
     const bh = '| path | summary | type | status | review_trigger |\n|---|---|---|---|---|\n';
     expect(appendPipeTableRowIfAbsent(bh, fragment, { today: '2026-11-23' }).content).toBe(`${bh}${fragment}\n`);

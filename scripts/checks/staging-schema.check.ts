@@ -8,8 +8,9 @@ import { readComposedAgentDoc, splitUnescapedPipes } from '../lib/check-common.t
 // `planner`/`investigator` producer prompts' literal `field: value` declarations (V-STAGE-02).
 //
 // Local table parser (not `check-common.ts`'s `parseIndexTableRows`/`parseVcodeTableRows`):
-// neither shared parser fits — both split naively on `line.split('|')`, which would shred this
-// table's Values-column escaped pipes (`` \| ``, separating enum alternatives) into extra cells.
+// neither shared parser fits — `parseVcodeTableRows` splits naively on `line.split('|')`, which
+// would shred this table's Values-column escaped pipes (`` \| ``, separating enum alternatives)
+// into extra cells, and `parseIndexTableRows` reads the fixed INDEX.md 5-column schema.
 // This parser splits with the shared `splitUnescapedPipes` (a pipe *not* preceded by a
 // backslash) instead; the row logic stays local because it reads one specific doc table.
 

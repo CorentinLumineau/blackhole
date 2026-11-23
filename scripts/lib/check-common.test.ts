@@ -444,6 +444,20 @@ describe('renderIndexRowLine (exported)', () => {
     const header = '| path | summary | type | status | review_trigger |\n|------|---------|------|--------|----------------|\n';
     expect(parseIndexTableRows(`${header}${line}\n`)).toEqual([row]);
   });
+
+  test('a pipe in any cell is escaped and parses back to the same values', () => {
+    const row = { path: 'audits/foo.md', summary: 'A | B', type: 'audit', status: 'current', reviewTrigger: 'on x | y' };
+    const line = renderIndexRowLine(row);
+    expect(line).toBe('| audits/foo.md | A \\| B | audit | current | on x \\| y |');
+    const header = '| path | summary | type | status | review_trigger |\n|------|---------|------|--------|----------------|\n';
+    expect(parseIndexTableRows(`${header}${line}\n`)).toEqual([row]);
+  });
+
+  test('a backslash right before a pipe round-trips too', () => {
+    const row = { path: 'audits/foo.md', summary: 'C:\\|D and \\\\|E', type: 'audit', status: 'current', reviewTrigger: 'ends \\' };
+    const header = '| path | summary | type | status | review_trigger |\n|------|---------|------|--------|----------------|\n';
+    expect(parseIndexTableRows(`${header}${renderIndexRowLine(row)}\n`)).toEqual([row]);
+  });
 });
 
 // See renderIndexRowLine's and assertNoEmbeddedNewline's definition-site comments
@@ -637,6 +651,15 @@ describe('isAdrIndexHeader / appendAdrIndexRowIfAbsent (issue #1390)', () => {
 
   test('splitUnescapedPipes keeps backslash-escaped pipes in their cell', () => {
     expect(splitUnescapedPipes('| a \\| b | c |')).toEqual(['', ' a \\| b ', ' c ', '']);
+  });
+
+  test('splitUnescapedPipes treats a pipe after an escaped backslash as a delimiter', () => {
+    expect(splitUnescapedPipes('| ADR-005-x.md | ends \\\\| adr |')).toEqual(['', ' ADR-005-x.md ', ' ends \\\\', ' adr ', '']);
+  });
+
+  test('a fragment whose title ends in an escaped backslash keeps its 5-cell shape', () => {
+    const out = appendAdrIndexRowIfAbsent(mercure, '| ADR-005-x.md | ends \\\\| adr | accepted | never |', { today });
+    expect(out.content).toContain('| [ADR-005](./ADR-005-x.md) | ends \\\\ | Accepted | 2026-11-23 |');
   });
 
   test('embedded newline in a rendered cell is rejected', () => {
