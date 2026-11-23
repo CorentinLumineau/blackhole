@@ -43,7 +43,7 @@ $$\text{Priority} = \text{Gain} \times (11 - \text{Effort})$$
 
 | Priority | Orchestrator action |
 |----------|---------------------|
-| ≥ 30 | File GitHub issue (`gh issue create` + `$(bun scripts/forge-scope.ts create-args)`); set `deferred_to_issue` |
+| ≥ 30 | File GitHub issue (`scope_args=$(bun scripts/forge-scope.ts create-args) || exit 1; gh issue create … $scope_args`); set `deferred_to_issue` |
 | < 30 | Archive in ledger; do not file issue |
 
 Aligns with `phase-loop.md` continuous discovery protocol.

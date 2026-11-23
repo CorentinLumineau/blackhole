@@ -387,8 +387,9 @@ jq '.refreshed_at = (now | todate)' .blackhole/queue.json \
 On first `sync` with empty queue:
 
 ```bash
+scope_args=$(bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/forge-scope.ts list-args) || exit 1
 gh issue list --state open --json number,title,labels,milestone --limit 200 \
-  $(bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/forge-scope.ts list-args)
+  $scope_args
 ```
 
 Create one `issues.<n>` entry per open issue: `phase: handle`, `status: ready`,

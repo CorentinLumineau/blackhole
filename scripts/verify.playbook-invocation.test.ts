@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   checkPlaybookInvocation,
   findAliasInvocations,
+  findUnguardedSubstitutions,
   flaggedAliases,
   runChecks,
 } from './checks/playbook-invocation.check.ts';
@@ -56,6 +57,41 @@ describe('findAliasInvocations', () => {
 
   test('reports the line number of each offending line', () => {
     const content = ['ok line', 'run `bun run doctor`', 'ok', '`npm run status`'].join('\n');
+    expect(flags(content)).toEqual(['fixture.md:2', 'fixture.md:4']);
+  });
+});
+
+// A failure inside `$(…)` only exits the subshell: the outer command still runs, with the
+// substitution's arguments missing (#1490). Only a hoisted `name=$(bun … scripts/x.ts …) || …`
+// assignment stops on that failure.
+describe('findUnguardedSubstitutions', () => {
+  const flags = (content: string) => findUnguardedSubstitutions(content, 'fixture.md');
+
+  test.each([
+    ['inline argument substitution', '`gh issue list --state open $(bun scripts/forge-scope.ts list-args)`'],
+    ['continuation-line substitution', '  $(bun scripts/forge-scope.ts create-args)'],
+    ['bun run form', 'gh issue create $(bun run scripts/forge-scope.ts create-args)'],
+    ['bun run --cwd form', 'gh issue create $(bun run --cwd <root> scripts/forge-scope.ts create-args)'],
+    ['nested inside an assignment', 'N=$(gh issue list $(bun scripts/forge-scope.ts list-args) | jq length) || exit 1'],
+    ['assignment with no failure guard', 'scope_args=$(bun scripts/forge-scope.ts list-args)'],
+    ['assignment feeding a pipe', 'scope_args=$(bun scripts/forge-scope.ts list-args | tr -d x) || exit 1'],
+    ['assignment guarded only by a later &&', 'scope_args=$(bun scripts/forge-scope.ts list-args) && gh issue list $scope_args'],
+  ])('flags %s', (_name, line) => {
+    expect(flags(line)).toEqual(['fixture.md:1']);
+  });
+
+  test.each([
+    ['hoisted guarded assignment', 'scope_args=$(bun scripts/forge-scope.ts list-args) || exit 1'],
+    ['hoisted assignment then use', '`scope_args=$(bun scripts/forge-scope.ts create-args) || exit 1; gh issue create $scope_args`'],
+    ['hoisted bun run --cwd assignment', 'X=$(bun run --cwd . scripts/campaign-status.ts --data) || exit 1'],
+    ['plain invocation', '`bun run scripts/campaign-status.ts --data`'],
+    ['substitution of a non-script command', 'N=$(gh pr list --json number | jq length)'],
+  ])('does not flag %s', (_name, line) => {
+    expect(flags(line)).toEqual([]);
+  });
+
+  test('reports every offending line', () => {
+    const content = ['ok', 'gh issue list $(bun scripts/forge-scope.ts list-args)', 'ok', '  $(bun scripts/a.ts)'].join('\n');
     expect(flags(content)).toEqual(['fixture.md:2', 'fixture.md:4']);
   });
 });

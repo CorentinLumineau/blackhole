@@ -84,8 +84,8 @@ The full 6-step form follows:
    Map the answer onto the existing `scope_labels` / `scope_milestone` fields
    (`config-template.md`) — do not invent new field names. For "Specific
    label(s)" or "Specific milestone", ask a follow-up for the label(s) or
-   milestone title. Before accepting the answer, run `gh issue list --state
-   open $(bun scripts/forge-scope.ts list-args)` against the **chosen**
+   milestone title. Before accepting the answer, run `scope_args=$(bun scripts/forge-scope.ts list-args) || exit 1; gh issue list --state
+   open $scope_args` against the **chosen**
    filters and print the resulting count and first titles as a
    targeted-issues preview, so the user sees exactly what the campaign will
    pull in before confirming.
@@ -237,7 +237,7 @@ answer or go through the decisions, run the decide round (`decision-parking.md` 
     *   If the user suggests a feature, codebase improvement, styling refactoring, performance optimization, or UI polish: check if it matches an existing issue.
     *   If it is vague, use `AskQuestion` to clarify the requirements.
     *   Once defined, **apply the Pareto-gating rule**: estimate **Gain (1-10)** and **Effort (1-10)**, and compute $\text{Priority} = \text{Gain} \times (11 - \text{Effort})$.
-    *   If $\text{Priority} \ge 30$, file a GitHub issue natively (`gh issue create --title "[Discovery] <Name>" --body "..." $(bun scripts/forge-scope.ts create-args)`). On success, print `📋 Filed #N — <title> (milestone <M>)` then re-run `bun run scripts/campaign-status.ts` if the campaign is active.
+    *   If $\text{Priority} \ge 30$, file a GitHub issue natively (`scope_args=$(bun scripts/forge-scope.ts create-args) || exit 1; gh issue create --title "[Discovery] <Name>" --body "..." $scope_args`). On success, print `📋 Filed #N — <title> (milestone <M>)` then re-run `bun run scripts/campaign-status.ts` if the campaign is active.
     *   If $\text{Priority} < 30$, log it as `status: archived` in `findings-ledger.json` and inform the user of the low ROI triage (do not file an issue).
 2.  **Resolving Blockers**:
     *   If the orchestrator is blocked (`notes: awaiting-user-clarification`, `awaiting-plan-approval`, `awaiting-design-approval`, `awaiting-ruling-recheck`, `merge-conflict-semantic:<files>`, or `merge-order cycle with #N` — ADR-005, `merge-gate.md` § 2 — in `queue.json`), parse the user's response.
