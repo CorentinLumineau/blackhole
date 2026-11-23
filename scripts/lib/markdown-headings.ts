@@ -2,24 +2,48 @@
 
 export type MarkdownHeading = { line: number; level: number; text: string };
 
-const FENCE = /^\s*(?:```|~~~)/;
-const HEADING = /^(#{1,6}) (.*)$/;
+// Fence delimiters follow CommonMark: a run of 3+ backticks or tildes opens a block, and only a
+// run of the same character, at least as long, with nothing after it, closes it. The opening
+// indent is not capped at 3 spaces, because a fence nested in a list item is indented further.
+const FENCE_OPEN = /^[ \t]*(`{3,}|~{3,})/;
+const FENCE_CLOSE = /^[ \t]*(`{3,}|~{3,})[ \t]*$/;
+// CommonMark ATX heading: 0-3 spaces indent, 1-6 `#`, then space/tab and text, optional closing `#`s.
+const HEADING = /^ {0,3}(#{1,6})[ \t]+(.*?)(?:[ \t]+#+)?[ \t]*$/;
 
-/** Per line: true for a fence delimiter or a line inside a fenced code block. */
-export const fencedLineMask = (lines: string[]): boolean[] => {
-  let inFence = false;
-  return lines.map((line) => {
-    if (!FENCE.test(line)) return inFence;
-    inFence = !inFence;
+const withoutCr = (line: string): string => (line.endsWith('\r') ? line.slice(0, -1) : line);
+
+/** Per-line fence mask plus the opening marker of a fence still open at end of input. */
+const scanFences = (lines: string[]): { mask: boolean[]; open: string | null } => {
+  let open: string | null = null;
+  const mask = lines.map((raw) => {
+    const line = withoutCr(raw);
+    if (open === null) {
+      const opening = FENCE_OPEN.exec(line)?.[1];
+      if (!opening) return false;
+      open = opening;
+      return true;
+    }
+    const closing = FENCE_CLOSE.exec(line)?.[1];
+    if (closing && closing[0] === open[0] && closing.length >= open.length) open = null;
     return true;
   });
+  return { mask, open };
 };
 
-/** Every ATX heading in `lines`, skipping `#` lines inside fenced code blocks. */
+/**
+ * Per line: true for a fence delimiter or a line inside a fenced code block. An unterminated
+ * fence runs to the end of the input, as in CommonMark.
+ */
+export const fencedLineMask = (lines: string[]): boolean[] => scanFences(lines).mask;
+
+/** The opening marker (e.g. "```") of a fence left open at the end of `lines`, or null. */
+export const openFenceAtEnd = (lines: string[]): string | null => scanFences(lines).open;
+
+/** Every CommonMark ATX heading in `lines`, skipping `#` lines inside fenced code blocks. */
 export const markdownHeadings = (lines: string[]): MarkdownHeading[] => {
   const fenced = fencedLineMask(lines);
   return lines.flatMap((line, i) => {
-    const match = fenced[i] ? null : HEADING.exec(line);
+    const match = fenced[i] ? null : HEADING.exec(withoutCr(line));
     return match ? [{ line: i, level: match[1].length, text: match[2].trim() }] : [];
   });
 };

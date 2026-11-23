@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { headingSectionsOnce, markdownHeadings, sectionEnd } from './markdown-headings.ts';
+import { fencedLineMask, headingSectionsOnce, markdownHeadings, openFenceAtEnd, sectionEnd } from './markdown-headings.ts';
 
 describe('markdownHeadings()', () => {
   test('reads level and text, and skips `#` lines inside fenced code blocks', () => {
@@ -10,8 +10,50 @@ describe('markdownHeadings()', () => {
     ]);
   });
 
+  test('CommonMark h2 variants: up to 3 spaces indent, tab separator, closing #s, CRLF', () => {
+    expect(markdownHeadings(['   ## Indented', '##\tTabbed', '## Closed ##', '## Crlf\r', '    ## code'])).toEqual([
+      { line: 0, level: 2, text: 'Indented' },
+      { line: 1, level: 2, text: 'Tabbed' },
+      { line: 2, level: 2, text: 'Closed' },
+      { line: 3, level: 2, text: 'Crlf' },
+    ]);
+  });
+
   test('a `#` with no following space is not a heading', () => {
     expect(markdownHeadings(['#hashtag', '#### Four'])).toEqual([{ line: 1, level: 4, text: 'Four' }]);
+  });
+});
+
+describe('fencedLineMask() — CommonMark closing-fence rule', () => {
+  test('a fence closes only on the same character', () => {
+    expect(fencedLineMask(['```', '~~~', '# in', '```', 'out'])).toEqual([true, true, true, true, false]);
+  });
+
+  test('a closing fence must be at least as long as the opening one', () => {
+    expect(fencedLineMask(['````', '```', 'in', '````', 'out'])).toEqual([true, true, true, true, false]);
+  });
+
+  test('a fence line carrying an info string does not close the block', () => {
+    expect(fencedLineMask(['```', '```bash', 'in', '```', 'out'])).toEqual([true, true, true, true, false]);
+  });
+
+  test('CRLF line endings do not stop a fence from closing', () => {
+    expect(fencedLineMask(['```\r', 'in\r', '```\r', 'out\r'])).toEqual([true, true, true, false]);
+  });
+
+  test('an unterminated fence runs to the end of the file', () => {
+    expect(fencedLineMask(['# A', '```', 'code'])).toEqual([false, true, true]);
+  });
+});
+
+describe('openFenceAtEnd()', () => {
+  test('returns the opening marker of a fence left open at end of file', () => {
+    expect(openFenceAtEnd(['# A', '````md', 'code'])).toBe('````');
+    expect(openFenceAtEnd(['~~~', 'x'])).toBe('~~~');
+  });
+
+  test('returns null when every fence is closed', () => {
+    expect(openFenceAtEnd(['```', 'x', '```', ''])).toBeNull();
   });
 });
 

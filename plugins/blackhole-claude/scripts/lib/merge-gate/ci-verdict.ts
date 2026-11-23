@@ -35,8 +35,9 @@ const placeholder = (name: string): ForgeCheck => ({ name, status: 'QUEUED', con
  * Both payloads carry a `total_count` (the check-runs one counts every run, while its default page is
  * 30 rows), and a merge keeps only one of them, so a snapshot is checked for missing rows:
  * - only `check_runs`, or only `statuses`: a `total_count` above the rows listed is a partial read;
- * - both lists: `total_count` must equal the check-runs count, since nothing tells which payload it
- *   came from;
+ * - both lists: the check-runs count comes from an explicit `check_runs_total_count`, judged the same
+ *   way. A bare `total_count` there is pending whatever its value: nothing tells which payload it came
+ *   from, and a statuses count can equal a truncated check-runs page;
  * - a combined-status `state` other than `success` while every listed status passes means a status
  *   page holding the non-passing one was not read (`pending` with no statuses is no signal).
  * Each case adds a queued placeholder, so `ciVerdict` reports it in `pending` and never returns green.
@@ -45,22 +46,26 @@ export const checksFromSnapshot = (snapshot: unknown, runs?: unknown): ForgeChec
   const suites = runs === undefined ? undefined : suiteProducers(runs);
   if (Array.isArray(snapshot)) return snapshot as ForgeCheck[];
   if (snapshot === null || typeof snapshot !== 'object') throw new Error('checks snapshot must be an object or an array');
-  const { check_runs, statuses, total_count, state } =
-    snapshot as { check_runs?: RestCheckRun[]; statuses?: RestStatus[]; total_count?: unknown; state?: unknown };
+  const { check_runs, statuses, total_count, check_runs_total_count, state } =
+    snapshot as { check_runs?: RestCheckRun[]; statuses?: RestStatus[]; total_count?: unknown; check_runs_total_count?: unknown; state?: unknown };
   if (!check_runs && !statuses) throw new Error('checks snapshot has neither check_runs nor statuses');
-  if (total_count !== undefined && !(Number.isInteger(total_count) && (total_count as number) >= 0)) {
-    throw new Error('checks snapshot total_count must be a non-negative integer');
+  for (const [key, value] of [['total_count', total_count], ['check_runs_total_count', check_runs_total_count]] as const) {
+    if (value !== undefined && !(Number.isInteger(value) && (value as number) >= 0)) {
+      throw new Error(`checks snapshot ${key} must be a non-negative integer`);
+    }
   }
   const mappedStatuses = (statuses ?? []).map(mapRestStatus);
   const checks = [...(check_runs ?? []).map((row) => mapRestCheckRun(row, suites)), ...mappedStatuses];
-  if (typeof total_count === 'number') {
+  const truncated = (list: string, fetched: number, total: number) => {
+    if (total > fetched) checks.push(placeholder(`${list} truncated: ${fetched} of ${total} fetched, read every page`));
+  };
+  if (typeof check_runs_total_count === 'number') {
+    truncated('check_runs', check_runs?.length ?? 0, check_runs_total_count);
+  } else if (typeof total_count === 'number') {
     if (check_runs && statuses) {
-      if (total_count !== check_runs.length) {
-        checks.push(placeholder(`checks snapshot total_count ${total_count} does not match its ${check_runs.length} check runs: keep the check-runs total_count of a complete read when merging`));
-      }
+      checks.push(placeholder('checks snapshot holds check_runs and statuses under one bare total_count: set check_runs_total_count to the check-runs total_count'));
     } else {
-      const [list, fetched] = check_runs ? ['check_runs', check_runs.length] : ['statuses', mappedStatuses.length];
-      if (total_count > fetched) checks.push(placeholder(`${list} truncated: ${fetched} of ${total_count} fetched, read every page`));
+      truncated(check_runs ? 'check_runs' : 'statuses', check_runs ? check_runs.length : mappedStatuses.length, total_count);
     }
   }
   const allPass = mappedStatuses.every((c) => c.status === 'COMPLETED' && c.conclusion === 'SUCCESS');
