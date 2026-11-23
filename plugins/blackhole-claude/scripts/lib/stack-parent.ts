@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { childBranchFor } from '../stack-repair.ts';
 import { parseFrontmatterFields, parseMdFrontmatter } from './build/content.ts';
 import { headingSectionsOnce } from './markdown-headings.ts';
@@ -76,32 +77,46 @@ const planSection = (plan: string, name: string): string =>
 
 /**
  * The plan's `package_root` frontmatter value as a repo-relative directory without leading `./` or
- * trailing `/`; '' when absent, null, empty or `.` (the paths are already repo-relative).
+ * trailing `/`; '' when absent, null, empty or `.` (the paths are already repo-relative), and also
+ * when it is not a plain repo-relative directory: absolute, holding a `..` segment, or containing
+ * `<`, `|` or whitespace (an unfilled template placeholder).
  */
 export const planPackageRoot = (plan: string): string => {
   const raw = parseFrontmatterFields(parseMdFrontmatter(plan).frontmatter).package_root ?? '';
   const value = raw.replace(/\s+#.*$/, '').replace(/^(['"])(.*)\1$/, '$2').trim();
   if (value === 'null' || value === '~') return '';
+  if (value.startsWith('/') || /[<|\s]/.test(value) || value.split('/').includes('..')) return '';
   return value.replace(/^(\.\/)+/, '').replace(/\/+$/, '').replace(/^\.$/, '');
 };
 
-const underRoot = (root: string, p: string): string => (root === '' || p.startsWith(`${root}/`) ? p : `${root}/${p}`);
+/**
+ * One plan path in repo-relative form: a leading `/` marks an explicit repo-root path (the slash is
+ * dropped and the root is not joined); a path equal to or under `root` is kept; any other path is
+ * joined to `root`. A leading `./` is ignored and the result is normalized.
+ */
+export const underRoot = (root: string, p: string): string => {
+  if (p.startsWith('/')) return path.posix.normalize(p.replace(/^\/+/, ''));
+  const rel = p.replace(/^(\.\/)+/, '');
+  const joined = root === '' || rel === root || rel.startsWith(`${root}/`) ? rel : `${root}/${rel}`;
+  return path.posix.normalize(joined);
+};
 
 /**
  * A plan's effective Touch-Paths: the backtick paths under `## Touch-Paths`, plus each `widen` and
  * minus each `narrow` line under `## Scope Amendments` (plan-template.md), in order, deduplicated.
- * A plan whose `package_root` names a sub-package lists its paths relative to it; each is joined
- * to that root so it compares with open PRs' repo-relative changed files.
+ * A plan whose `package_root` names a sub-package lists its paths relative to it; every path,
+ * amendments included, is resolved by `underRoot` before the amendments apply, so a narrow written
+ * package- or repo-relative removes the same entry.
  */
 export const planTouchPaths = (plan: string): string[] => {
-  const paths = new Set(extractBacktickPaths(planSection(plan, 'touch-paths')));
+  const root = planPackageRoot(plan);
+  const paths = new Set(extractBacktickPaths(planSection(plan, 'touch-paths')).map((p) => underRoot(root, p)));
   for (const line of planSection(plan, 'scope amendments').split('\n')) {
     const m = AMENDMENT.exec(line.trim());
-    if (m?.[1] === 'widen') paths.add(m[2]);
-    else if (m) paths.delete(m[2]);
+    if (m?.[1] === 'widen') paths.add(underRoot(root, m[2]));
+    else if (m) paths.delete(underRoot(root, m[2]));
   }
-  const root = planPackageRoot(plan);
-  return [...new Set([...paths].map((p) => underRoot(root, p)))];
+  return [...paths];
 };
 
 /**

@@ -273,7 +273,7 @@ unless `--parent-files '{"<parent>": [...]}'` is passed; the config `default_tou
 from the `config.json` beside the queue, or `--default-touch-paths '[...]'` overrides it, so an
 unplanned issue never stacks on the default globs either). An issue whose plan (`plans/issue-<N>.md`, else `plans/<N>.md`, beside the
 queue, or `--plans-dir <abs>`) declares `## Touch-Paths` is matched on those paths, with `## Scope Amendments` `widen` lines added and
-`narrow` lines removed and each path joined to the plan's `package_root` frontmatter when it names a sub-package (paths already under it are kept), instead of its queue `touch_paths` (`withPlanTouchPaths`), so a planned issue never stacks on the default globs.
+`narrow` lines removed and each path, amendments included, joined to the plan's `package_root` frontmatter when it names a sub-package (paths already under it are kept, and a leading `/` marks a repo-root path such as a workflow or doc that is never joined; amendments apply after the join), instead of its queue `touch_paths` (`withPlanTouchPaths`), so a planned issue never stacks on the default globs.
 The queue entry's own `touch_paths` is set from the same plan when the planner result is applied
 (`phase-plan.md`, `--plan-touch-paths <N>`), so Step 3's overlap deferral reads the plan's paths too. The same script re-checks a PR that already exists
 (`phase-loop.md` Step 0.4). When it names a

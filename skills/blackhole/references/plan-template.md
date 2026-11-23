@@ -23,6 +23,13 @@ package_root: <repo-relative dir> | null  # monorepo sub-package the Touch-Paths
 - `file/path/A.ts`
 - `file/path/B.tsx`
 
+When `package_root` is set, each Touch-Path and Scope Amendment path is joined to it unless it
+already starts with it; write a repo-root file outside the package (a workflow, a doc) with a
+leading `/`, e.g. `` `/.github/workflows/ci.yml` ``. `package_root` scopes Touch-Paths and Scope
+Amendments only: `## Critical Files` paths stay repo-relative, since `critical_files_exist`
+resolves them against the repo root. An absolute root, a `..` segment, or a value with `<`, `|` or
+whitespace is ignored.
+
 ## Scope Amendments
 Appended by the orchestrator, not authored by the planner during Step 7 — the orchestrator
 appends one line here, before spawning, whenever it authorizes a Touch-Paths change in a

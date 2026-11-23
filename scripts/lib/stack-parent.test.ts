@@ -4,7 +4,9 @@ import {
   formatStackMergeOrder,
   globsMatchFiles,
   pickStackParent,
+  planPackageRoot,
   planTouchPaths,
+  underRoot,
   stackMergeOrder,
   touchPathsOverlap,
   withPlanTouchPaths,
@@ -339,5 +341,76 @@ describe('plan package_root prefixes sub-package Touch-Paths (#1462)', () => {
     expect(pickStackParent(planned, 1376, { parentFiles: { '1381': ['apps/invest/lib/foo.ts'] } })?.parent).toBe(1381);
     // The same relative path in another package is not an overlap.
     expect(pickStackParent(planned, 1376, { parentFiles: { '1381': ['lib/foo.ts'] } })).toBeNull();
+  });
+});
+
+describe('underRoot resolves one plan path (#1462 review)', () => {
+  test('joins a package-relative path and normalizes it', () => {
+    expect(underRoot('apps/invest', 'lib/foo.ts')).toBe('apps/invest/lib/foo.ts');
+    expect(underRoot('apps/invest', 'lib//x/../foo.ts')).toBe('apps/invest/lib/foo.ts');
+  });
+  test('ignores a leading ./', () => {
+    expect(underRoot('apps/invest', './lib/foo.ts')).toBe('apps/invest/lib/foo.ts');
+    expect(underRoot('', './lib/foo.ts')).toBe('lib/foo.ts');
+  });
+  test('a path equal to or under the root is kept', () => {
+    expect(underRoot('apps/invest', 'apps/invest')).toBe('apps/invest');
+    expect(underRoot('apps/invest', 'apps/invest/lib/foo.ts')).toBe('apps/invest/lib/foo.ts');
+  });
+  test('a leading / is an explicit repo-root path: slash dropped, root not joined', () => {
+    expect(underRoot('apps/invest', '/.github/workflows/ci.yml')).toBe('.github/workflows/ci.yml');
+    expect(underRoot('', '/docs/a.md')).toBe('docs/a.md');
+  });
+});
+
+describe('planPackageRoot rejects a non-directory value (#1462 review)', () => {
+  const withRoot = (v: string) => `---\npackage_root: ${v}\n---\n`;
+  test('the literal template placeholder is no root', () => {
+    expect(planPackageRoot(withRoot('<repo-relative dir> | null  # monorepo sub-package'))).toBe('');
+  });
+  test('absolute, .. and whitespace roots are no root', () => {
+    for (const v of ['/apps/invest', '../outside', 'apps/../x', '"apps/my pkg"', 'a|b']) {
+      expect(planPackageRoot(withRoot(v))).toBe('');
+    }
+  });
+  test('a plain directory is kept', () => {
+    expect(planPackageRoot(withRoot('apps/invest'))).toBe('apps/invest');
+  });
+});
+
+describe('Scope Amendments apply after the package_root join (#1462 review)', () => {
+  const plan = (amendments: string[]) =>
+    [
+      '---',
+      'package_root: apps/invest',
+      '---',
+      '',
+      '## Touch-Paths',
+      '',
+      '- `lib/foo.ts`',
+      '- `lib/old.ts`',
+      '- `lib/gone.ts`',
+      '- `/.github/workflows/ci.yml`',
+      '',
+      '## Scope Amendments',
+      '',
+      ...amendments,
+    ].join('\n');
+  test('a narrow in package- or repo-relative form drops the joined path', () => {
+    expect(
+      planTouchPaths(
+        plan([
+          '- 2026-11-23 — narrow — `lib/old.ts` — package form',
+          '- 2026-11-23 — narrow — `apps/invest/lib/gone.ts` — repo form',
+        ]),
+      ),
+    ).toEqual(['apps/invest/lib/foo.ts', '.github/workflows/ci.yml']);
+  });
+  test('a widen marked repo-root lands outside the package', () => {
+    expect(planTouchPaths(plan(['- 2026-11-23 — widen — `/docs/guide.md` — doc'])).at(-1)).toBe('docs/guide.md');
+  });
+  test('a widen already in repo form is not duplicated', () => {
+    const paths = planTouchPaths(plan(['- 2026-11-23 — widen — `apps/invest/lib/foo.ts` — same file']));
+    expect(paths.filter((p) => p === 'apps/invest/lib/foo.ts')).toHaveLength(1);
   });
 });
