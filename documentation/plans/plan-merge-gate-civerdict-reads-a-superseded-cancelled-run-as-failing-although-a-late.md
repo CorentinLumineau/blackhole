@@ -204,7 +204,8 @@ jobs is re-evaluated on cancel, but does not state the conclusion of a job whose
 - `src/references/forge-channels.md` and `project-thread-mode.md`: already carry `--runs` from
   the previous round; keep.
 - `scripts/ci-verdict.ts` usage text: "`--runs`: ... lets a newer pull_request run of the same
-  workflow and PR replace an older CANCELLED run; without it every run is judged".
+  workflow and PR replace an older CANCELLED run, unless that newer run ended NEUTRAL, SKIPPED or
+  CANCELLED; without it every run is judged".
 - Search-before-write: no new `documentation/` file beyond the carried plan (updated in place).
 
 ## Critical Files
