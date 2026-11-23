@@ -573,6 +573,7 @@ describe('validateStateWrite — queue entry status and phase', () => {
     expect(result.reason).toContain('#12');
     expect(result.reason).toContain('"in-review"');
     expect(result.reason).toContain('blocked, ready, in-flight, merged, closed');
+    expect(result.reason).toContain('scripts/queue-migrate.ts');
   });
 
   test('rejects an unknown phase and names the valid values', () => {
