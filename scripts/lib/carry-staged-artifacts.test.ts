@@ -220,6 +220,25 @@ describe('append_row dedup — pipe-table discriminator (row path column value)'
   });
 });
 
+describe('append_row — ADR-schema decisions index (issue #1390)', () => {
+  const mercure = '| ADR | Title | Status | Date |\n|-----|-------|--------|------|\n| ADR-001 | One | Accepted | 2026-01-01 |\n';
+  const fragment = '| ADR-002-two.md | Two | adr | accepted | on protocol change |';
+
+  test('mercure header receives a 4-column row dated today, idempotent on re-carry', () => {
+    const first = appendPipeTableRowIfAbsent(mercure, fragment, { today: '2026-11-23' });
+    expect(first.appended).toBe(true);
+    expect(first.content).toContain('| [ADR-002](./ADR-002-two.md) | Two | Accepted | 2026-11-23 |\n');
+    const second = appendPipeTableRowIfAbsent(first.content, fragment, { today: '2026-11-24' });
+    expect(second.appended).toBe(false);
+    expect(second.content).toBe(first.content);
+  });
+
+  test('blackhole header keeps the 5-column render when today is supplied', () => {
+    const bh = '| path | summary | type | status | review_trigger |\n|---|---|---|---|---|\n';
+    expect(appendPipeTableRowIfAbsent(bh, fragment, { today: '2026-11-23' }).content).toBe(`${bh}${fragment}\n`);
+  });
+});
+
 describe('append_row dedup — ARCHITECTURE.md bullet-list discriminator (citation suffix, issue #557)', () => {
   const architectureFixture = '# ARCHITECTURE\n\n## Active Constraints\n';
   const bullet = '- Never write directly to queue.json from a worker (ADR-021)';

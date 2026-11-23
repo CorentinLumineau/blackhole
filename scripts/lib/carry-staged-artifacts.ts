@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { appendIndexRowIfAbsent, parseIndexTableRows, type RootIndexRow } from './check-common.ts';
+import { appendAdrIndexRowIfAbsent, appendIndexRowIfAbsent, isAdrIndexHeader, parseIndexTableRows, type RootIndexRow } from './check-common.ts';
 import { parseFrontmatterFields, parseMdFrontmatter } from './build/content.ts';
 import { readJsonFile } from './fs.ts';
 import { isCarryTargetAllowed } from './carry-target-allowlist.ts';
@@ -190,13 +190,19 @@ export const appendConstraintBulletIfAbsent = (
 /**
  * `append_row` dedup, pipe-table discriminator (`documentation/decisions/INDEX.md`,
  * `documentation/INDEX.md`) — the row's `path` column value. Delegates to `check-common.ts`'s
- * `appendIndexRowIfAbsent` (V-INT-02) — a future sorted-insert change (#743) is a one-line swap
- * at that shared call site, not a rewrite here.
+ * `appendIndexRowIfAbsent` (V-INT-02); an index whose header is ADR-schema goes to
+ * `appendAdrIndexRowIfAbsent` instead, which renders by that header's columns and needs `today`.
  */
 export const appendPipeTableRowIfAbsent = (
   existingContent: string,
   stagedFragment: string,
+  opts: { today?: string } = {},
 ): { content: string; appended: boolean } => {
+  if (isAdrIndexHeader(existingContent)) {
+    return appendAdrIndexRowIfAbsent(existingContent, stagedFragment, {
+      today: opts.today ?? new Date().toISOString().slice(0, 10),
+    });
+  }
   const [row] = parseIndexTableRows(stagedFragment);
   if (!row) throw new Error(`staged append_row fragment did not parse as a table row: ${stagedFragment}`);
   return appendIndexRowIfAbsent(existingContent, row as RootIndexRow);
@@ -369,7 +375,7 @@ export const carryManifest = (
     const result =
       entry.target_path === 'ARCHITECTURE.md'
         ? appendConstraintBulletIfAbsent(existing, fragment)
-        : appendPipeTableRowIfAbsent(existing, fragment);
+        : appendPipeTableRowIfAbsent(existing, fragment, { today });
     if (result.appended) {
       const written = writeCarryTarget(targetAbs, result.content);
       if (written.ok) {

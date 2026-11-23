@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
 import {
+  appendAdrIndexRowIfAbsent,
   appendIndexRowIfAbsent,
   assertNoEmbeddedNewline,
   byPathByteOrder,
@@ -9,6 +10,7 @@ import {
   findMissingGateMarkers,
   findPipeTableViolations,
   findTableBlock,
+  isAdrIndexHeader,
   parseIndexTableRows,
   parseVcodeTableRows,
   renderIndexRowLine,
@@ -549,5 +551,73 @@ describe('findAdrFileByNumber', () => {
       const missingDir = path.join(dir, 'does-not-exist');
       expect(findAdrFileByNumber(missingDir, 'ADR-007')).toBeNull();
     });
+  });
+});
+
+describe('isAdrIndexHeader / appendAdrIndexRowIfAbsent (issue #1390)', () => {
+  const mercure = '# Decisions\n\n| ADR | Title | Status | Date |\n|-----|-------|--------|------|\n| ADR-001 | One | Accepted | 2026-01-01 |\n| ADR-003 | Three | Accepted | 2026-01-03 |\n';
+  const invest =
+    '| ADR | Title | Status | Date | Traceability |\n|---|---|---|---|---|\n| [ADR-001](./ADR-001-x.md) | One | Accepted | 2026-01-01 | #1 |\n';
+  const blackhole = '| path | summary | type | status | review_trigger |\n|---|---|---|---|---|\n| ADR-001-x.md | One | adr | accepted | never |\n';
+  const today = '2026-11-23';
+  const fiveCell = '| ADR-002-two.md | Two | adr | accepted | on protocol change |';
+
+  test('header detection is by first column name, case-insensitive', () => {
+    expect(isAdrIndexHeader(mercure)).toBe(true);
+    expect(isAdrIndexHeader(invest)).toBe(true);
+    expect(isAdrIndexHeader(mercure.replace('| ADR |', '| adr |'))).toBe(true);
+    expect(isAdrIndexHeader(blackhole)).toBe(false);
+    expect(isAdrIndexHeader('')).toBe(false);
+    expect(isAdrIndexHeader('no table here\n')).toBe(false);
+  });
+
+  test('mercure header: renders by column name and sorts by ADR id, untouched rows byte-identical', () => {
+    const r = appendAdrIndexRowIfAbsent(mercure, fiveCell, { today });
+    expect(r.appended).toBe(true);
+    const lines = r.content.split('\n');
+    expect(lines).toContain('| [ADR-002](./ADR-002-two.md) | Two | Accepted | 2026-11-23 |');
+    const idx = lines.findIndex((l) => l.includes('ADR-002'));
+    expect(lines[idx - 1]).toBe('| ADR-001 | One | Accepted | 2026-01-01 |');
+    expect(lines[idx + 1]).toBe('| ADR-003 | Three | Accepted | 2026-01-03 |');
+    expect(lines.slice(0, 5)).toEqual(mercure.split('\n').slice(0, 5));
+  });
+
+  test('invest header: extra Traceability column rendered as a trailing empty cell', () => {
+    const r = appendAdrIndexRowIfAbsent(invest, fiveCell, { today });
+    expect(r.content.split('\n')).toContain('| [ADR-002](./ADR-002-two.md) | Two | Accepted | 2026-11-23 |  |');
+  });
+
+  test('re-carry is idempotent across mercure, invest and blackhole renderings of the same ADR', () => {
+    const frag = '| ADR-001-x.md | One | adr | accepted | never |';
+    for (const idx of [mercure, invest]) {
+      const r = appendAdrIndexRowIfAbsent(idx, frag, { today });
+      expect(r.appended).toBe(false);
+      expect(r.content).toBe(idx);
+    }
+    const first = appendAdrIndexRowIfAbsent(mercure, fiveCell, { today });
+    const second = appendAdrIndexRowIfAbsent(first.content, fiveCell, { today });
+    expect(second.appended).toBe(false);
+    expect(second.content).toBe(first.content);
+  });
+
+  test('4-cell fragment in the foreign schema yields one 4-cell row, no extra cell, its own date kept', () => {
+    const r = appendAdrIndexRowIfAbsent(mercure, '| ADR-004-x.md | Four | accepted | 2026-01-02 |', { today });
+    expect(r.content.split('\n')).toContain('| [ADR-004](./ADR-004-x.md) | Four | Accepted | 2026-01-02 |');
+  });
+
+  test('unclassifiable fragment throws and appends nothing', () => {
+    expect(() => appendAdrIndexRowIfAbsent(mercure, '| nonsense | Four | x | y |', { today })).toThrow(/did not parse as a table row/);
+    expect(() => appendAdrIndexRowIfAbsent(mercure, 'not a row', { today })).toThrow(/did not parse as a table row/);
+  });
+
+  test('embedded newline in a rendered cell is rejected', () => {
+    expect(() => appendAdrIndexRowIfAbsent(mercure, '| ADR-005-x.md | Fi\rve | adr | accepted | x |', { today })).toThrow(/newline/);
+  });
+
+  test('blackhole header output of appendIndexRowIfAbsent is unchanged', () => {
+    const row = { path: 'ADR-002-two.md', summary: 'Two', type: 'adr', status: 'accepted', reviewTrigger: 'never' };
+    expect(appendIndexRowIfAbsent(blackhole, row).content).toBe(
+      '| path | summary | type | status | review_trigger |\n|---|---|---|---|---|\n| ADR-001-x.md | One | adr | accepted | never |\n| ADR-002-two.md | Two | adr | accepted | never |\n',
+    );
   });
 });

@@ -295,16 +295,118 @@ export const appendIndexRowIfAbsent = (indexContent: string, row: RootIndexRow):
     return { content: `${indexContent}${indexContent.endsWith('\n') ? '' : '\n'}${line}\n`, appended: true };
   }
 
-  const existingLines = lines.slice(separatorIdx + 1, blockEnd);
-  const newLine = renderIndexRowLine(row);
-  const sortedLines = [...existingLines, newLine].sort((a, b) => {
-    const pa = rowPathFromRawLine(a);
-    const pb = rowPathFromRawLine(b);
-    return pa < pb ? -1 : pa > pb ? 1 : 0;
-  });
+  return { content: insertRowSorted(lines, separatorIdx, blockEnd, renderIndexRowLine(row), rowPathFromRawLine), appended: true };
+};
 
-  const rebuilt = [...lines.slice(0, separatorIdx + 1), ...sortedLines, ...lines.slice(blockEnd)].join('\n');
-  return { content: rebuilt, appended: true };
+// Shared tail of both index appenders: rebuilds the row block with the new line inserted and the
+// block ordered by `keyOf` (byte order, never localeCompare — see byPathByteOrder above), leaving
+// every line outside the block, and every untouched row, byte-for-byte as it was.
+const insertRowSorted = (
+  lines: string[],
+  separatorIdx: number,
+  blockEnd: number,
+  newLine: string,
+  keyOf: (rawLine: string) => string,
+): string => {
+  const sortedLines = [...lines.slice(separatorIdx + 1, blockEnd), newLine].sort((a, b) => {
+    const ka = keyOf(a);
+    const kb = keyOf(b);
+    return ka < kb ? -1 : ka > kb ? 1 : 0;
+  });
+  return [...lines.slice(0, separatorIdx + 1), ...sortedLines, ...lines.slice(blockEnd)].join('\n');
+};
+
+const splitRowCells = (line: string): string[] => {
+  const cells = line.split('|').map((c) => c.trim());
+  return cells.slice(1, cells[cells.length - 1] === '' ? -1 : undefined);
+};
+
+const isSeparatorRow = (line: string): boolean => {
+  const cells = line.split('|').map((c) => c.trim());
+  return cells.length >= 2 && /^:?-+:?$/.test(cells[1]);
+};
+
+// The header is the table's first non-separator pipe row. Column names are lowercased.
+const indexHeaderColumns = (indexContent: string): string[] => {
+  const header = indexContent.split('\n').find((l) => l.trim().startsWith('|') && !isSeparatorRow(l));
+  return header ? splitRowCells(header).map((c) => c.toLowerCase()) : [];
+};
+
+// A decisions INDEX whose first column is `ADR` (mercure `ADR | Title | Status | Date`, invest
+// adds `Traceability`) uses a different row schema than blackhole's `path | summary | ...`;
+// column-name detection is the only signal the carry step has for which one it is appending to.
+export const isAdrIndexHeader = (indexContent: string): boolean => indexHeaderColumns(indexContent)[0] === 'adr';
+
+const ADR_TOKEN = /ADR-\d+/;
+
+// Dedup and sort key: the ADR id, which is the one value every rendering of the same row shares
+// (`ADR-001`, `[ADR-001](./ADR-001-x.md)`, `ADR-001-x.md`). A row with no token keys on its raw
+// first cell.
+const adrRowKey = (rawLine: string): string => {
+  const first = splitRowCells(rawLine)[0] ?? '';
+  return first.match(ADR_TOKEN)?.[0] ?? first;
+};
+
+type AdrFragment = { id: string; file: string; title: string; status: string; date: string };
+
+// A staged fragment is either blackhole's 5-cell shape (`file | title | adr | status | trigger`,
+// recognised by `adr` in the type column) or already in the foreign schema (`adr | title |
+// status | date`, extra trailing cells ignored). Anything else is unclassifiable.
+const parseAdrFragment = (fragment: string): AdrFragment => {
+  const line = fragment.split('\n').find((l) => l.trim().startsWith('|'));
+  const cells = line ? splitRowCells(line) : [];
+  const id = cells[0]?.match(ADR_TOKEN)?.[0];
+  if (!id) throw new Error(`staged append_row fragment did not parse as a table row: ${fragment}`);
+  const link = cells[0].match(/^\[[^\]]*\]\((.*)\)$/);
+  const file = (link ? link[1] : cells[0]).replace(/^\.\//, '');
+  const blackholeShape = cells.length >= 4 && cells[2].toLowerCase() === 'adr';
+  return blackholeShape
+    ? { id, file, title: cells[1], status: cells[3], date: '' }
+    : { id, file, title: cells[1] ?? '', status: cells[2] ?? '', date: cells[3] ?? '' };
+};
+
+const renderAdrCell = (column: string, f: AdrFragment, today: string): string => {
+  switch (column) {
+    case 'adr':
+      return f.file.endsWith('.md') ? `[${f.id}](./${f.file})` : f.id;
+    case 'title':
+      return f.title;
+    case 'status':
+      return f.status.charAt(0).toUpperCase() + f.status.slice(1);
+    case 'date':
+      return f.date || today;
+    default:
+      return '';
+  }
+};
+
+// ADR-schema counterpart of appendIndexRowIfAbsent: renders the row by the target header's own
+// column names instead of blackhole's fixed 5 cells, dedups and sorts on the ADR id, and falls
+// back to a plain append when the table has no separator row.
+export const appendAdrIndexRowIfAbsent = (
+  indexContent: string,
+  fragment: string,
+  opts: { today: string },
+): { content: string; appended: boolean } => {
+  const parsed = parseAdrFragment(fragment);
+  const lines = indexContent.split('\n');
+  const { separatorIdx, blockEnd } = findTableBlock(lines);
+  const columns = indexHeaderColumns(indexContent);
+
+  const cells = columns.map((column) => {
+    const value = renderAdrCell(column, parsed, opts.today);
+    assertNoEmbeddedNewline(value, parsed.id, column);
+    return value;
+  });
+  const newLine = `| ${cells.join(' | ')} |`;
+
+  if (separatorIdx === -1) {
+    return { content: `${indexContent}${indexContent.endsWith('\n') ? '' : '\n'}${newLine}\n`, appended: true };
+  }
+  if (lines.slice(separatorIdx + 1, blockEnd).some((l) => adrRowKey(l) === parsed.id)) {
+    return { content: indexContent, appended: false };
+  }
+  return { content: insertRowSorted(lines, separatorIdx, blockEnd, newLine, adrRowKey), appended: true };
 };
 
 // Issue #941 leg 2: passive, exported structural-violation check — mirrors
