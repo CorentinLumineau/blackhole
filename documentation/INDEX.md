@@ -257,6 +257,7 @@
 | reviews/review-test-design-track-check-ts-s-two-check-functions-are-defined-but-never-called-by.md | Review artifact for issue #982 (LGTM) | review | current | on file change |
 | reviews/review-test-harden-expectlineartime-factor-2-row-headroom-pin-the-default-cover-the-ret.md | Review artifact for issue #1369 (LGTM) | review | current | on file change |
 | reviews/review-test-hooks-hook-event-triage-test-ts-asserts-a-clean-repo-root-3-tests-fail-on-a.md | Review artifact for issue #981 (LGTM) | review | current | on file change |
+| reviews/review-test-pin-expectlineartime-s-1-ms-floor-from-both-sides.md | Review artifact for issue #1376 (LGTM) | review | current | on file change |
 | reviews/review-test-state-write-guard-s-zero-collapse-refusal-is-untested-the-one-branch-that-p.md | Review artifact for issue #983 (LGTM) | review | current | on file change |
 | reviews/review-usage-normalize-pin-mixed-shape-precedence-and-the-expired-desktop-window-in-fil.md | Review artifact for issue #1374 (LGTM) | review | current | on file change |
 | reviews/review-usage-ts-pace-floor-ts-usage-reject-the-ccd-get-usage-payload-that-usage-probe-f.md | Review artifact for issue #1361 (LGTM) | review | current | on file change |
