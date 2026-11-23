@@ -208,6 +208,10 @@ describe('expectLinearTime', () => {
     expect(measure((size) => (size === SMALL ? 0.1 : 11)).attempt).not.toThrow();
   });
 
+  test('a sub-millisecond small run still throws once the floor-divided ratio reaches the limit', () => {
+    expect(measure((size) => (size === SMALL ? 0.1 : 13)).attempt).toThrow(/limit 12/);
+  });
+
   test('a linear function passes with the injected clock', () => {
     expect(measure((size) => size).attempt).not.toThrow();
   });

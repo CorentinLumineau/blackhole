@@ -167,6 +167,7 @@
 | plans/plan-tea-json-output-flag.md | Plan for making Gitea adapter tea calls work on tea 0.14.2 (output flag, paged lists, REST create) | plan | current | on file change |
 | plans/plan-test-build-harness-integration-test-for-the-skills-sh-branch-of-model-routing-md.md | skills.sh-target integration test for model-routing.md's per-role tier resolution, closing the self-declared Unverified note | plan | current | on ADR acceptance |
 | plans/plan-test-forge-adapter-gitea-gitlab-adapters-are-thin-tested-and-gitlab-prchecks-div.md | Implementation plan for issue #868 — extend value-pinning test coverage across the gitea/gitlab/github forge adapters and their CLI wrapper layers, and fix GitLabForgeAdapter.prChecks's V-SOLID-03 substitutability bug (a single synthetic 'pipeline' row instead of one ForgeCheck per real CI job) | plan | current | on ADR-027 amendment or a new prChecks() caller |
+| plans/plan-test-pin-expectlineartime-s-1-ms-floor-from-both-sides.md | Pin expectLinearTime's 1 ms floor from both sides with an injected-clock test (issue 1376) | plan | current | on file change |
 | plans/plan-test-two-scripts-checks-modules-have-no-test-under-any-convention-found-by-876-s.md | Test-coverage plan for the two scripts/checks modules (forge-adapter-routing, reformulation-surface) shipped with no test under any existing convention (found by #876's detector on first dogfood) | plan | current | on file change |
 | plans/plan-truncate-regex-false-positive.md | Plan to stop the merge-risk DESTRUCTIVE_SQL matcher flagging the shell command word truncate as deletes-data (issue #1348) | plan | current | on file change |
 | plans/plan-usage-cap-launch-gate.md | Launch gate Budget card says 'No usage limit' and offers Set usage caps first when no cap is enforced; Adjust asks for the 5-hour stop line, weekly target_at_reset and enabled, deriving no_spawn_at | plan | current | on file change |
@@ -256,6 +257,7 @@
 | reviews/review-test-design-track-check-ts-s-two-check-functions-are-defined-but-never-called-by.md | Review artifact for issue #982 (LGTM) | review | current | on file change |
 | reviews/review-test-harden-expectlineartime-factor-2-row-headroom-pin-the-default-cover-the-ret.md | Review artifact for issue #1369 (LGTM) | review | current | on file change |
 | reviews/review-test-hooks-hook-event-triage-test-ts-asserts-a-clean-repo-root-3-tests-fail-on-a.md | Review artifact for issue #981 (LGTM) | review | current | on file change |
+| reviews/review-test-pin-expectlineartime-s-1-ms-floor-from-both-sides.md | Review artifact for issue #1376 (LGTM) | review | current | on file change |
 | reviews/review-test-state-write-guard-s-zero-collapse-refusal-is-untested-the-one-branch-that-p.md | Review artifact for issue #983 (LGTM) | review | current | on file change |
 | reviews/review-usage-normalize-pin-mixed-shape-precedence-and-the-expired-desktop-window-in-fil.md | Review artifact for issue #1374 (LGTM) | review | current | on file change |
 | reviews/review-usage-ts-pace-floor-ts-usage-reject-the-ccd-get-usage-payload-that-usage-probe-f.md | Review artifact for issue #1361 (LGTM) | review | current | on file change |
