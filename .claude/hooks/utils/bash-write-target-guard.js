@@ -306,10 +306,13 @@ const isFdDuplicationTarget = (token) => /^&\d+$/.test(token);
 
 /** Whole-command signals that quoted text may be executed as shell (or smuggles a quote the
  * span walker would misread). Any hit disables `maskRedirectNoise` entirely: masking is only safe
- * when no quoted span can be command text. */
+ * when no quoted span can be command text. A shell name's path prefix stops at the next anchor
+ * character: `\S*` would rescan the whole run from every `;` in it (quadratic on a long sed or
+ * grep script), and the narrower class matches the same commands, since any anchor character a
+ * prefix crosses is itself a start the match can begin from. */
 const SHELL_EXEC_RE = new RegExp(
   [
-    '(?:^|[\\s;&|(`])(?:\\S*/)?(?:bash|sh|zsh|dash|ksh|eval|source|trap|alias|watch|at|parallel|xargs)(?=$|[\\s;&|)])',
+    '(?:^|[\\s;&|(`])(?:[^\\s;&|(`]*/)?(?:bash|sh|zsh|dash|ksh|eval|source|trap|alias|watch|at|parallel|xargs)(?=$|[\\s;&|)])',
     '(?:^|\\s)-c(?=$|\\s)',
     'BASH_ENV=|PROMPT_COMMAND=',
     '<<<',
