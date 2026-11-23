@@ -1,4 +1,5 @@
 import type { ForgeAdapter, ForgeCheck } from '../forge-adapter/types.ts';
+import { withoutSupersededCancelled } from '../merge-gate/ci-verdict.ts';
 import type { PrSignal } from './types.ts';
 
 // Review verdict, CI and mergeability of the open PRs the board shows, read through the forge
@@ -13,8 +14,13 @@ export const PR_SIGNAL_CAP = 15;
 const REVIEW_LABEL = 'ai-review:';
 const FAILED = new Set<ForgeCheck['conclusion']>(['FAILURE', 'CANCELLED', 'ACTION_REQUIRED']);
 
-/** The CI verdict of a set of checks. No check at all is `none`, never `green`. */
-export function ciOf(checks: ForgeCheck[]): Pick<PrSignal, 'ci' | 'failing'> {
+/**
+ * The CI verdict of a set of checks. No check at all is `none`, never `green`. A CANCELLED run a
+ * newer run provably replaced is dropped first, by the merge gate's own selection rule, so the
+ * board and the gate read the same head the same way.
+ */
+export function ciOf(allChecks: ForgeCheck[]): Pick<PrSignal, 'ci' | 'failing'> {
+  const checks = withoutSupersededCancelled(allChecks);
   const failing = [...new Set(checks.filter((c) => c.status === 'COMPLETED' && FAILED.has(c.conclusion)).map((c) => c.name))].sort();
   if (failing.length) return { ci: 'failing', failing };
   if (checks.length === 0) return { ci: 'none', failing: [] };
