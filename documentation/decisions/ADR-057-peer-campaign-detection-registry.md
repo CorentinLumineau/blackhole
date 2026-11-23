@@ -1,10 +1,10 @@
 ---
 type: adr
-summary: "A live peer campaign on the same clone is detected at bootstrap through a per-session heartbeat registry in the git common dir (blackhole/campaigns/<session>.json, 40-minute lease, self by local token or same worktree+host); the launch gate then asks stop / join as peer / take over after drain and parks the question under sleep mode instead of starting as solo, and forge-sync holds a live peer's claimed issues with an another session: note so they leave the ready set and are never linked as own; design-aggregate.ts blocked (dominance, disagreement; 2 of 3 scorers chose B), Option B approved by the orchestrator under autonomy.mode full (owner decision 10)"
+summary: "A live peer campaign on the same clone is detected at bootstrap through a per-session heartbeat registry in the git common dir (blackhole/campaigns/<session>.json, 40-minute lease, self by host session id with a dead-or-same-process predecessor superseded, else by local token or same worktree+host — amended by #1408); the launch gate then asks stop / join as peer / take over after drain and parks the question under sleep mode instead of starting as solo, and forge-sync holds a live peer's claimed issues with an another session: note so they leave the ready set and are never linked as own; design-aggregate.ts blocked (dominance, disagreement; 2 of 3 scorers chose B), Option B approved by the orchestrator under autonomy.mode full (owner decision 10)"
 status: accepted
 review_trigger: "on a change to bootstrap peer detection, the campaign registry format, or the ready-set hold notes"
 created: 2026-11-18
-last_updated: 2026-11-18
+last_updated: 2026-11-23
 related:
   - documentation/decisions/ADR-054-catchup-mode-quota-pacing.md
   - documentation/reference/product-principles.md
@@ -187,3 +187,30 @@ Disclosures:
 - A session in another clone or on another machine is still undetected. The Peers row says `reach: clone`, so this gap is never shown as a clean `solo`.
 - A crashed session holds its claims for up to one 40-minute lease.
 - The registry lives outside `.blackhole/`. It is local per clone, never pushed, and needs no `.gitignore` entry.
+
+## Post-acceptance amendments
+
+- 2026-11-23 (issue #1408): self is no longer identified only by the campaign-dir token. That token
+  (`<campaign dir>/.tmp/campaign-session.json`) is shared by every session on one campaign
+  directory, so two sessions there kept one record and `detect` returned `solo` for both.
+  - **Id source**: where the host sets `CLAUDE_CODE_SESSION_ID` and it is a valid session id, it
+    is the session id (`sessionIdentity`, `scripts/peer-campaigns.ts`). A set but unusable value
+    falls back to the token and prints a stderr warning; an absent one falls back silently. A
+    Task-spawned orchestrator shares its coordinator's id, so one campaign keeps one record.
+  - **Self rule**: with a host id (`SelfIdentity.host_scoped`), a record from the same worktree
+    on the same host is no longer self by that fact alone, so a concurrent session on the same
+    campaign directory is a peer and the launch gate asks the peer question.
+  - **Predecessor marker**: to keep this ADR's discriminating CRITICAL closed (a state-lost
+    session must not read its own claims as a peer's), each record carries `host_pid`
+    (`CLAUDE_PID`, optional, older records read as null) and the token file names the campaign
+    directory's last session. `supersededSessions` (`scripts/lib/peer-campaigns.ts`) reads a
+    same-worktree, same-host record as this campaign's earlier session when its host process is
+    this one (`/clear`) or is gone (resume in a new process), or, with no pid, when it is the
+    last session and has not heartbeated since this session's first heartbeat. `heartbeat`
+    removes it.
+  - **Residuals**: with no host session id (Cursor, Codex), the token rule is unchanged and a
+    second session on one campaign directory stays unseen. With a host id but no `CLAUDE_PID`, a
+    second session's first heartbeat reads a live last session as superseded and removes its
+    record until that session's next heartbeat recreates it. A reused pid reads a gone
+    predecessor as alive, so it shows as a peer until its 40-minute lease ends. A pre-upgrade
+    token-only record in the same worktree is superseded only through the marker rule.

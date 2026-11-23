@@ -164,11 +164,14 @@ describe('forge-sync peer holds (ADR-057)', () => {
   // The outer host session's id would replace the campaign-dir token these tests write.
   const HOST_ENV = 'CLAUDE_CODE_SESSION_ID';
   const savedHostSession = process.env[HOST_ENV];
+  const savedPid = process.env.CLAUDE_PID;
   beforeAll(() => {
     delete process.env[HOST_ENV];
+    delete process.env.CLAUDE_PID;
   });
   afterAll(() => {
     if (savedHostSession !== undefined) process.env[HOST_ENV] = savedHostSession;
+    if (savedPid !== undefined) process.env.CLAUDE_PID = savedPid;
   });
   const PEER = 'a1b2c3d4-0000-4000-8000-000000000001';
   const own = prRow(10, { headRefName: 'blackhole/issue-1-export', body: 'Closes #1' });
@@ -217,7 +220,8 @@ describe('forge-sync peer holds (ADR-057)', () => {
     });
   });
 
-  test('by default the registry of the clone is read: a heartbeat in one worktree holds its claim in the other', async () => {
+  /** A throwaway clone with worktrees `a` and `b`; `a` has issue 1 in flight. Returns both campaign dirs. */
+  const twoWorktrees = () => {
     const git = (cwd: string, args: string[]) => {
       const out = spawnSync('git', ['-C', cwd, ...args], { encoding: 'utf-8' });
       if (out.status !== 0) throw new Error(`git ${args.join(' ')}: ${out.stderr}`);
@@ -228,16 +232,60 @@ describe('forge-sync peer holds (ADR-057)', () => {
     git(wtA, ['init', '-q', '-b', 'main']);
     git(wtA, ['-c', 'user.email=t@example.com', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'init']);
     git(wtA, ['worktree', 'add', '-q', '-b', 'side', wtB]);
-    fs.mkdirSync(path.join(wtA, '.blackhole'));
-    fs.writeFileSync(path.join(wtA, '.blackhole', 'queue.json'), JSON.stringify({ issues: { '1': { status: 'in-flight', phase: 'implement', pr: null } } }));
-    expect(peerCampaigns(['heartbeat', '--turn', '1', '--campaign-dir', path.join(wtA, '.blackhole')]).code).toBe(0);
+    const campaignA = path.join(wtA, '.blackhole');
     const campaignB = path.join(wtB, '.blackhole');
-    fs.mkdirSync(campaignB);
-    fs.copyFileSync(path.join(campaign(), 'config.json'), path.join(campaignB, 'config.json'));
+    for (const c of [campaignA, campaignB]) {
+      fs.mkdirSync(c);
+      fs.copyFileSync(path.join(campaign(), 'config.json'), path.join(c, 'config.json'));
+    }
+    fs.writeFileSync(path.join(campaignA, 'queue.json'), JSON.stringify({ issues: { '1': { status: 'in-flight', phase: 'implement', pr: null } } }));
+    return { campaignA, campaignB };
+  };
+  /** Runs `fn` as the host session `id` in host process `pid`, restoring the env afterwards. */
+  const asHost = async <T,>(id: string, pid: number, fn: () => T | Promise<T>): Promise<T> => {
+    process.env[HOST_ENV] = id;
+    process.env.CLAUDE_PID = String(pid);
+    try {
+      return await fn();
+    } finally {
+      delete process.env[HOST_ENV];
+      delete process.env.CLAUDE_PID;
+    }
+  };
+
+  test('by default the registry of the clone is read: a heartbeat in one worktree holds its claim in the other', async () => {
+    const { campaignA, campaignB } = twoWorktrees();
+    expect(peerCampaigns(['heartbeat', '--turn', '1', '--campaign-dir', campaignA]).code).toBe(0);
     const r = synced(await runForgeSync(campaignB, { adapter: adapter(), now: new Date().toISOString(), dryRun: true }));
     expect(r.queue.issues['1']).toMatchObject({ status: 'blocked', pr: null });
     expect(String(r.queue.issues['1'].notes)).toStartWith('another session: ');
     expect(r.queue.issues['2']).toMatchObject({ status: 'ready' });
+  });
+
+  test('a host-scoped session holds the claim of a token-id peer in another worktree', async () => {
+    const { campaignA, campaignB } = twoWorktrees();
+    expect(peerCampaigns(['heartbeat', '--turn', '1', '--campaign-dir', campaignA]).code).toBe(0);
+    const token = JSON.parse(fs.readFileSync(path.join(campaignA, '.tmp', 'campaign-session.json'), 'utf-8')).session;
+    const r = synced(
+      await asHost('dddddddd-0000-4000-8000-00000000000d', process.pid, () =>
+        runForgeSync(campaignB, { adapter: adapter(), now: new Date().toISOString(), dryRun: true }),
+      ),
+    );
+    expect(r.queue.issues['1']).toMatchObject({ status: 'blocked', notes: `another session: ${token}`, pr: null });
+  });
+
+  test("a host-scoped session never holds against its own prior session's record", async () => {
+    const { campaignA } = twoWorktrees();
+    const prior = 'eeeeeeee-0000-4000-8000-00000000000e';
+    const dead = spawnSync('true').pid;
+    await asHost(prior, dead, () => expect(peerCampaigns(['heartbeat', '--turn', '1', '--campaign-dir', campaignA]).code).toBe(0));
+    const r = synced(
+      await asHost('ffffffff-0000-4000-8000-00000000000f', process.pid, () =>
+        runForgeSync(campaignA, { adapter: adapter(), now: new Date().toISOString(), dryRun: true }),
+      ),
+    );
+    expect(String(r.queue.issues['1'].notes ?? '')).not.toContain('another session:');
+    expect(r.queue.issues['1'].status).not.toBe('blocked');
   });
 });
 

@@ -3,7 +3,7 @@ import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { makeTempDir } from './lib/fs.ts';
-import { detectForCampaign, readRegistry, realDeps, recordedWorktree, run, type RegistryDeps } from './peer-campaigns.ts';
+import { detectForCampaign, readRegistry, realDeps, recordedWorktree, run, sessionIdentity, type RegistryDeps } from './peer-campaigns.ts';
 
 // Two worktrees of one throwaway clone: the registry must be shared through the git common dir.
 // Every path is absolute and the CLI runs with cwd at the temp root, so nothing reaches this
@@ -24,12 +24,19 @@ const git = (cwd: string, args: string[]) => {
 
 /** The host session id env var; unset unless a test passes one, so the outer session's id never leaks in. */
 const HOST_ENV = 'CLAUDE_CODE_SESSION_ID';
+/** The host process id env var. */
+const PID_ENV = 'CLAUDE_PID';
 const savedHostSession = process.env[HOST_ENV];
+const savedPid = process.env[PID_ENV];
+/** A pid whose process has exited. */
+const deadPid = () => spawnSync('true').pid;
 
-const cli = (args: string[], hostSession?: string) => {
+const cli = (args: string[], hostSession?: string, hostPid?: number) => {
   const env: Record<string, string | undefined> = { ...process.env };
   delete env[HOST_ENV];
+  delete env[PID_ENV];
   if (hostSession !== undefined) env[HOST_ENV] = hostSession;
+  if (hostPid !== undefined) env[PID_ENV] = String(hostPid);
   const r = spawnSync('bun', ['run', scriptPath, ...args], { cwd: root, encoding: 'utf-8', env });
   return { code: r.status, stdout: r.stdout, stderr: r.stderr };
 };
@@ -43,6 +50,7 @@ const registryFiles = () => (fs.existsSync(registry) ? fs.readdirSync(registry).
 
 beforeAll(() => {
   delete process.env[HOST_ENV];
+  delete process.env[PID_ENV];
   root = makeTempDir('peer-campaigns');
   wt1 = path.join(root, 'main');
   wt2 = path.join(root, 'wt2');
@@ -64,6 +72,7 @@ beforeAll(() => {
 
 afterAll(() => {
   if (savedHostSession !== undefined) process.env[HOST_ENV] = savedHostSession;
+  if (savedPid !== undefined) process.env[PID_ENV] = savedPid;
   fs.rmSync(root, { recursive: true, force: true });
 });
 
@@ -137,24 +146,60 @@ describe('peer-campaigns CLI', () => {
     const a = 'aaaaaaaa-1111-4000-8000-000000000001';
     const b = 'bbbbbbbb-2222-4000-8000-000000000002';
     const before = registryFiles();
-    expect(cli(['heartbeat', '--campaign-dir', campaign(wt1), '--turn', '3'], a).code).toBe(0);
-    expect(cli(['heartbeat', '--campaign-dir', campaign(wt1), '--turn', '5'], b).code).toBe(0);
+    // Both host processes are alive: this test process and its parent.
+    const [pa, pb] = [process.pid, process.ppid];
+    const detectAs = (hostSession: string) => cli(['detect', '--campaign-dir', campaign(wt1)], hostSession, hostSession === a ? pa : pb);
+    expect(cli(['heartbeat', '--campaign-dir', campaign(wt1), '--turn', '3'], a, pa).code).toBe(0);
+    expect(cli(['heartbeat', '--campaign-dir', campaign(wt1), '--turn', '5'], b, pb).code).toBe(0);
     expect(registryFiles().filter((f) => !before.includes(f)).sort()).toEqual([`${a}.json`, `${b}.json`]);
     // Peers in this same worktree (worktree 2's session from the earlier tests is still live too).
     type Peer = { session: string; turn: number; worktree: string };
     const sameWorktree = (hostSession: string): [string, number][] =>
-      (JSON.parse(cli(['detect', '--campaign-dir', campaign(wt1)], hostSession).stdout).peers as Peer[])
+      (JSON.parse(detectAs(hostSession).stdout).peers as Peer[])
         .filter((p) => p.worktree === fs.realpathSync(wt1))
         .map((p) => [p.session, p.turn]);
-    expect(JSON.parse(cli(['detect', '--campaign-dir', campaign(wt1)], a).stdout).verdict).toBe('peers');
+    expect(JSON.parse(detectAs(a).stdout).verdict).toBe('peers');
     expect(sameWorktree(a)).toEqual([[b, 5]]);
     expect(sameWorktree(b)).toEqual([[a, 3]]);
     // A's next heartbeat keeps B's record and turn.
-    expect(cli(['heartbeat', '--campaign-dir', campaign(wt1), '--turn', '4'], a).code).toBe(0);
+    expect(cli(['heartbeat', '--campaign-dir', campaign(wt1), '--turn', '4'], a, pa).code).toBe(0);
     expect(sameWorktree(a)).toEqual([[b, 5]]);
     expect(cli(['release', '--campaign-dir', campaign(wt1)], a).code).toBe(0);
     expect(cli(['release', '--campaign-dir', campaign(wt1)], b).code).toBe(0);
     expect(registryFiles()).toEqual(before);
+  });
+
+  test("a new host session supersedes this campaign's last session once that host process is gone", () => {
+    const a = 'aaaaaaaa-3333-4000-8000-000000000003';
+    const b = 'bbbbbbbb-4444-4000-8000-000000000004';
+    expect(cli(['release', '--campaign-dir', campaign(wt2)]).code).toBe(0);
+    expect(cli(['heartbeat', '--campaign-dir', campaign(wt1), '--turn', '6'], a, deadPid()).code).toBe(0);
+    expect(registryFiles()).toEqual([`${a}.json`]);
+    // Resumed in a new session (new id, new process): its own earlier record is not a peer.
+    const solo = { verdict: 'solo', reach: 'clone', unreadable: 0, unreadable_files: [], peers: [] };
+    expect(JSON.parse(cli(['detect', '--campaign-dir', campaign(wt1)], b, process.pid).stdout)).toEqual(solo);
+    expect(cli(['heartbeat', '--campaign-dir', campaign(wt1), '--turn', '0'], b, process.pid).code).toBe(0);
+    expect(registryFiles()).toEqual([`${b}.json`]);
+    expect(cli(['release', '--campaign-dir', campaign(wt1)], b, process.pid).code).toBe(0);
+  });
+
+  test('a new host session in the same host process (/clear) supersedes the earlier one', () => {
+    const a = 'aaaaaaaa-5555-4000-8000-000000000005';
+    const b = 'bbbbbbbb-6666-4000-8000-000000000006';
+    expect(cli(['heartbeat', '--campaign-dir', campaign(wt1), '--turn', '6'], a, process.pid).code).toBe(0);
+    expect(JSON.parse(cli(['detect', '--campaign-dir', campaign(wt1)], b, process.pid).stdout).verdict).toBe('solo');
+    expect(cli(['heartbeat', '--campaign-dir', campaign(wt1), '--turn', '0'], b, process.pid).code).toBe(0);
+    expect(registryFiles()).toEqual([`${b}.json`]);
+    expect(cli(['release', '--campaign-dir', campaign(wt1)], b, process.pid).code).toBe(0);
+  });
+
+  test('an unusable host session id warns on stderr and falls back to the campaign-dir token', () => {
+    const r = cli(['heartbeat', '--campaign-dir', campaign(wt1), '--turn', '1'], 'not a session id!');
+    expect(r.code).toBe(0);
+    expect(r.stderr).toContain('CLAUDE_CODE_SESSION_ID');
+    const token = JSON.parse(fs.readFileSync(path.join(campaign(wt1), '.tmp', 'campaign-session.json'), 'utf-8')).session;
+    expect(registryFiles()).toEqual([`${token}.json`]);
+    expect(cli(['release', '--campaign-dir', campaign(wt1)]).code).toBe(0);
   });
 
   test('a campaign dir outside any git repo exits 1', () => {
@@ -166,6 +211,34 @@ describe('peer-campaigns CLI', () => {
     } finally {
       fs.rmSync(outside, { recursive: true, force: true });
     }
+  });
+});
+
+describe('sessionIdentity', () => {
+  const withHost = (id: string | null): RegistryDeps => ({ ...realDeps, hostSessionId: () => id });
+  const tokenDir = () => {
+    const dir = path.join(root, 'identity', '.blackhole');
+    writeJson(path.join(dir, '.tmp', 'campaign-session.json'), { session: 'cccccccc-7777-4000-8000-000000000007' });
+    return dir;
+  };
+
+  test('a valid host session id is the session id, host-scoped', () => {
+    expect(sessionIdentity(tokenDir(), withHost('dddddddd-8888-4000-8000-000000000008'))).toEqual({
+      session: 'dddddddd-8888-4000-8000-000000000008',
+      hostScoped: true,
+      warning: null,
+    });
+  });
+
+  test('an invalid host session id falls back to the token, with a warning', () => {
+    const id = sessionIdentity(tokenDir(), withHost('../etc/passwd'));
+    expect(id).toMatchObject({ session: 'cccccccc-7777-4000-8000-000000000007', hostScoped: false });
+    expect(id.warning).toContain('CLAUDE_CODE_SESSION_ID');
+  });
+
+  test('an absent host session id falls back to the token, silently', () => {
+    expect(sessionIdentity(tokenDir(), withHost(null))).toEqual({ session: 'cccccccc-7777-4000-8000-000000000007', hostScoped: false, warning: null });
+    expect(sessionIdentity(tokenDir(), withHost(''))).toEqual({ session: 'cccccccc-7777-4000-8000-000000000007', hostScoped: false, warning: null });
   });
 });
 
