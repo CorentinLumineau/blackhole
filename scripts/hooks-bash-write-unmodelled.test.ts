@@ -297,6 +297,12 @@ describe('a flag that is a prefix of a value-taking option', () => {
       }
     });
   });
+
+  test('--strip abbreviates --strip-components, which takes a value', async () => {
+    await withState((state, wt, run) => {
+      expect(run(`tar --strip -xf x -C ${path.relative(wt, state)}`)).not.toBeNull();
+    });
+  });
 });
 
 describe('read-only forms of a working-tree git subcommand', () => {
@@ -312,7 +318,11 @@ describe('read-only forms of a working-tree git subcommand', () => {
   test('their writing forms are still denied', async () => {
     await withState((state, _wt, run) => {
       const main = path.dirname(state);
-      for (const sub of ['stash', 'stash pop', 'stash push', 'submodule update', 'sparse-checkout set x', 'checkout x', 'checkout -- .']) {
+      for (const sub of [
+        'stash', 'stash pop', 'stash push', 'submodule update', 'sparse-checkout set x', 'checkout x', 'checkout -- .',
+        // The action is the word right after the subcommand: `stash -m list` is a push with message `list`.
+        'stash -m list', 'stash -q show', 'submodule --quiet update', 'submodule -q foreach rm -rf x', 'sparse-checkout --cone set list',
+      ]) {
         expect(run(`git -C ${main} ${sub}`)).toMatchObject(BLOCK);
       }
     });

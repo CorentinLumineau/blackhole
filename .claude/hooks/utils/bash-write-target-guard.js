@@ -1155,9 +1155,11 @@ const GIT_WORKTREE_WRITERS = new Set([
 ]);
 
 /** True for a form of a `GIT_WORKTREE_WRITERS` subcommand that only prints: `stash list|show`,
- * `submodule` bare or `status|summary`, `sparse-checkout list`, and a bare `checkout`. */
+ * `submodule` bare or `status|summary`, `sparse-checkout list`, and a bare `checkout`. The action
+ * is the word right after the subcommand, never a later one: `stash -m list` is a push whose
+ * message is `list`. */
 const isReadOnlyGitForm = (sub, rest) => {
-  const action = rest.find((t) => !t.startsWith('-'));
+  const action = rest[0];
   if (sub === 'stash') return action === 'list' || action === 'show';
   if (sub === 'submodule') return action === undefined || action === 'status' || action === 'summary';
   if (sub === 'sparse-checkout') return action === 'list';
