@@ -59,6 +59,11 @@ describe('findMissingCwdPin', () => {
     expect(findMissingCwdPin(good, 'fixture.md')).toEqual([]);
   });
 
+  test('flags a bare plugin-drift-signal.ts invocation with no --cwd', () => {
+    const bad = 'run `bun run scripts/plugin-drift-signal.ts --repo-root <abs repo-root>`';
+    expect(findMissingCwdPin(bad, 'fixture.md')).toEqual(['fixture.md:1']);
+  });
+
   test('ignores a mention of the script that is not a bun run invocation', () => {
     const mention = 'mechanized by `scripts/carry-staged-artifacts.ts` (issue #715, R-10)';
     expect(findMissingCwdPin(mention, 'fixture.md')).toEqual([]);

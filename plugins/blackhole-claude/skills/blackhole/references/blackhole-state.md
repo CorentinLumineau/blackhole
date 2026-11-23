@@ -387,10 +387,12 @@ proves one:
    present plugin-cache candidate's content matches the repo build's — any one mismatch flips it
    to `false` (the "prefer false positives" bias the design's binding constraints require).
 
-Existence-gated: when `scripts/plugin-drift-signal.ts` exists at repo root (blackhole
-self-hosting its own campaign), refresh `.blackhole/plugin-drift.json` via
-`bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/plugin-drift-signal.ts`; absent, this step is inert — no error, no attempted
-invocation. The signal is schema `version: 2`, carrying `sources[]` (each with its enumeration,
+Existence-gated: when `scripts/plugin-drift-signal.ts` is available (blackhole's own repo, or
+an installed plugin that ships it), refresh `.blackhole/plugin-drift.json` via
+`bun run --cwd <abs repo-root> "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/plugin-drift-signal.ts --repo-root <abs repo-root>`;
+`--repo-root` names the campaign repo, whose settings are read and whose `.blackhole/` gets the
+signal (without it, an installed plugin would describe its own cache folder); absent, this step
+is inert — no error, no attempted invocation. The signal is schema `version: 2`, carrying `sources[]` (each with its enumeration,
 ordering, and content-hash fields merged) and `veto_pairs[]`.
 
 `scripts/campaign-status.ts`'s `renderPluginDriftWarning` renders one line per non-clean source

@@ -235,8 +235,11 @@ after reading checkpoint and forge sync:
    the current revision and are not stale.
 4. Inspect worktrees per `recovery-protocol.md` §2.
 5. Refresh the advisory plugin-cache drift signal (issue #800, ADR-030): run
-   `bun run scripts/plugin-drift-signal.ts`, existence-gated on `scripts/plugin-drift-signal.ts`
-   being present (a consumer repo without the script simply has nothing to run — no error).
+   `bun run --cwd <abs repo-root> scripts/plugin-drift-signal.ts --repo-root <abs repo-root>`,
+   where `<abs repo-root>` is the campaign repo's main clone. `--repo-root` is required in a
+   consumer: without it the script describes its own folder, which is the plugin cache there,
+   not the campaign repo. Existence-gated on `scripts/plugin-drift-signal.ts` being present (a
+   consumer repo without the script simply has nothing to run — no error).
    **Local-only**: skip it when the run context routes `state_store: branch`. That machine
    installed the plugin fresh for this session and is reclaimed afterwards, so there is no
    long-lived cache to drift; say "plugin drift: skipped (ephemeral machine)" once in the turn.

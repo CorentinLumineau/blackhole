@@ -9,6 +9,7 @@ import { orderHookSources, type GitResolver, type OrderingResult, type VetoPair,
 import { readOriginUrl } from './lib/forge-detection.ts';
 import { root } from './checks/check-utils.ts';
 import { projectIdentity } from './project-identity.ts';
+import { parseFlags } from './lib/argv-flags.ts';
 
 // Issue #912 (ADR-044) — widens the session-start advisory half of the plugin-cache drift
 // detection (mechanism 2 of ADR-030's composite fix) from "does one guessed installed-cache path
@@ -155,8 +156,17 @@ export function readRepoHeadSha(repoRoot: string): string | null {
   return r.status === 0 ? r.stdout.trim() : null;
 }
 
+// The campaign repo the signal describes. Defaults to this script's own repo, which is right
+// only when blackhole runs its own campaign: from an installed plugin, `root` is the plugin
+// folder, so the playbook step passes `--repo-root <campaign repo root>` (issue #1454).
+export const resolveRepoRoot = (argv: string[], fallback: string = root): string => {
+  const value = parseFlags(argv)['repo-root'];
+  if (value === true) throw new Error('--repo-root needs a path');
+  return path.resolve(value ?? fallback);
+};
+
 function main(): void {
-  const repoRoot = root;
+  const repoRoot = resolveRepoRoot(process.argv.slice(2));
   const resolver = createRealGitResolver(repoRoot);
 
   const sources = enumerateHookSources({
