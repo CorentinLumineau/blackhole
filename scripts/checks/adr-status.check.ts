@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { parseMdFrontmatter } from '../lib/build/content.ts';
-import { parseIndexTableRows } from '../lib/check-common.ts';
+import { isAdrIndexHeader, lookupIndexStatus, parseDecisionsIndexStatusMap } from '../lib/check-common.ts';
 import { root, type CheckResult } from './check-utils.ts';
 
 // ADR-007 T5/R2' — adr-status.check.ts: V-ADR-01..05, V-ADA-08 lifecycle (#460).
@@ -28,15 +28,8 @@ export const extractBodyStatusLeadingToken = (content: string): string | null =>
   return tokenMatch ? tokenMatch[1] : null;
 };
 
-// V-ADR-02: INDEX.md status column keyed by ADR filename.
-export const parseIndexStatusMap = (indexContent: string): Map<string, string> => {
-  const rows = new Map<string, string>();
-  for (const row of parseIndexTableRows(indexContent)) {
-    if (!row.path.startsWith('ADR-')) continue;
-    rows.set(row.path, row.status);
-  }
-  return rows;
-};
+// V-ADR-02: INDEX.md status column, read by header name for both index schemas (issue #1411).
+export const parseIndexStatusMap = parseDecisionsIndexStatusMap;
 
 // V-ADR-01 (pure)
 export const findInvalidAdrStatuses = (files: { filename: string; status: string | null }[]): string[] =>
@@ -44,17 +37,19 @@ export const findInvalidAdrStatuses = (files: { filename: string; status: string
     .filter((f) => f.status === null || !(ADR_STATUS_ENUM as readonly string[]).includes(f.status))
     .map((f) => f.filename);
 
-// V-ADR-02 (pure)
+// V-ADR-02 (pure). An ADR-style index compares case-insensitively; V-ADR-01 owns frontmatter case.
 export const findAdrIndexMismatches = (
   files: { filename: string; frontmatterStatus: string | null }[],
   indexMap: Map<string, string>,
-): string[] =>
-  files
-    .filter((f) => {
-      const indexStatus = indexMap.get(f.filename);
-      return indexStatus === undefined || indexStatus !== f.frontmatterStatus;
-    })
-    .map((f) => f.filename);
+  { caseInsensitive = false } = {},
+): string[] => {
+  const names = files.map((f) => f.filename);
+  const norm = (v: string | null | undefined) => (caseInsensitive ? v?.toLowerCase() : v);
+  return names.filter((n, i) => {
+    const indexStatus = lookupIndexStatus(indexMap, n, names);
+    return indexStatus === undefined || norm(indexStatus) !== norm(files[i].frontmatterStatus);
+  });
+};
 
 // V-ADR-03 (pure)
 export const findBodyStatusMismatches = (
@@ -132,12 +127,13 @@ const checkAdrStatusEnum = (): CheckResult => {
 };
 
 const checkAdrIndexMatch = (): CheckResult => {
-  const indexMap = parseIndexStatusMap(fs.readFileSync(path.join(decisionsDir, 'INDEX.md'), 'utf-8'));
+  const index = fs.readFileSync(path.join(decisionsDir, 'INDEX.md'), 'utf-8');
   const files = listAdrFiles().map((filename) => ({
     filename,
     frontmatterStatus: extractFrontmatterStatus(fs.readFileSync(path.join(decisionsDir, filename), 'utf-8')),
   }));
-  const mismatched = findAdrIndexMismatches(files, indexMap);
+  const caseInsensitive = isAdrIndexHeader(index);
+  const mismatched = findAdrIndexMismatches(files, parseIndexStatusMap(index), { caseInsensitive });
   if (mismatched.length) {
     return { id: 'V-ADR-02', ok: false, detail: `frontmatter/INDEX.md status mismatch: ${mismatched.join(', ')}` };
   }
@@ -166,12 +162,13 @@ const checkAdrBodyStatusAgreement = (): CheckResult => {
 
 const checkAdrSupersededLifecycle = (): CheckResult => {
   const indexMap = parseIndexStatusMap(fs.readFileSync(path.join(decisionsDir, 'INDEX.md'), 'utf-8'));
-  const files = listAdrFiles().map((filename) => {
+  const names = listAdrFiles();
+  const files = names.map((filename) => {
     const content = fs.readFileSync(path.join(decisionsDir, filename), 'utf-8');
     return {
       filename,
       frontmatterStatus: extractFrontmatterStatus(content),
-      indexStatus: indexMap.get(filename),
+      indexStatus: lookupIndexStatus(indexMap, filename, names),
       supersessionCitation: extractSupersessionCitation(content),
     };
   });
