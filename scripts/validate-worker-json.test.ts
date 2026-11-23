@@ -5,6 +5,7 @@ import * as path from 'path';
 import {
   extractFromHookInput,
   extractLastAssistantText,
+  extractLastHandbackMessage,
   extractWorkerJson,
   readTranscriptTail,
   resolveRole,
@@ -753,6 +754,18 @@ describe('extractWorkerJson', () => {
   test('throws when no json found', () => {
     expect(() => extractWorkerJson('no structured output here')).toThrow();
   });
+
+  test('returns the top-level object, not a nested one, from an unlabelled fence with trailing prose', () => {
+    const routerJson = readFixture('router-routed.json');
+    const text = '```\n' + JSON.stringify(routerJson, null, 2) + '\n```\n\nNotes: nothing else to {report}.';
+    expect(extractWorkerJson(text)).toEqual(routerJson);
+  });
+
+  test('returns the top-level object from a bare nested object followed by prose', () => {
+    const routerJson = readFixture('router-routed.json');
+    const text = JSON.stringify(routerJson) + '\n\nThe route above was computed from the body only.';
+    expect(extractWorkerJson(text)).toEqual(routerJson);
+  });
 });
 
 describe('resolveRole', () => {
@@ -868,6 +881,39 @@ describe('extractLastAssistantText', () => {
     ].join('\n');
 
     expect(extractLastAssistantText(tail)).toBeNull();
+  });
+});
+
+describe('extractLastHandbackMessage', () => {
+  const jsonlLine = (obj: unknown) => JSON.stringify(obj);
+  const handback = (message: unknown) =>
+    jsonlLine({
+      type: 'assistant',
+      message: { content: [{ type: 'tool_use', name: 'SubagentHandback', input: { message } }] },
+    });
+
+  test('returns the last SubagentHandback message input', () => {
+    const tail = [
+      handback('first'),
+      jsonlLine({ type: 'assistant', message: { content: [{ type: 'text', text: 'between' }] } }),
+      handback('second'),
+      jsonlLine({ type: 'user', message: { content: [{ type: 'tool_result', content: 'ok' }] } }),
+    ].join('\n');
+
+    expect(extractLastHandbackMessage(tail)).toBe('second');
+  });
+
+  test('returns null when no SubagentHandback tool call exists', () => {
+    const tail = [
+      jsonlLine({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Bash', input: {} }] } }),
+      jsonlLine({ type: 'assistant', message: { content: [{ type: 'text', text: 'done' }] } }),
+    ].join('\n');
+
+    expect(extractLastHandbackMessage(tail)).toBeNull();
+  });
+
+  test('ignores a SubagentHandback call whose message is not a string', () => {
+    expect(extractLastHandbackMessage(handback({ nested: true }))).toBeNull();
   });
 });
 
@@ -1266,6 +1312,46 @@ describe('recover-transcript CLI mode', () => {
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr.trim()).not.toBe('');
+  });
+
+  test('Claude desktop transcript whose return is a SubagentHandback tool call recovers the JSON, exit 0', async () => {
+    const transcriptPath = path.join(fixturesDir, 'transcripts/desktop-subagent-handback.jsonl');
+
+    const result = await runValidateWorkerCli([
+      '--recover-transcript',
+      transcriptPath,
+      '--role',
+      'router',
+    ]);
+
+    expect(result.stderr.trim()).toBe('');
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout.trim())).toEqual(readFixture('router-routed.json'));
+  });
+
+  test('falls back to the SubagentHandback input when the last assistant text carries no JSON', async () => {
+    const routerJson = readFixture('router-routed.json');
+    const transcriptPath = writeTranscript('router-handback-then-text.jsonl', [
+      jsonlLine({
+        type: 'assistant',
+        message: {
+          content: [
+            { type: 'tool_use', name: 'SubagentHandback', input: { message: JSON.stringify(routerJson) } },
+          ],
+        },
+      }),
+      jsonlLine({ type: 'assistant', message: { content: [{ type: 'text', text: 'Handed back.' }] } }),
+    ]);
+
+    const result = await runValidateWorkerCli([
+      '--recover-transcript',
+      transcriptPath,
+      '--role',
+      'router',
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout.trim())).toEqual(routerJson);
   });
 
   test('extracted JSON failing role-schema validation exits 1 and lists validation errors', async () => {
