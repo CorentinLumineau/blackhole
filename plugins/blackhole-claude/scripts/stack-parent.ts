@@ -17,7 +17,8 @@ import { pickStackParent, planTouchPaths, withPlanTouchPaths, type StackCandidat
 //                the snapshot could not be read in full, because "could not look" is not "no overlap".
 // --repo-slug <owner/repo> and --repo-root <abs> locate the forge and the checkout; --forge defaults to github.
 // --plans-dir <abs> (default: `plans/` beside the queue file): in --issue mode, an issue whose
-// `issue-<N>.md` (else `<N>.md`) plan declares Touch-Paths is matched on those paths, not its queue touch_paths.
+// `issue-<N>.md` (else `<N>.md`) plan declares Touch-Paths is matched on those paths, not its queue touch_paths;
+// a plan `package_root` frontmatter joins sub-package-relative paths to that root.
 //   --plan-touch-paths <N>  prints that plan's effective Touch-Paths as JSON (`null` when none), the
 //                           value phase-plan.md writes into the queue entry's touch_paths.
 const flags = parseFlags(process.argv.slice(2));

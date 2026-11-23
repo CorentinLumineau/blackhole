@@ -292,3 +292,52 @@ describe('plan Scope Amendments and heading match', () => {
     expect(planTouchPaths('## Touch-Paths Completeness Advisory\n\n- `scripts/lib/build/facts.ts`\n')).toEqual([]);
   });
 });
+
+describe('plan package_root prefixes sub-package Touch-Paths (#1462)', () => {
+  const pkgPlan = [
+    '---',
+    'issue: #1462',
+    'package_root: apps/invest',
+    '---',
+    '',
+    '## Touch-Paths',
+    '',
+    '- `lib/foo.ts`',
+    '- `apps/invest/lib/already.ts`',
+    '- `app/**/page.tsx`',
+    '',
+    '## Scope Amendments',
+    '',
+    '- 2026-11-23 — widen — `lib/bar.ts` — needed for the fix',
+  ].join('\n');
+
+  test('each path is joined to package_root unless already under it', () => {
+    expect(planTouchPaths(pkgPlan)).toEqual([
+      'apps/invest/lib/foo.ts',
+      'apps/invest/lib/already.ts',
+      'apps/invest/app/**/page.tsx',
+      'apps/invest/lib/bar.ts',
+    ]);
+  });
+  test('a quoted root with a trailing slash, or ./, is normalized', () => {
+    expect(planTouchPaths(pkgPlan.replace('package_root: apps/invest', 'package_root: "./apps/invest/"'))[0]).toBe(
+      'apps/invest/lib/foo.ts',
+    );
+  });
+  test('an absent, null, empty or "." package_root leaves paths repo-relative', () => {
+    for (const v of ['null', '', '.', '~']) {
+      expect(planTouchPaths(pkgPlan.replace('package_root: apps/invest', `package_root: ${v}`))[0]).toBe('lib/foo.ts');
+    }
+    expect(planTouchPaths(pkgPlan.replace('package_root: apps/invest\n', ''))[0]).toBe('lib/foo.ts');
+  });
+  test('a sub-package path stacks on the open PR changing the repo-relative file', () => {
+    const q = {
+      '1381': { status: 'in-flight', pr: 1385 },
+      '1376': { status: 'ready', pr: null, touch_paths: ['src/**'] },
+    };
+    const planned = withPlanTouchPaths(q, (n) => (n === 1376 ? pkgPlan : null));
+    expect(pickStackParent(planned, 1376, { parentFiles: { '1381': ['apps/invest/lib/foo.ts'] } })?.parent).toBe(1381);
+    // The same relative path in another package is not an overlap.
+    expect(pickStackParent(planned, 1376, { parentFiles: { '1381': ['lib/foo.ts'] } })).toBeNull();
+  });
+});

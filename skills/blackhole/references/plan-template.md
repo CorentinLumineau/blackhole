@@ -11,6 +11,7 @@ task_type: bugfix | null
 threat_screen_passed: true | null
 ui_gate: pending | approved | null
 supersedes_adr: [ADR-NNN, ...] | null  # set when this plan knowingly reverses an accepted ADR decision — triggers V-ADR-06 leg 1
+package_root: <repo-relative dir> | null  # monorepo sub-package the Touch-Paths below are relative to (e.g. apps/invest); null when they are repo-relative
 ---
 
 # Plan - Issue #<Number>

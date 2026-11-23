@@ -1,4 +1,5 @@
 import { childBranchFor } from '../stack-repair.ts';
+import { parseFrontmatterFields, parseMdFrontmatter } from './build/content.ts';
 import { headingSectionsOnce } from './markdown-headings.ts';
 import { extractBacktickPaths } from './plan-touch-path-ssot-pairs.ts';
 import { chainTip as graphChainTip, effectiveParent, reachesNode, withoutRegenerated, type StackGraph } from './stack-overlap.ts';
@@ -74,8 +75,23 @@ const planSection = (plan: string, name: string): string =>
   headingSectionsOnce(plan, (h) => h.text.toLowerCase() === name, () => false).primary?.text ?? '';
 
 /**
+ * The plan's `package_root` frontmatter value as a repo-relative directory without leading `./` or
+ * trailing `/`; '' when absent, null, empty or `.` (the paths are already repo-relative).
+ */
+export const planPackageRoot = (plan: string): string => {
+  const raw = parseFrontmatterFields(parseMdFrontmatter(plan).frontmatter).package_root ?? '';
+  const value = raw.replace(/\s+#.*$/, '').replace(/^(['"])(.*)\1$/, '$2').trim();
+  if (value === 'null' || value === '~') return '';
+  return value.replace(/^(\.\/)+/, '').replace(/\/+$/, '').replace(/^\.$/, '');
+};
+
+const underRoot = (root: string, p: string): string => (root === '' || p.startsWith(`${root}/`) ? p : `${root}/${p}`);
+
+/**
  * A plan's effective Touch-Paths: the backtick paths under `## Touch-Paths`, plus each `widen` and
  * minus each `narrow` line under `## Scope Amendments` (plan-template.md), in order, deduplicated.
+ * A plan whose `package_root` names a sub-package lists its paths relative to it; each is joined
+ * to that root so it compares with open PRs' repo-relative changed files.
  */
 export const planTouchPaths = (plan: string): string[] => {
   const paths = new Set(extractBacktickPaths(planSection(plan, 'touch-paths')));
@@ -84,7 +100,8 @@ export const planTouchPaths = (plan: string): string[] => {
     if (m?.[1] === 'widen') paths.add(m[2]);
     else if (m) paths.delete(m[2]);
   }
-  return [...paths];
+  const root = planPackageRoot(plan);
+  return [...new Set([...paths].map((p) => underRoot(root, p)))];
 };
 
 /**
