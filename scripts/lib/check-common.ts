@@ -141,11 +141,9 @@ export const expandVcodeTableKey = (key: string): string[] => {
 };
 
 // Issue #573 (#498 deferral): `documentation/**/INDEX.md`'s 5-column `| path | summary | type |
-// status | review_trigger |` schema, as doc-health.check.ts's parseRootIndexRows reads it (root
-// documentation/INDEX.md, folder-prefixed path). adr-status.check.ts's parseIndexStatusMap reads
-// the decisions index by header name through readIndexColumns instead, since a consumer's
-// decisions index may use the ADR-style header (issue #1411). Same split('|').map(trim) + length-guard idiom as
-// parseVcodeTableRows above (V-INT-02) — the row-splitting *technique* is shared; the path
+// status | review_trigger |` schema (doc-health.check.ts's parseRootIndexRows; the decisions
+// index is read by header name instead, readIndexColumns). Same split('|').map(trim) +
+// length-guard idiom as parseVcodeTableRows above (V-INT-02) — the row-splitting *technique* is shared; the path
 // column's *interpretation* is not (folder-prefixed vs. bare filename) and stays with each
 // caller. Header/separator rows are skipped by the generic 'path' header value and the
 // dash-only separator pattern — both live INDEX.md files use the literal 'path' header cell.
@@ -376,8 +374,8 @@ export const isAdrIndexHeader = (indexContent: string): boolean => indexHeaderCo
 // Reads two columns of an INDEX table by header name rather than by position, so one reader works
 // on blackhole's `path | summary | type | status | review_trigger` and on the ADR-style
 // `ADR | Title | Status | Date [| Traceability]` header alike. Column names match lowercased; a
-// missing column yields no rows. Cells come back trimmed and unescaped, as parseIndexTableRows
-// returns them.
+// missing column yields no rows. Only the first table's row block (findTableBlock) is read.
+// Cells come back trimmed and unescaped, as parseIndexTableRows returns them.
 export const readIndexColumns = (
   indexContent: string,
   keyColumn: string,
@@ -387,14 +385,11 @@ export const readIndexColumns = (
   const keyIdx = columns.indexOf(keyColumn.toLowerCase());
   const valueIdx = columns.indexOf(valueColumn.toLowerCase());
   if (keyIdx === -1 || valueIdx === -1) return [];
+  const lines = indexContent.split('\n');
+  const { separatorIdx, blockEnd } = findTableBlock(lines);
+  if (separatorIdx === -1) return [];
   const rows: { key: string; value: string }[] = [];
-  let headerSeen = false;
-  for (const line of indexContent.split('\n')) {
-    if (!line.trim().startsWith('|') || isSeparatorRow(line)) continue;
-    if (!headerSeen) {
-      headerSeen = true;
-      continue;
-    }
+  for (const line of lines.slice(separatorIdx + 1, blockEnd)) {
     const cells = splitRowCells(line).map(unescapeTableCell);
     if (cells[keyIdx]) rows.push({ key: cells[keyIdx], value: cells[valueIdx] ?? '' });
   }
@@ -406,7 +401,8 @@ export const readIndexColumns = (
 // and keeps its status cell verbatim, since V-ADR-02 requires the exact bare token there. An
 // ADR-style header (mercure `ADR | Title | Status | Date`, invest adds `Traceability`) is keyed
 // by the linked filename, or by the bare `ADR-NNN` id when the cell has no link, and its status
-// is the cell's leading word lowercased (`Superseded by ADR-003` reads `superseded`).
+// is the cell's leading word lowercased, past any `*`/`_`/backtick emphasis
+// (`**Superseded by ADR-003**` reads `superseded`).
 export const parseDecisionsIndexStatusMap = (indexContent: string): Map<string, string> => {
   const rows = new Map<string, string>();
   if (isAdrIndexHeader(indexContent)) {
@@ -415,7 +411,7 @@ export const parseDecisionsIndexStatusMap = (indexContent: string): Map<string, 
       const target = link ? path.basename(link[1]) : key;
       const id = target.match(/^ADR-\d+(?:-[^\s]*\.md)?/)?.[0];
       if (!id) continue;
-      rows.set(id, (value.match(/^[A-Za-z]+/)?.[0] ?? value).toLowerCase());
+      rows.set(id, (value.match(/^[\s*_`]*([A-Za-z]+)/)?.[1] ?? value).toLowerCase());
     }
     return rows;
   }
@@ -426,9 +422,20 @@ export const parseDecisionsIndexStatusMap = (indexContent: string): Map<string, 
   return rows;
 };
 
-// An ADR-style index may key a row by its bare `ADR-NNN` id instead of the filename.
-export const lookupIndexStatus = (indexMap: Map<string, string>, filename: string): string | undefined =>
-  indexMap.get(filename) ?? indexMap.get(filename.match(/^ADR-\d+/)?.[0] ?? '');
+// An ADR-style index may key a row by its bare `ADR-NNN` id instead of the filename. The id
+// fallback applies only when exactly one of `filenames` carries that id, so a V-ADR-05 number
+// collision is never covered by one shared row.
+export const lookupIndexStatus = (
+  indexMap: Map<string, string>,
+  filename: string,
+  filenames: string[],
+): string | undefined => {
+  const direct = indexMap.get(filename);
+  const id = filename.match(/^ADR-\d+/)?.[0];
+  if (direct !== undefined || !id) return direct;
+  const sameId = filenames.filter((f) => f.match(/^ADR-\d+/)?.[0] === id);
+  return sameId.length === 1 ? indexMap.get(id) : undefined;
+};
 
 const ADR_TOKEN = /ADR-\d+/;
 

@@ -101,7 +101,10 @@ shape:
 
 - **Frontmatter `status:`** — a bare enum token, exact case (`V-ADR-01`).
 - **`documentation/decisions/INDEX.md`'s `status` column** — a bare enum token, exact case,
-  equal to the file's frontmatter value (`V-ADR-02`).
+  equal to the file's frontmatter value (`V-ADR-02`). On an ADR-style index header (`ADR | Title |
+  Status | Date`, optionally `| Traceability`), the column is found by header name and only the
+  cell's leading word, past any `*`/`_`/backtick emphasis, is compared, case-insensitively
+  (`**Superseded by ADR-030**` matches `superseded`).
 - **An in-body `## Status` section** — optional (present on a subset of ADRs); when present,
   it carries human prose evidence (e.g. "Accepted — 2026-07-21 (shipped in v0.15.0: ...)") that
   must never be flattened to a bare token. Only its **leading token** is checked, and only for

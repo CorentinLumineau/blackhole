@@ -688,4 +688,9 @@ describe('readIndexColumns (issue #1411)', () => {
     expect(readIndexColumns('| ADR | Title |\n|---|---|\n| ADR-001 | A |\n', 'adr', 'status')).toEqual([]);
     expect(readIndexColumns('no table\n', 'adr', 'status')).toEqual([]);
   });
+
+  test('stops at the end of the first table', () => {
+    const two = '| ADR | Status |\n|---|---|\n| ADR-001 | Accepted |\n\nLegend\n\n| ADR | Status |\n|---|---|\n| ADR-009 | Draft |\n';
+    expect(readIndexColumns(two, 'adr', 'status')).toEqual([{ key: 'ADR-001', value: 'Accepted' }]);
+  });
 });

@@ -14,6 +14,7 @@ import {
   findSupersededLifecycleViolations,
   parseIndexStatusMap,
 } from './checks/adr-status.check.ts';
+import { lookupIndexStatus } from './lib/check-common.ts';
 
 // Issue #324: ADR status enum across frontmatter, INDEX, and body § Status (V-ADR-01..03).
 
@@ -125,6 +126,34 @@ describe('parseIndexStatusMap — ADR-style headers (issue #1411)', () => {
       { filename: 'ADR-002-two.md', frontmatterStatus: 'accepted' },
     ];
     expect(findAdrIndexMismatches(files, parseIndexStatusMap(mercure))).toEqual(['ADR-002-two.md']);
+  });
+
+  test('an emphasised status cell reads its leading word (real invest shape)', () => {
+    const index = `| ADR | Title | Status | Date | Traceability |
+|-----|-------|--------|------|--------------|
+| [ADR-001](./ADR-001-a.md) | One | **Superseded by ADR-030** (display colours) | 2026-01-01 | #1 |
+| [ADR-002](./ADR-002-b.md) | Two | _\`Accepted\`_ | 2026-01-02 | #2 |
+`;
+    const map = parseIndexStatusMap(index);
+    expect(map.get('ADR-001-a.md')).toBe('superseded');
+    expect(map.get('ADR-002-b.md')).toBe('accepted');
+  });
+
+  test('ADR-style index compares frontmatter case-insensitively; blackhole stays exact', () => {
+    const files = [{ filename: 'ADR-001-one.md', frontmatterStatus: 'Accepted' }];
+    expect(findAdrIndexMismatches(files, parseIndexStatusMap(mercure), { caseInsensitive: true })).toEqual([]);
+    expect(findAdrIndexMismatches(files, new Map([['ADR-001-one.md', 'accepted']]))).toEqual(['ADR-001-one.md']);
+  });
+
+  test('bare-id fallback applies only when exactly one file carries the id (V-ADR-05 collision)', () => {
+    const files = [
+      { filename: 'ADR-001-one.md', frontmatterStatus: 'accepted' },
+      { filename: 'ADR-001-dup.md', frontmatterStatus: 'accepted' },
+    ];
+    expect(findAdrIndexMismatches(files, parseIndexStatusMap(mercure))).toEqual(['ADR-001-one.md', 'ADR-001-dup.md']);
+    const names = files.map((f) => f.filename);
+    expect(lookupIndexStatus(parseIndexStatusMap(mercure), 'ADR-001-one.md', names)).toBeUndefined();
+    expect(lookupIndexStatus(parseIndexStatusMap(mercure), 'ADR-001-one.md', ['ADR-001-one.md'])).toBe('accepted');
   });
 
   test('blackhole header keeps exact-case status (V-ADR-02 bare token rule)', () => {
