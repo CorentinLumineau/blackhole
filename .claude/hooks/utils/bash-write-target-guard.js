@@ -267,23 +267,51 @@ const COMMAND_PREFIXES = new Set([
 /** Wrapper options whose value is the next word (`sudo -u bob`, `nice -n 5`, `env -C dir`). */
 const PREFIX_VALUE_OPTIONS = new Set(['-u', '-g', '-n', '-C', '-k', '-p', '-I', '-L', '-P', '-o', '-e']);
 
+/** A word that is one whole substitution placeholder (`$(…)` or backticks, see `extractSubstitutions`). */
+const WHOLE_PLACEHOLDER_RE = /^\$\u0001\d+\u0001$/;
+
+/** Index of the first word at or after `i` that is not a redirect or a redirect's separate target. */
+const skipRedirectWords = (tokens, i) => {
+  while (i < tokens.length && REDIRECT_WORD_RE.test(tokens[i])) i += REDIRECT_ONLY_WORD_RE.test(tokens[i]) ? 2 : 1;
+  return i;
+};
+
+/** `i` moved past redirects and every word `isOperand` accepts, in any order. */
+const skipOperandsAndRedirects = (tokens, i, isOperand) => {
+  for (let before = -1; before !== i; ) {
+    before = i;
+    i = skipRedirectWords(tokens, i);
+    if (i < tokens.length && isOperand(tokens[i])) i++;
+  }
+  return i;
+};
+
 /** Indices of the words in a clause that run as commands: the first word after any `NAME=value`
- * assignments, and the word after each wrapper or keyword together with its options. */
+ * assignments and redirects, and the word after each wrapper or keyword together with its options.
+ * A word that is only a substitution may expand to nothing, so the word after it is a command too. */
 const commandPositions = (tokens) => {
   const positions = new Set();
   let i = 0;
   while (i < tokens.length) {
-    while (i < tokens.length && /^[A-Za-z_]\w*=/.test(tokens[i])) i++;
+    i = skipOperandsAndRedirects(tokens, i, (t) => /^[A-Za-z_]\w*=/.test(t));
     if (i >= tokens.length) break;
     positions.add(i);
+    if (WHOLE_PLACEHOLDER_RE.test(tokens[i])) {
+      i++;
+      continue;
+    }
     const prefix = commandName(tokens[i]);
     if (!COMMAND_PREFIXES.has(prefix)) break;
     i++;
-    while (i < tokens.length && (tokens[i].startsWith('-') || /^\d+(?:\.\d+)?[smhd]?$/.test(tokens[i]))) {
-      i += PREFIX_VALUE_OPTIONS.has(tokens[i]) ? 2 : 1;
+    for (let j = -1; j !== i; ) {
+      j = i;
+      i = skipRedirectWords(tokens, i);
+      if (i < tokens.length && (tokens[i].startsWith('-') || /^\d+(?:\.\d+)?[smhd]?$/.test(tokens[i]))) {
+        i += PREFIX_VALUE_OPTIONS.has(tokens[i]) ? 2 : 1;
+      }
     }
     // `env` reads NAME=VALUE operands after quote removal, so `env "A=1" 'tee'` runs `tee`.
-    if (prefix === 'env') while (i < tokens.length && tokens[i].includes('=')) i++;
+    if (prefix === 'env') i = skipOperandsAndRedirects(tokens, i, (t) => t.includes('='));
   }
   return positions;
 };
@@ -1186,14 +1214,24 @@ const openingDelta = (word) => {
   return { parens, ticks };
 };
 
-/** Index of the clause's command word for the trace scan: `k` (from `skipCompoundWords`) moved
- * past a `case WORD in` head, a `function NAME` head and, inside a `case`, a `PATTERN)` word. */
+/** A `case` label glued to the word after it (`a)env`, `(a|b)export`): the label with its `)`, then the rest. */
+const GLUED_CASE_LABEL_RE = /^(\(?[^()'"\s\\]*\))(.+)$/s;
+
+/** The clause's tokens and the index of its command word for the trace scan: `k` (from
+ * `skipCompoundWords`) moved past a `case WORD in` head (the word may have split on a space), a
+ * `function NAME` head and, inside a `case`, a `PATTERN)` word, which is first split from a
+ * command word it is glued to. */
 const traceCommandStart = (tokens, k, inCase) => {
   let i = k;
-  if (tokens[i - 1] === 'case' && tokens[i + 1] === 'in') i += 2;
+  if (tokens[i - 1] === 'case') {
+    const head = tokens.indexOf('in', i + 1);
+    if (head !== -1) i = head + 1;
+  }
   if (tokens[i] === 'function') i += 2;
-  if ((inCase || i > k) && /\)$/.test(tokens[i] ?? '')) i++;
-  return i;
+  if (!(inCase || i > k)) return { tokens, start: i };
+  const glued = GLUED_CASE_LABEL_RE.exec(tokens[i] ?? '');
+  if (glued) return { tokens: [...tokens.slice(0, i), glued[1], glued[2], ...tokens.slice(i + 1)], start: i + 1 };
+  return { tokens, start: /\)$/.test(tokens[i] ?? '') ? i + 1 : i };
 };
 
 /**
@@ -1208,11 +1246,11 @@ const traceCommandStart = (tokens, k, inCase) => {
  * declarer operand, and a nameref declarer make the clause unresolvable. `allexport` reports a
  * `set`/`shopt` that may turn on allexport; the caller weighs it against the whole command.
  */
-const findGitTraceTargets = (tokens, k, inCase) => {
+const findGitTraceTargets = (clauseTokens, k, inCase) => {
   const targets = [];
   let unresolvable = false;
   let allexport = false;
-  const start = traceCommandStart(tokens, k, inCase);
+  const { tokens, start } = traceCommandStart(clauseTokens, k, inCase);
   const positions = new Set([...commandPositions(tokens.slice(start))].map((p) => p + start));
   // `value` is the exact text of a trace value, or null when it cannot be read exactly.
   const judge = (value) => {
@@ -1798,13 +1836,10 @@ const collectWriteSignals = (visible, heredocText, cwd, initialState, onSubstitu
   }
 
   if (hasPipedScript(visible)) unresolvable = true;
-  // Under allexport a builtin that assigns (`read GIT_TRACE`, `printf -v GIT_TRACE`) also exports,
-  // so a command that turns it on and mentions a trace name at all is unresolvable.
-  if (allexport && /GIT_|TRACE/.test(visible.replace(/['"\\]/g, ''))) unresolvable = true;
   if (GIT_EXEC_ENV_RE.test(visible) && splitClauses(visible).some((c) => findCommand(tokenize(c), 'git') !== -1)) {
     unresolvable = true;
   }
-  return { literalTargets, unresolvable };
+  return { literalTargets, unresolvable, allexport };
 };
 
 /**
@@ -1827,6 +1862,7 @@ const evaluateBashWriteTargets = (command, cwd, input = {}) => {
 
   const literalTargets = [];
   let unresolvable = false;
+  let allexport = false;
 
   // The command and each substitution body are scanned once, every body with the directories in
   // effect where its placeholder stands (`maskedSpans` keeps every placeholder visible).
@@ -1850,8 +1886,13 @@ const evaluateBashWriteTargets = (command, cwd, input = {}) => {
         for (const dir of dirs) literalTargets.push({ target, dir, visible, shape });
       }
       if (signals.unresolvable) unresolvable = true;
+      if (signals.allexport) allexport = true;
     }
   }
+  // Under allexport a builtin that assigns (`read GIT_TRACE`, `printf -v GIT_TRACE`) also exports,
+  // so a command that turns it on and mentions a trace name anywhere, heredoc bodies and
+  // comments included, is unresolvable.
+  if (allexport && /GIT_|TRACE/.test(command.replace(/['"\\]/g, ''))) unresolvable = true;
 
   for (const { target, dir, visible, shape } of literalTargets) {
     if (isStreamDeviceTarget(target, visible)) continue;
