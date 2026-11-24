@@ -251,8 +251,8 @@ describe('cutRelease gates', () => {
     expect(deps.bits.builtVersions).toEqual([]);
   });
 
-  test('N < 20 is a no-op unless force', async () => {
-    const deps = mockDeps({ prs: nPrs(19) });
+  test('N below the threshold is a no-op unless force', async () => {
+    const deps = mockDeps({ prs: nPrs(CADENCE_THRESHOLD - 1) });
     await cutRelease(cutArgs, deps);
     expect(deps.bits.tagged).toEqual([]);
     expect(deps.bits.pushed).toEqual([]);
@@ -284,8 +284,8 @@ describe('cutRelease gates', () => {
     expect(deps.bits.pushed).toEqual([]);
   });
 
-  test('flag on + N>=20 + Verify green tags and pushes, notes match, manifests bumped', async () => {
-    const deps = mockDeps({ prs: nPrs(25) });
+  test('flag on + N>=threshold + Verify green tags and pushes, notes match, manifests bumped', async () => {
+    const deps = mockDeps({ prs: nPrs(CADENCE_THRESHOLD + 5) });
     await cutRelease(cutArgs, deps);
     expect(deps.bits.tagged).toEqual(['v0.31.0']);
     expect(deps.bits.pushed).toEqual(['v0.31.0']);
@@ -294,7 +294,7 @@ describe('cutRelease gates', () => {
     expect(notes).toContain('## Release — backlog-campaign v0.31.0');
     expect(notes).toContain(NOTES_FOOTER);
     expect(notes).toContain('[#1](https://github.com/CorentinLumineau/blackhole/pull/1)');
-    expect(notes).not.toContain('#21');
+    expect(notes).not.toContain(`#${CADENCE_THRESHOLD + 1}`);
     expect(deps.bits.gitCalls.some((cmd) => cmd.startsWith('git add') && cmd.includes('.github/releases/v0.31.0.md'))).toBe(
       true,
     );
@@ -304,7 +304,7 @@ describe('cutRelease gates', () => {
     }
   });
 
-  test('[skip release] HEAD with N<20 does not tag even with force', async () => {
+  test('[skip release] HEAD with N<threshold does not tag even with force', async () => {
     const deps = mockDeps({
       prs: nPrs(4),
       headSubject: 'chore(release): prepare v0.30.1 [skip release]',
@@ -354,7 +354,7 @@ describe('cutRelease gates', () => {
 });
 
 describe('prepareCadenceRelease', () => {
-  test('writes deterministic notes and bumps when N>=20', async () => {
+  test('writes deterministic notes and bumps when N>=threshold', async () => {
     const deps = mockDeps({ prs: nPrs(20) });
     const tag = await prepareCadenceRelease({ prepare: true, cut: false, force: false, json: false }, deps);
     expect(tag).toBe('v0.31.0');
@@ -456,12 +456,12 @@ describe('single CADENCE_THRESHOLD constant', () => {
   test('workflow and scripts do not scatter a second threshold literal', () => {
     const workflow = fs.readFileSync(WORKFLOW, 'utf-8');
     expect(workflow).toContain('CADENCE_THRESHOLD');
-    expect(workflow).not.toMatch(/\b20\b/);
+    expect(workflow).not.toMatch(/\b10\b/);
     const lib = fs.readFileSync(LIB_SRC, 'utf-8');
-    expect(lib).toMatch(/export const CADENCE_THRESHOLD = 20;/);
+    expect(lib).toMatch(/export const CADENCE_THRESHOLD = 10;/);
     const cli = fs.readFileSync(CLI_SRC, 'utf-8');
-    expect(cli).not.toMatch(/mergedPrCount\s*[<>=]+\s*20/);
-    expect(cli).not.toMatch(/threshold:\s*20/);
+    expect(cli).not.toMatch(/mergedPrCount\s*[<>=]+\s*10/);
+    expect(cli).not.toMatch(/threshold:\s*10/);
     expect(cli).toContain('CADENCE_THRESHOLD');
   });
 });
@@ -474,8 +474,8 @@ describe('release-cadence.yml', () => {
     expect(yaml).toContain('cron: "17 */2 * * *"');
     expect(yaml).toContain('workflow_dispatch:');
     expect(yaml).toContain('force:');
-    expect(yaml).toContain("if: vars.RELEASE_CADENCE_ENABLED == 'true'");
-    expect(yaml).toContain("if: vars.RELEASE_CADENCE_ENABLED != 'true'");
+    expect(yaml).toContain("if: vars.RELEASE_CADENCE_ENABLED != 'false'");
+    expect(yaml).toContain("if: vars.RELEASE_CADENCE_ENABLED == 'false'");
     expect(yaml).toMatch(/^\s*runs-on: ubuntu-latest$/m);
     expect(yaml).not.toContain('self-hosted');
     expect(yaml).not.toContain('pcfixe');
@@ -489,6 +489,14 @@ describe('release-cadence.yml', () => {
     expect(yaml).not.toContain('gh release create');
     expect(releaseYaml).toContain('softprops/action-gh-release');
     expect(yaml).toContain('bun run release-cadence');
+  });
+
+  test('publish job calls release.yml for the new tag (a GITHUB_TOKEN tag push triggers no run)', () => {
+    expect(yaml).toContain('uses: ./.github/workflows/release.yml');
+    expect(yaml).toContain('tag: ${{ needs.cut.outputs.tag }}');
+    expect(yaml).toContain("if: needs.cut.outputs.tag != ''");
+    expect(releaseYaml).toContain('workflow_call:');
+    expect(releaseYaml).toContain('tag_name: ${{ inputs.tag || github.ref_name }}');
   });
 
   test('does not set repo variables or secrets; token is env-only on the cut step', () => {

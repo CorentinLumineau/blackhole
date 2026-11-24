@@ -1,7 +1,7 @@
 // Pure release-cadence helpers (ADR-003): threshold, gate, semver, notes, AI validation.
 // Side-effecting cut/prepare live in scripts/release-cadence.ts.
 
-export const CADENCE_THRESHOLD = 20;
+export const CADENCE_THRESHOLD = 10;
 
 /** Pinned Claude Code model alias for optional Haiku notes. */
 export const HAIKU_MODEL_ALIAS = 'haiku';
@@ -97,10 +97,10 @@ export function shouldRecheckAfterLock(
   return second === 'cut';
 }
 
-/** CI cuts only when the owner-gated repo variable is the string `true`. Local cuts skip this. */
+/** CI cuts unless the owner's kill switch, repo variable `RELEASE_CADENCE_ENABLED`, is the string `false`. Local cuts skip this. */
 export function cadenceEnvAllowsCut(env: NodeJS.ProcessEnv): boolean {
   if (env.CI !== 'true') return true;
-  return env.RELEASE_CADENCE_ENABLED === 'true';
+  return env.RELEASE_CADENCE_ENABLED !== 'false';
 }
 
 export function headHasSkipRelease(subject: string): boolean {

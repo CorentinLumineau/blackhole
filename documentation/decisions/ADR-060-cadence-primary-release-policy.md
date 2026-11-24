@@ -1,6 +1,6 @@
 ---
 type: adr
-summary: "The every-20-merged-PR cadence is the primary release path; manual bun run release is hotfix-only with [skip release] on its commit; a package.json already above the latest tag cuts early below the threshold at that version; the marketplace catalogs resolve the versioned commit on main, with no registry step"
+summary: "The every-10-merged-PR cadence is the primary release path; manual bun run release is hotfix-only with [skip release] on its commit; a package.json already above the latest tag cuts early below the threshold at that version; the marketplace catalogs resolve the versioned commit on main, with no registry step"
 status: accepted
 review_trigger: "on a change to the cadence gate, CADENCE_THRESHOLD, the early-cut rule, the marketplace catalogs, or the release skill"
 created: 2026-11-24
@@ -45,3 +45,12 @@ also stays inert until a tag ships its version: the installed plugin cache is ke
 - Two merged PRs that both bump the version cut once, at the version on `main`.
 - A bump left on `main` without a following merged PR waits for the next PR or the threshold.
 - A release whose notes are already committed for the bumped version (a manual release merged through a PR, which carries no `[skip release]` subject) is not early cut: the cadence leaves it to its manual path rather than failing on the existing notes file. `[skip release]` guards only a direct push of the release commit.
+
+## Post-acceptance amendments
+
+- **2026-11-24, owner request (more frequent plugin updates).** The threshold drops from 20 to
+  10 merged PRs (`CADENCE_THRESHOLD`). The cadence is now on by default: `RELEASE_CADENCE_ENABLED`
+  becomes a kill switch that stops cuts only when set to `false`, and stays owner-only. The cut
+  job's tag push uses `GITHUB_TOKEN`, which starts no new workflow run, so `release-cadence.yml`
+  now calls `release.yml` (`workflow_call`) for the tag it pushed. Decision 5 reads: the kill
+  switch and the secrets stay owner-only.
