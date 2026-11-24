@@ -9,6 +9,7 @@ related:
   - scripts/lib/multi-repo-budget.ts
   - scripts/lib/usage-budget.ts
   - src/references/claude-code-native.md
+  - src/references/multitask-mode.md
   - documentation/plans/plan-multi-repo-campaign.md
 ---
 
@@ -32,8 +33,8 @@ three repos can spawn three times the budget. The issue defers the model choice 
 **Model A.** One orchestrator computes the account-wide verdict once per round with
 `workersAllowed`, then splits `verdict.workers` across repos with `allocateWorkers`
 (`scripts/lib/multi-repo-budget.ts`). Candidates are ranked globally: bugs first, then higher
-priority, then input order. The top `verdict.workers` candidates get a slot; a repo with none is
-present with 0; a non-GO verdict allocates nothing and passes its reasons through. The total never
+priority, then input order. The top `verdict.workers` candidates get a slot; every repo of `campaign.repos[]`
+is present in the result, with 0 when it has no candidate or no slot; a non-GO verdict allocates nothing and passes its reasons through. The total never
 exceeds the verdict.
 
 Slice 1 delivers this ADR and the allocator only. The structured scope input, per-repo merge row,
@@ -46,10 +47,12 @@ construction (a crash or park decision in one repo never touches another), no ne
 needed, and each session starts inside its own repo, so no cross-repo write is ever attempted
 (the confinement #1370 describes does not arise). It reuses an existing config block.
 
-Rejected because its budget correctness rests on the least built part. `coordination` today only
-sets a role and a `peer_floor`; no transport divides one verdict across repos. It needs a
-cross-session message tool (`claude-code-native.md`), and peer detection only sees sessions on the
-same clone. It also gives the owner N launch gates and N dashboards.
+Rejected because its budget correctness rests on the least reliable part. A manager/peer slot-grant
+protocol that divides one verdict across sessions exists (`multitask-mode.md` § Shared usage
+budget), but it needs a cross-session send tool (`claude-code-native.md` § Cross-session budget
+transport), and its peer registry only reaches sessions on the same clone (ADR-057, `reach: clone`),
+so peers running in other repos' clones are never found or joined automatically. It also gives the
+owner N launch gates and N dashboards.
 
 ## Consequences
 

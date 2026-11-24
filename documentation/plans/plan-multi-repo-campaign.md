@@ -18,7 +18,7 @@ Track: Standard. One PR; issue #1372 stays open for slices 2-6.
 | # | Task | Files | Acceptance criteria |
 |---|------|-------|---------------------|
 | 1 | Failing allocator test first | `scripts/lib/multi-repo-budget.test.ts` | Fails with a missing module before task 2 |
-| 2 | Allocator | `scripts/lib/multi-repo-budget.ts` | 3 repos under a 2-worker verdict total 2; 1-worker budget totals 1; non-GO verdict totals 0 with empty `perRepo`; a bug outranks a higher-priority non-bug across repos; a repo without candidates is present with 0; total never exceeds the verdict over 20 generated cases |
+| 2 | Allocator | `scripts/lib/multi-repo-budget.ts` | 3 repos under a 2-worker verdict total 2; 1-worker budget totals 1; non-GO verdict totals 0 with every listed repo present at 0; a bug outranks a higher-priority non-bug across repos; a listed repo without candidates is present with 0; total never exceeds the verdict over 20 generated cases |
 | 3 | ADR and index row | `documentation/decisions/ADR-062-multi-repo-campaign-model.md`, `documentation/decisions/INDEX.md` | ADR shape and status checks pass; Alternatives names B with its strongest case; the allocator is named as the kernel under either model |
 | 4 | Follow-up issues | forge | #1509 to #1513 filed, each linking #1372 |
 
