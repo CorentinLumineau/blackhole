@@ -9,6 +9,8 @@ import {
   cadenceEnvAllowsCut,
   classifyBatch,
   claudePrintArgs,
+  earlyCutVersion,
+  higherCutVersion,
   evaluateCadenceGate,
   filterPrsSince,
   headHasSkipRelease,
@@ -76,7 +78,48 @@ describe('evaluateCadenceGate', () => {
   });
 });
 
+describe('earlyCutVersion', () => {
+  test('returns the package version when strictly above the tag version', () => {
+    expect(earlyCutVersion('0.31.0', '0.30.1')).toBe('0.31.0');
+    expect(earlyCutVersion('0.30.2', '0.30.1')).toBe('0.30.2');
+    expect(earlyCutVersion('1.0.0', '0.99.99')).toBe('1.0.0');
+  });
+
+  test('returns null for equal, lower or unparsable input', () => {
+    expect(earlyCutVersion('0.30.1', '0.30.1')).toBeNull();
+    expect(earlyCutVersion('0.30.0', '0.30.1')).toBeNull();
+    expect(earlyCutVersion('garbage', '0.30.1')).toBeNull();
+    expect(earlyCutVersion('0.31.0', 'v0.30.1')).toBeNull();
+    expect(earlyCutVersion('0.31.0-beta.1', '0.30.1')).toBeNull();
+  });
+});
+
+describe('evaluateCadenceGate early cut (1324)', () => {
+  const base = { skipReleaseOnHead: false, mergedPrCount: 3, threshold: 20, force: false };
+
+  test('cuts below threshold when the version was bumped since the tag', () => {
+    expect(evaluateCadenceGate({ ...base, versionBumpedSinceTag: true })).toBe('cut');
+  });
+
+  test('no-op without a pending PR', () => {
+    expect(evaluateCadenceGate({ ...base, mergedPrCount: 0, versionBumpedSinceTag: true })).toBe('no-op');
+  });
+
+  test('[skip release] HEAD still skips', () => {
+    expect(evaluateCadenceGate({ ...base, skipReleaseOnHead: true, versionBumpedSinceTag: true })).toBe('skip');
+  });
+
+  test('omitted flag keeps the threshold behavior', () => {
+    expect(evaluateCadenceGate(base)).toBe('no-op');
+  });
+});
+
 describe('shouldRecheckAfterLock', () => {
+  test('early cut keeps a below-threshold count alive', () => {
+    expect(shouldRecheckAfterLock(3, 3, 20, false, true)).toBe(true);
+    expect(shouldRecheckAfterLock(3, 0, 20, false, true)).toBe(false);
+  });
+
   test('returns false when the second count dropped below threshold without force', () => {
     expect(shouldRecheckAfterLock(20, 4, 20, false)).toBe(false);
   });
@@ -281,5 +324,17 @@ describe('parseGhPullPages', () => {
     const page = (n: number) =>
       JSON.stringify([{ number: n, title: `p${n}`, body: '', merged_at: '2026-11-01T00:00:00Z' }]);
     expect(parseGhPullPages(`${page(1)}${page(2)}`).map((p) => p.number)).toEqual([1, 2]);
+  });
+});
+
+describe('higherCutVersion', () => {
+  test('keeps the bumped version when the classification is not above it', () => {
+    expect(higherCutVersion('0.30.2', '0.30.2')).toBe('0.30.2');
+    expect(higherCutVersion('0.31.0', '0.30.2')).toBe('0.31.0');
+  });
+
+  test('takes the classified version when it is above the bumped one', () => {
+    expect(higherCutVersion('0.30.2', '0.31.0')).toBe('0.31.0');
+    expect(higherCutVersion('0.34.1', '1.0.0')).toBe('1.0.0');
   });
 });
