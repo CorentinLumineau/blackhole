@@ -41,6 +41,13 @@ const SHAPES: Array<[string, (t: string) => string]> = [
   ['glued case label', (t) => `case x in a)env ${t} git status;; esac`],
   ['glued case label before export', (t) => `case x in *)export ${t};; esac`],
   ['glued alternation label', (t) => `case x in a|b)env ${t} git status;; esac`],
+  ['double-quoted glued case label', (t) => `case x in "a")env ${t} git status;; esac`],
+  ['single-quoted glued case label', (t) => `case x in 'a')env ${t} git status;; esac`],
+  ['escaped-space glued case label', (t) => `case x in a\\ b)env ${t} git status;; esac`],
+  ['quoted alternation glued label', (t) => `case x in ("a"|b)env ${t} git status;; esac`],
+  ['parameter expansion before env', (t) => `X=; $X env ${t} git status`],
+  ['braced expansion before env', (t) => `X=; \${X} env ${t} git status`],
+  ['positional expansion before env', (t) => `$@ env ${t} git status`],
   ['spaced case label (control)', (t) => `case x in a) env ${t} git status;; esac`],
   ['split case word', (t) => `case \${x:-a b} in a) env ${t} git status;; esac`],
   ['split case word, glued label', (t) => `case \${x:-a b} in a)env ${t} git status;; esac`],
@@ -60,6 +67,11 @@ describe('GIT_TRACE position before the command word (T1)', () => {
       expect(await verdictOf(() => build('GIT_TRACE=1'))).toBeNull();
     });
   }
+
+  test('#1342: a bare trace name declared behind a redirect or case label warns', async () => {
+    expect(await verdictOf(() => '< /dev/null export GIT_TRACE; git status')).toMatchObject(WARN);
+    expect(await verdictOf(() => 'case x in a)export GIT_TRACE;; esac')).toMatchObject(WARN);
+  });
 
   test('#1342: a redirect with no env or export stays allowed', async () => {
     expect(await verdictOf(() => '2> ./log git status')).toBeNull();

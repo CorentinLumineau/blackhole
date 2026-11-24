@@ -267,8 +267,9 @@ const COMMAND_PREFIXES = new Set([
 /** Wrapper options whose value is the next word (`sudo -u bob`, `nice -n 5`, `env -C dir`). */
 const PREFIX_VALUE_OPTIONS = new Set(['-u', '-g', '-n', '-C', '-k', '-p', '-I', '-L', '-P', '-o', '-e']);
 
-/** A word that is one whole substitution placeholder (`$(…)` or backticks, see `extractSubstitutions`). */
-const WHOLE_PLACEHOLDER_RE = /^\$\u0001\d+\u0001$/;
+/** A word that is one whole substitution placeholder (`$(…)` or backticks, see `extractSubstitutions`)
+ * or one bare parameter expansion (`$X`, `${X}`, `$@`): each may expand to nothing. */
+const WHOLE_PLACEHOLDER_RE = /^\$(?:\u0001\d+\u0001|[A-Za-z_]\w*|[@*#?!$0-9-]|\{[^{}]*\})$/;
 
 /** Index of the first word at or after `i` that is not a redirect or a redirect's separate target. */
 const skipRedirectWords = (tokens, i) => {
@@ -1214,8 +1215,18 @@ const openingDelta = (word) => {
   return { parens, ticks };
 };
 
-/** A `case` label glued to the word after it (`a)env`, `(a|b)export`): the label with its `)`, then the rest. */
-const GLUED_CASE_LABEL_RE = /^(\(?[^()'"\s\\]*\))(.+)$/s;
+/** A `case` label glued to the word after it (`a)env`, `"a")env`, `(a|b)export`) split into the
+ * label with its `)` and the rest, or null. The scan keeps quoted spans and escapes whole. */
+const splitGluedCaseLabel = (token) => {
+  for (let i = 0; i < token.length; i++) {
+    const c = token[i];
+    if (c === '\\') i++;
+    else if (c === "'" || c === '"') i = skipQuotedSpan(token, i, token.length) - 1;
+    else if (c === '(' && i > 0) return null;
+    else if (c === ')') return i + 1 < token.length ? [token.slice(0, i + 1), token.slice(i + 1)] : null;
+  }
+  return null;
+};
 
 /** The clause's tokens and the index of its command word for the trace scan: `k` (from
  * `skipCompoundWords`) moved past a `case WORD in` head (the word may have split on a space), a
@@ -1229,8 +1240,8 @@ const traceCommandStart = (tokens, k, inCase) => {
   }
   if (tokens[i] === 'function') i += 2;
   if (!(inCase || i > k)) return { tokens, start: i };
-  const glued = GLUED_CASE_LABEL_RE.exec(tokens[i] ?? '');
-  if (glued) return { tokens: [...tokens.slice(0, i), glued[1], glued[2], ...tokens.slice(i + 1)], start: i + 1 };
+  const glued = splitGluedCaseLabel(tokens[i] ?? '');
+  if (glued) return { tokens: [...tokens.slice(0, i), ...glued, ...tokens.slice(i + 1)], start: i + 1 };
   return { tokens, start: /\)$/.test(tokens[i] ?? '') ? i + 1 : i };
 };
 
