@@ -39,9 +39,57 @@ export const findAliasInvocations = (content: string, label: string, aliases: st
   return content.split('\n').flatMap((line, idx) => (regex.test(line) ? [`${label}:${idx + 1}`] : []));
 };
 
+// A bundled-script call, optionally after `VAR=value` words or a `cd <dir> &&`.
+const SCRIPT_CALL_RE =
+  /^\s*(?:(?:[A-Za-z_]\w*=\S*|cd\s+\S+\s*&&)\s+)*bun(?:\s+run(?:\s+--cwd\s+(?:<[^>]*>|`[^`]*`|"[^"]*"|\S+))?)?\s+scripts\/[\w./-]+\.ts\b/;
+
+// Index of the `)` closing the `$(` at `open`, or -1 when the line ends first.
+const closingParen = (line: string, open: number): number => {
+  let depth = 0;
+  for (let i = open + 1; i < line.length; i++) {
+    if (line[i] === '(') depth++;
+    else if (line[i] === ')' && --depth === 0) return i;
+  }
+  return -1;
+};
+
+// `export`/`local`/`readonly`/`declare`/`typeset` return their own status, not the substitution's.
+const STATUS_MASKING_BUILTINS = new Set(['export', 'local', 'readonly', 'declare', 'typeset']);
+// Only a guard that leaves the script stops it: `|| exit|return`, or a `|| { … exit|return … }` group.
+const STOPPING_GUARD_RE = /^\s*\|\|\s*(?:(?:exit|return)\b|\{[^}]*\b(?:exit|return)\b)/;
+
+const isPlainAssignment = (prefix: string): boolean => {
+  const m = /(?:^|[\s;`(])([A-Za-z_]\w*=)$/.exec(prefix);
+  if (!m) return false;
+  const previous = prefix.slice(0, prefix.length - m[1].length).trimEnd().split(/[\s;`(]/).pop() ?? '';
+  return !STATUS_MASKING_BUILTINS.has(previous) && !previous.startsWith('-');
+};
+
+const isGuardedAssignment = (line: string, open: number, body: string, close: number): boolean =>
+  isPlainAssignment(line.slice(0, open)) &&
+  !body.includes('|') &&
+  !body.includes('$(') &&
+  close !== -1 &&
+  STOPPING_GUARD_RE.test(line.slice(close + 1));
+
+// A bundled-script call inside `$(…)` that feeds another command's arguments hides its failure:
+// a non-zero exit (e.g. an unresolved plugin root) only ends the subshell, and the outer command
+// still runs with those arguments missing. The one safe shape is a plain hoisted assignment whose
+// status stops the script: `name=$(bun scripts/x.ts …) || exit 1`, its value then used as `$name`.
+export const findUnguardedSubstitutions = (content: string, label: string): string[] =>
+  content.split('\n').flatMap((line, idx) => {
+    for (let open = line.indexOf('$('); open !== -1; open = line.indexOf('$(', open + 2)) {
+      const close = closingParen(line, open);
+      const body = line.slice(open + 2, close === -1 ? undefined : close);
+      if (SCRIPT_CALL_RE.test(body) && !isGuardedAssignment(line, open, body, close)) return [`${label}:${idx + 1}`];
+    }
+    return [];
+  });
+
 // Same sweep scope as cwd-pin-guard.check.ts: the agent and reference prose an installed plugin
-// ships, plus every build-input module directory (ADR-034) and the root skill file.
-const SWEEP_DIRS = ['src/agents', 'src/references'];
+// ships, plus every build-input module directory (ADR-034) and the root skill file. `hunt/` is
+// added because its modules ship and are fetched at runtime (ADR-034), so they run scripts too.
+const SWEEP_DIRS = ['src/agents', 'src/references', 'src/references/hunt'];
 const SWEEP_FILES = ['src/SKILL.md'];
 
 const packageScripts = (): Record<string, string> =>
@@ -59,7 +107,13 @@ export const checkPlaybookInvocation = (
   const emptyDir = sweepDirs.find((dir) => listFiles(dir).length === 0);
   if (emptyDir) return { id: 'V-INVOKE-01', ok: false, detail: `sweep dir ${emptyDir} is missing or has no .md files` };
   const targets = [...sweepDirs.flatMap((dir) => listFiles(dir).map((file) => `${dir}/${file}`)), ...SWEEP_FILES];
-  const violations = targets.flatMap((target) => findAliasInvocations(read(target), target, aliases));
+  const violations = targets.flatMap((target) => {
+    const content = read(target);
+    return [
+      ...findAliasInvocations(content, target, aliases),
+      ...findUnguardedSubstitutions(content, target).map((site) => `${site} (unguarded $(bun scripts/…))`),
+    ];
+  });
   if (violations.length) return { id: 'V-INVOKE-01', ok: false, detail: violations.join('; ') };
   return { id: 'V-INVOKE-01', ok: true };
 };

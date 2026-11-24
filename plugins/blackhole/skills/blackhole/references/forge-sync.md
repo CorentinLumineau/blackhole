@@ -92,8 +92,9 @@ user-visible error — do not silently ingest zero issues.
 ### 2. Fetch open issues
 
 ```bash
+scope_args=$(bun scripts/forge-scope.ts list-args) || exit 1
 gh issue list --state open --json number,title,labels,body,milestone --limit 200 \
-  $(bun scripts/forge-scope.ts list-args)
+  $scope_args
 ```
 
 When scope is active, `gh` applies milestone and label filters (labels use AND semantics).
@@ -301,8 +302,8 @@ Bump `queue.json` `refreshed_at`. Write atomically (`.tmp` + `mv`).
 Use the **same scoped** issue list as step 2:
 
 ```bash
-OPEN_ISSUES=$(gh issue list --state open --json number \
-  $(bun scripts/forge-scope.ts list-args) | jq 'length')
+scope_args=$(bun scripts/forge-scope.ts list-args) || exit 1
+OPEN_ISSUES=$(gh issue list --state open --json number $scope_args | jq 'length')
 OPEN_PRS=$(gh pr list --state open --json number | jq 'length')
 ```
 
@@ -391,8 +392,9 @@ Whenever the campaign files a new GitHub issue (`gh issue create`), apply config
 and the campaign discoverability label:
 
 ```bash
+scope_args=$(bun scripts/forge-scope.ts create-args) || exit 1
 gh issue create --title "..." --body "..." \
-  $(bun scripts/forge-scope.ts create-args)
+  $scope_args
 ```
 
 `create-args` emits `--milestone` and `--label` flags from `scope_milestone` / `scope_labels`.

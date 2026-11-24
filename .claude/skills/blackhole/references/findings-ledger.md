@@ -193,8 +193,9 @@ jq '.findings += [$new] | .next_id += 1 | .refreshed_at = (now | todate)' \
 5. **Deferral** — never set `status: deferred` without filing issue first:
 
 ```bash
+scope_args=$(bun scripts/forge-scope.ts create-args) || exit 1
 gh issue create --title "..." --body "..." \
-  $(bun scripts/forge-scope.ts create-args)
+  $scope_args
 # then append with deferred_to_issue: <number>
 ```
 
