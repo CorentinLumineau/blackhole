@@ -261,12 +261,14 @@ export async function resolveAnchor(deps: ReleaseCadenceDeps): Promise<CadenceAn
   }
   const prs = filterPrsSince(all, since);
   const baseVersion = versionFromTag(latestTag, pkgVersion);
+  const bumped = latestTag ? earlyCutVersion(pkgVersion, baseVersion) : null;
+  const manualRelease = bumped !== null && deps.notesExist(`v${bumped}`);
   return {
     count: prs.length,
     latestTag,
     prs,
     baseVersion,
-    earlyCutVersion: latestTag ? earlyCutVersion(pkgVersion, baseVersion) : null,
+    earlyCutVersion: manualRelease ? null : bumped,
   };
 }
 

@@ -28,7 +28,7 @@ also stays inert until a tag ships its version: the installed plugin cache is ke
 ## Decision
 
 1. **Cadence is primary.** Releases are cut by the cadence. Manual `bun run release` is for
-   hotfixes only, and its release commit carries `[skip release]` so the cadence cannot race it.
+   hotfixes only, and its release commit carries `[skip release]` so the cadence does not race a direct push of it (a release merged through a PR is covered by the notes check below).
 2. **Early cut.** The gate cuts below the threshold when `package.json` is strictly above the
    latest `v*` tag, at least one PR is pending and HEAD lacks `[skip release]`. The tag is
    `v<package.json version>`: the PR author's version wins, with no re-classification and never
@@ -44,3 +44,4 @@ also stays inert until a tag ships its version: the installed plugin cache is ke
 - A hooks fix with its version bump ships on the next 2-hourly run after Verify is green.
 - Two merged PRs that both bump the version cut once, at the version on `main`.
 - A bump left on `main` without a following merged PR waits for the next PR or the threshold.
+- A release whose notes are already committed for the bumped version (a manual release merged through a PR, which carries no `[skip release]` subject) is not early cut: the cadence leaves it to its manual path rather than failing on the existing notes file. `[skip release]` guards only a direct push of the release commit.

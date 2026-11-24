@@ -6,6 +6,7 @@ import {
   CLAUDE_CODE_PACKAGE,
   HAIKU_MODEL_ALIAS,
   cutRelease,
+  dryRunStatus,
   parseCadenceArgs,
   prepareCadenceRelease,
   releaseCommitPaths,
@@ -185,6 +186,30 @@ describe('cutRelease early cut (1324)', () => {
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
     expect(deps.bits.pushed).toEqual([]);
+  });
+
+  test('notes already committed for the bumped version leave the release to its manual path', async () => {
+    const deps = mockDeps({ ...bumped, notes: new Map([['v0.30.2', 'manual notes']]) });
+    await cutRelease(cutArgs, deps);
+    expect(deps.bits.tagged).toEqual([]);
+    expect(deps.bits.pushed).toEqual([]);
+    expect(deps.bits.builtVersions).toEqual([]);
+  });
+
+  test('dry-run reports the early cut version, tag and bump', async () => {
+    const status = await dryRunStatus({ ...cutArgs, cut: false, json: true }, mockDeps(bumped));
+    expect(status.wouldCut).toBe(true);
+    expect(status.proposedTag).toBe('v0.30.2');
+    expect(status.proposedBump).toBe('early');
+    expect(status.earlyCutVersion).toBe('0.30.2');
+  });
+
+  test('--prepare below threshold prepares the bumped version', async () => {
+    const deps = mockDeps(bumped);
+    const tag = await prepareCadenceRelease({ ...cutArgs, cut: false, prepare: true }, deps);
+    expect(tag).toBe('v0.30.2');
+    expect(deps.bits.notes.has('v0.30.2')).toBe(true);
+    expect(deps.bits.builtVersions).toEqual(['0.30.2']);
   });
 
   test('hooks fix batch of 5 with a bumped patch version cuts that patch tag', async () => {
