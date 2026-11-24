@@ -1,6 +1,6 @@
 ---
 type: adr
-summary: "The every-10-merged-PR cadence is the primary release path; manual bun run release is hotfix-only with [skip release] on its commit; a package.json already above the latest tag cuts early below the threshold at that version; the marketplace catalogs resolve the versioned commit on main, with no registry step"
+summary: "The every-20-merged-PR cadence is the primary release path; manual bun run release is hotfix-only with [skip release] on its commit; a package.json already above the latest tag cuts early below the threshold at that version; the marketplace catalogs resolve the versioned commit on main, with no registry step"
 status: accepted
 review_trigger: "on a change to the cadence gate, CADENCE_THRESHOLD, the early-cut rule, the marketplace catalogs, or the release skill"
 created: 2026-11-24
