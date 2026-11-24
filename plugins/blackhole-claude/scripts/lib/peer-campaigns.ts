@@ -27,6 +27,8 @@ export type PeerRecord = {
   host: string;
   /** The host's cross-session message id, when the host has a transport; else null. */
   host_session: string | null;
+  /** The host process id (`CLAUDE_PID`), so a later session in this worktree can tell a gone predecessor from a live peer; null when unknown or in a record written before it existed. */
+  host_pid: number | null;
   role: PeerRole;
   manager_session: string | null;
   turn: number;
@@ -38,13 +40,15 @@ export type PeerRecord = {
 /** One `*.json` file of the registry dir: its name, its text (null when it could not be read) and its mtime. */
 export type RegistryEntry = { file: string; text: string | null; mtimeMs: number };
 
-/** Who "self" is. A record matching `session`, or the same `worktree` on the same `host`, is self. */
+/** Who "self" is: a record matching `session` or listed in `superseded`. */
 export type SelfIdentity = {
   session: string;
   worktree: string;
   host: string;
   host_session: string | null;
   manager_session: string | null;
+  /** Earlier sessions of this same campaign (`supersededSessions`), read as self, never as peers. */
+  superseded: string[];
 };
 
 export type DetectedPeer = Pick<
@@ -90,6 +94,8 @@ export const isHostSession = (v: unknown): v is string => typeof v === 'string' 
 const isIso = (v: unknown): v is string => typeof v === 'string' && !Number.isNaN(Date.parse(v));
 const isNullable = (v: unknown, ok: (x: unknown) => boolean): boolean => v === null || ok(v);
 const isIssueNumber = (v: unknown): v is number => Number.isInteger(v) && (v as number) > 0;
+/** True for a process id: a positive integer. */
+export const isPid = (v: unknown): v is number => Number.isInteger(v) && (v as number) > 0;
 
 /** A record file's text, or null when it is torn, foreign, version-skewed or carries an unsafe string. Never throws. */
 export function parseRecord(text: string): PeerRecord | null {
@@ -109,6 +115,7 @@ export function parseRecord(text: string): PeerRecord | null {
     typeof r.host === 'string' &&
     HOST.test(r.host) &&
     isNullable(r.host_session, isHostSession) &&
+    (r.host_pid === undefined || isNullable(r.host_pid, isPid)) &&
     PEER_ROLES.includes(r.role as PeerRole) &&
     isNullable(r.manager_session, isHostSession) &&
     Number.isInteger(r.turn) &&
@@ -123,6 +130,7 @@ export function parseRecord(text: string): PeerRecord | null {
     worktree: r.worktree as string,
     host: r.host as string,
     host_session: r.host_session as string | null,
+    host_pid: (r.host_pid ?? null) as number | null,
     role: r.role as PeerRole,
     manager_session: r.manager_session as string | null,
     turn: r.turn as number,
@@ -132,9 +140,46 @@ export function parseRecord(text: string): PeerRecord | null {
   };
 }
 
-/** True for this session's record, or an older session's record left in this same worktree on this host. */
-export const isSelf = (r: PeerRecord, self: SelfIdentity): boolean =>
-  r.session === self.session || (r.worktree === self.worktree && r.host === self.host);
+/** True for this session's record or an earlier session of this campaign (`supersededSessions`). */
+export const isSelf = (r: PeerRecord, self: SelfIdentity): boolean => r.session === self.session || self.superseded.includes(r.session);
+
+/** What `supersededSessions` knows about this session. */
+export type SuccessorView = {
+  session: string;
+  worktree: string;
+  host: string;
+  /**
+   * The id comes from the host session, not from the campaign dir's shared token, so two sessions
+   * on one campaign dir differ and a same-worktree record may be another live session's.
+   */
+  hostScoped: boolean;
+  /** This session's host process id, or null when unknown. */
+  pid: number | null;
+  /** The campaign dir's last host-scoped session (`.tmp/campaign-last-session.json`), or null. */
+  lastSession: string | null;
+  /** When this session's own record started, or null before its first heartbeat. */
+  startedAtMs: number | null;
+};
+
+/**
+ * The records in this worktree on this host that are this campaign's own earlier sessions (a
+ * resume in a new session, `/clear`, `--fork-session` after the old one exited, a lost token),
+ * not a peer. With a recorded host pid: superseded when it is this same host process or that
+ * process is gone, so a live host-scoped session is always a peer. Without one: for a token id,
+ * always (the campaign before its token was lost); for a host-scoped id, only when it is the
+ * campaign dir's `lastSession` and did not heartbeat after this session's first heartbeat, so a
+ * live token-mode session's record stays a peer (and a dead one lapses with its lease).
+ */
+export function supersededSessions(records: PeerRecord[], me: SuccessorView, pidAlive: (pid: number) => boolean): string[] {
+  return records
+    .filter((r) => r.session !== me.session && r.worktree === me.worktree && r.host === me.host)
+    .filter((r) =>
+      r.host_pid !== null
+        ? r.host_pid === me.pid || !pidAlive(r.host_pid)
+        : !me.hostScoped || (r.session === me.lastSession && (me.startedAtMs === null || Date.parse(r.heartbeat_at) <= me.startedAtMs)),
+    )
+    .map((r) => r.session);
+}
 
 /** A heartbeat dated more than one lease ahead is not trusted (capped at now + lease). */
 const tooFuture = (r: PeerRecord, nowMs: number): boolean => Date.parse(r.heartbeat_at) - nowMs > PEER_LEASE_MS;

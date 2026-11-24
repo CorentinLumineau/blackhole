@@ -48,8 +48,10 @@ Mutations to `.blackhole/queue.json` and
 Outside `.blackhole/`, the peer campaign registry (ADR-057) lives in the clone's git common dir,
 `<git common dir>/blackhole/campaigns/<session>.json`: one heartbeat record per live campaign
 session, shared by every worktree of the clone, written only by `scripts/peer-campaigns.ts`. It
-is local and never on the state branch; this session's own id is `.tmp/campaign-session.json`
-(see `multitask-mode.md` § Peer campaign registry).
+is local and never on the state branch; this session's own id is the host session id
+(`CLAUDE_CODE_SESSION_ID`) where the host sets one, else `.tmp/campaign-session.json`; a
+host-scoped session records itself in `.tmp/campaign-last-session.json` (see `multitask-mode.md`
+§ Peer campaign registry).
 
 The PreToolUse write guards trust this directory (minus `config.json` and `hook-events/`) for campaign workers writing from a linked worktree, for single-file writes only: a Write/Edit, a redirect or `tee` to a file, or a `cp`/`install` of one regular file (a `mv` only between two paths inside it) to an explicit file path, and never through a symlink or hard link. Write the `.tmp` file and the `mv` in separate Bash calls. Full rule: `templates/hooks/pretooluse/README.md` § Campaign state dir trust.
 
