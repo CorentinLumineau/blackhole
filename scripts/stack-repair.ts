@@ -569,7 +569,7 @@ const restack = (flags: Flags): number => {
   return 0;
 };
 
-// Merge method for the parent about to merge (merge-gate.md § 9): a merge commit when it has open
+// Merge method for the parent about to merge (merge-risk.md): a merge commit when it has open
 // stacked children and the repo allows one, squash otherwise. Prints the choice as JSON.
 const mergeMethod = (flags: Flags): number => {
   const queue = readQueue(requireFlag(flags, 'queue'));

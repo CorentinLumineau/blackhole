@@ -1,13 +1,12 @@
 # Merge Gate — Eligibility, Cycle Detection, Drift Reconciliation
 
-Owns the entire merge-eligibility algorithm (ADR-005): whether an LGTM'd issue's PR
-may actually be merged this turn. No merge mechanics live here — HEAD/CI/build
-checks and the `gh pr merge` call itself stay in `phase-loop.md` § Merge protocol (on the
-`rest` or `mcp` forge channel, every `gh` command here and there runs through its row in
-`forge-channels.md`);
-this doc is consulted from that section's own **step 0** as a single delegated
-precondition (`mergeEligible(issue)` — `false` stops the protocol before step 1),
-never inlined and never satisfied merely by citation from a different heading.
+Owns the entire merge-eligibility algorithm (ADR-005): whether an LGTM'd issue's PR may actually be
+merged this turn. No merge mechanics live here — HEAD/CI/build checks and the `gh pr merge` call
+itself stay in `phase-loop.md` § Merge protocol (on the `rest` or `mcp` forge channel, every `gh`
+command here and there runs through its row in `forge-channels.md`); this doc is consulted from that
+section's own **step 0** as a single delegated precondition (`mergeEligible(issue)` — `false` stops
+the protocol before step 1), never inlined and never satisfied merely by citation from a different
+heading. The merge method and the low-risk automerge gate (formerly § 9) live in `merge-risk.md`.
 
 **`merge_mode: leave-open` bypass note** (ADR-006, narrowed by ADR-026 D5): for issues under
 this mode, `mergeEligible(issue)` is never invoked at all, and the campaign never calls
@@ -20,32 +19,28 @@ verdict, CI green) a human merge actor still benefits from, not admin scheduling
 `leave-open` PRs too as a merge-readiness dry run with no `gh pr merge` call at the end
 (`phase-loop.md` § Merge protocol, `leave-open` branch).
 
-Consumes `queue.json`'s `merge_hold` / `merge_after` fields (see `queue-dag.md`
-Field rules) and `config.json`'s `merge_mode` field (see `config-template.md`).
-Reuses `scripts/forge-scope.ts` (`readScope`, `issueMatchesScope`) for gated-batch
-scope — does not reimplement it (V-INT-02).
+Consumes `queue.json`'s `merge_hold` / `merge_after` fields (see `queue-dag.md` Field rules) and
+`config.json`'s `merge_mode` field (see `config-template.md`). Reuses `scripts/forge-scope.ts`
+(`readScope`, `issueMatchesScope`) for gated-batch scope — does not reimplement it (V-INT-02).
 
 ## CI-wait poller contract
 
-Specification only — no merge mechanics live here (this doc's own charter,
-above): the poll/retry/rerun mechanics themselves are `phase-loop.md` § Merge
-protocol step 2's, unchanged.
+Specification only — no merge mechanics live here (this doc's own charter, above): the
+poll/retry/rerun mechanics themselves are `phase-loop.md` § Merge protocol step 2's, unchanged.
 
 - **Applies to `ci_wait: poll` only.** With `ci_wait: pr-events` (run context) the wait is event
   driven (`project-thread-mode.md` § CI wait). Either way the verdict comes from `bun run scripts/ci-verdict.ts
   --checks <file> --runs <runs file>` (the head's `actions/runs`), which reads `merge_ready.required_checks`
   (`--required <name>` overrides). Nothing executed, or a required check missing or skipped, is
   `pending`; with no list any skipped gating check is `pending`, naming `merge_ready.required_checks`.
-- **Interval**: poll `gh pr checks <n>` every 60s while the background CI-wait
-  is outstanding.
+- **Interval**: poll `gh pr checks <n>` every 60s while the background CI-wait is outstanding.
 - **Cap**: 20 minutes of total CI-wait per PR before the 2-retry/reclassify
   path in `phase-loop.md` step 2 takes over: above the `V-PARETO-01` foreground
   10 min threshold (a background wait), well under the 40-45 min waits flagged as excessive.
-- **Reclassification**: governed entirely by `phase-loop.md` step 2's rules
-  (`cancelled` → rerun once; "Base branch was modified" → re-fetch + retry
-  once; 2-retry cap → `orchestrator-runtime.md` § Error Classification) — not
-  restated here. After the 2-retry cap, still-red Permanent CI is diagnosed per
-  `ci-diagnosis.md` (failing-step logs, environment/genuine classification,
+- **Reclassification**: governed entirely by `phase-loop.md` step 2's rules (`cancelled` → rerun
+  once; "Base branch was modified" → re-fetch + retry once; 2-retry cap → `orchestrator-runtime.md`
+  § Error Classification) — not restated here. After the 2-retry cap, still-red Permanent CI is
+  diagnosed per `ci-diagnosis.md` (failing-step logs, environment/genuine classification,
   implementer fix-loop routing via `V-CI-01`).
 - **Coverage**: the polled CI run's `verify` job includes `bun test` (`verify.yml`'s
   "Run test suite" step, issue #747) — C3 "CI green" already covers the full suite.
@@ -76,76 +71,65 @@ function mergeEligible(issue, queue, config):
     return true
 ```
 
-Evaluate the three conditions **in this order** and **short-circuit** on the first
-`false` — cheap local reads first (`merge_hold`, then `merge_after` against
-already-synced `queue.json` state), the scope-wide gated-batch scan last (only
-needed when the field-level checks already pass). Evaluation order does not
-change the result: any single failing condition makes the issue ineligible
-regardless of which one is checked first (see Edge Cases § Hold + unresolved
-`merge_after` below).
+Evaluate the three conditions **in this order** and **short-circuit** on the first `false` — cheap
+local reads first (`merge_hold`, then `merge_after` against already-synced `queue.json` state), the
+scope-wide gated-batch scan last (only needed when the field-level checks already pass). Evaluation
+order does not change the result: any single failing condition makes the issue ineligible regardless
+of which one is checked first (see Edge Cases § Hold + unresolved `merge_after` below).
 
 `isLgtm(issue)` is `review-core.md` § LGTM definition, unchanged — gated-batch
 does not define a second notion of "reviewed".
 
 ### Condition 1 — `merge_hold`
 
-Pure boolean read. `true` unconditionally blocks the merge regardless of LGTM
-status, `merge_after`, or `merge_mode`. This is the direct "flag to not merge"
-mechanism the ADR exists to add.
+Pure boolean read. `true` unconditionally blocks the merge regardless of LGTM status, `merge_after`,
+or `merge_mode`. This is the direct "flag to not merge" mechanism the ADR exists to add.
 
 ### Condition 2 — `merge_after` resolution
 
-Each entry in `issue.merge_after` is an issue number. It is **satisfied** when
-that issue's `queue.json` `status` is `merged` **or** `closed` — the identical
-`merged OR closed` rule `depends_on` already uses (`queue-dag.md` Step 2, rule 2).
-Closed-not-merged (wontfix/duplicate) still counts as resolved; this is the fix
-for the predecessor-closed deadlock class. All entries must resolve; an empty
-`merge_after` array (the default, `[]`) is vacuously satisfied — matches
+Each entry in `issue.merge_after` is an issue number. It is **satisfied** when that issue's
+`queue.json` `status` is `merged` **or** `closed` — the identical `merged OR closed` rule
+`depends_on` already uses (`queue-dag.md` Step 2, rule 2). Closed-not-merged (wontfix/duplicate)
+still counts as resolved; this is the fix for the predecessor-closed deadlock class. All entries
+must resolve; an empty `merge_after` array (the default, `[]`) is vacuously satisfied — matches
 `depends_on`'s empty-array semantics exactly.
 
 ### Condition 3 — gated-batch sibling wait
 
-Only evaluated when `config.json.merge_mode == "gated-batch"` (`"immediate"`
-skips this condition entirely — the loop above never enters the
-`if` body, so immediate-mode campaigns pay zero extra cost). "Siblings" means
-every `queue.json` issue matching the campaign's configured scope
-(`scope_milestone` / `scope_labels`) **and** not already `closed` or `merged`,
-computed via `readScope(config)` + `issueMatchesScope(issue, scope)` from
-`scripts/forge-scope.ts` — the same scope mechanism `forge-sync.md` already
-uses for issue ingest/completion counting. Do not build a second
-scope-matching mechanism; call this exported function directly.
+Only evaluated when `config.json.merge_mode == "gated-batch"` (`"immediate"` skips this condition
+entirely — the loop above never enters the `if` body, so immediate-mode campaigns pay zero extra
+cost). "Siblings" means every `queue.json` issue matching the campaign's configured scope
+(`scope_milestone` / `scope_labels`) **and** not already `closed` or `merged`, computed via
+`readScope(config)` + `issueMatchesScope(issue, scope)` from `scripts/forge-scope.ts` — the same
+scope mechanism `forge-sync.md` already uses for issue ingest/completion counting. Do not build a
+second scope-matching mechanism; call this exported function directly.
 
-**Closed-sibling exclusion**: an in-scope issue closed as wontfix/duplicate
-never had a PR and can never satisfy `isLgtm()` (`review-core.md` requires an
-actual completed reviewer run). Without exclusion, one ordinary closed issue
-would permanently deadlock `all(isLgtm(...))` for the **entire** scope — the
-identical deadlock class Condition 2's `merged OR closed` rule already fixes
-for `merge_after`, extended here to the sibling set. `merged` siblings are
-excluded for the same reason (already done, nothing further to wait for).
+**Closed-sibling exclusion**: an in-scope issue closed as wontfix/duplicate never had a PR and can
+never satisfy `isLgtm()` (`review-core.md` requires an actual completed reviewer run). Without
+exclusion, one ordinary closed issue would permanently deadlock `all(isLgtm(...))` for the
+**entire** scope — the identical deadlock class Condition 2's `merged OR closed` rule already fixes
+for `merge_after`, extended here to the sibling set. `merged` siblings are excluded for the same
+reason (already done, nothing further to wait for).
 
 **Data shape note**: `issueMatchesScope` expects a forge-shaped issue —
-`{ milestone?: { title }, labels?: { name }[] }` — not `queue.json`'s native
-shape. `asForgeIssue(queueIssue)` is the trivial adapter:
-`{ milestone: queueIssue.milestone ? { title: queueIssue.milestone } : undefined,
-labels: queueIssue.labels.map(name => ({ name })) }`, reading the `milestone`/
-`labels` fields `forge-sync.md` § 5 now syncs onto every `queue.json` issue every
-turn (`queue-dag.md` Field rules). This is a shape adapter only — it does not
-duplicate `issueMatchesScope`'s matching logic, and it deliberately reads the
-turn-cached queue fields rather than making a live `gh issue view` call per
-sibling, so Condition 3 stays a pure in-memory check over already-synced state.
+`{ milestone?: { title }, labels?: { name }[] }` — not `queue.json`'s native shape.
+`asForgeIssue(queueIssue)` is the trivial adapter:
+`{ milestone: queueIssue.milestone ? { title: queueIssue.milestone } : undefined, labels: queueIssue.labels.map(name => ({ name })) }`,
+reading the `milestone`/`labels` fields `forge-sync.md` § 5 now syncs onto every `queue.json` issue
+every turn (`queue-dag.md` Field rules). This is a shape adapter only — it does not duplicate
+`issueMatchesScope`'s matching logic, and it deliberately reads the turn-cached queue fields rather
+than making a live `gh issue view` call per sibling, so Condition 3 stays a pure in-memory check
+over already-synced state.
 
-The condition is satisfied only when **every** in-scope issue satisfies
-`isLgtm()`. A scope of exactly one in-scope issue makes this vacuously true
-(nothing else to wait for) — gated-batch degrades to immediate-mode behavior
-for a single-issue scope.
+The condition is satisfied only when **every** in-scope issue satisfies `isLgtm()`. A scope of
+exactly one in-scope issue makes this vacuously true (nothing else to wait for) — gated-batch
+degrades to immediate-mode behavior for a single-issue scope.
 
-**Scope is re-evaluated every orchestrator turn**, not frozen when the batch
-wait begins — the same design already used for wave computation
-(`queue-dag.md` Step 4). An issue entering or leaving scope mid-wait (label
-added/removed, milestone reassigned) is picked up naturally on the next
-`mergeEligible` evaluation; there is no separate "batch snapshot" state to keep
-in sync. This is documented explicitly here per ADR-005's Key Assumptions
-"Oversimplified" marker — treat it as the intended design, not an omission.
+**Scope is re-evaluated every orchestrator turn**, not frozen when the batch wait begins — the same
+design already used for wave computation (`queue-dag.md` Step 4). An issue entering or leaving scope
+mid-wait (label added/removed, milestone reassigned) is picked up naturally on the next
+`mergeEligible` evaluation; there is no separate "batch snapshot" state to keep in sync. Per
+ADR-005's Key Assumptions "Oversimplified" marker, this is the intended design, not an omission.
 
 ## 2. Cross-graph cycle detection
 
@@ -156,18 +140,15 @@ discovered only when a merge is attempted). Build one directed graph from the
 - `depends_on` edges (issue → each entry in its `depends_on`)
 - `merge_after` edges (issue → each entry in its `merge_after`)
 
-Detect cycles with the same topological-sort technique `queue-dag.md` Step 4
-already uses for wave computation (Kahn's algorithm or DFS with a recursion
-stack) — do not add a second cycle-detection implementation; the two graphs
-share detection logic even though `depends_on` and `merge_after` remain
-distinct fields with distinct semantics (implementation-start gate vs.
-merge-time gate).
+Detect cycles with the same topological-sort technique `queue-dag.md` Step 4 already uses for wave
+computation (Kahn's algorithm or DFS with a recursion stack) — do not add a second cycle-detection
+implementation; the two graphs share detection logic even though `depends_on` and `merge_after`
+remain distinct fields with distinct semantics (implementation-start gate vs. merge-time gate).
 
 On detecting a cycle involving issues `A` and `B` (self-referential — `A`
 listing itself — is a degenerate 1-node cycle of the same class):
 
-1. Set `status: blocked` on **both** `A` and `B` (all issues on the cycle, for
-   cycles longer than 2).
+1. Set `status: blocked` on **both** `A` and `B` (every issue on the cycle, if longer than 2).
 2. Set each one's `notes` to `merge-order cycle with #N` (`N` = the other
    issue's number; for cycles >2 nodes, name the next node in the cycle).
 3. Surface via the existing `AskQuestion` user gate (`coordinator.md` /
@@ -183,56 +164,45 @@ algorithm lives here once; `forge-sync.md` does not duplicate it inline.
 
 ## 3. Forge-drift reconciliation
 
-Also run during forge-sync, every turn. For every issue where `merge_hold ==
-true` **or** `merge_after` has at least one unresolved entry (Condition 1 or
-Condition 2 above would currently return `false`), check whether its PR was
-merged anyway, outside blackhole's control:
+Also run during forge-sync, every turn. For every issue where `merge_hold == true` **or**
+`merge_after` has at least one unresolved entry (Condition 1 or Condition 2 above would currently
+return `false`), check whether its PR was merged anyway, outside blackhole's control:
 
 ```
 gh pr view <pr_number> --json state,mergedAt
 ```
 
-If `state == "MERGED"` (`mergedAt` non-null) despite the hold/unresolved
-predecessor, that is **drift**: the merge already happened and cannot be
-undone. Reconcile `queue.json` to match forge reality (`status: merged`,
-`phase: done` — same as any other externally-observed merge, per
-`forge-sync.md` § Reconcile existing queue entries), then attribute and log
-using the `merged_by` field (`queue-dag.md` Field rules — set **only** by
-`phase-loop.md` § Merge protocol step 4, in the same atomic write as
-`status: merged`; deliberately **not** `status: in-flight`, which reflects
-concurrent worker activity unrelated to who actually called `gh pr merge` and
-is ambiguous in both directions — it is set for any active review/implement
-work, not merge attempts specifically, and it flips to `merged` in the same
-turn a real internal violation would occur):
+If `state == "MERGED"` (`mergedAt` non-null) despite the hold/unresolved predecessor, that is
+**drift**: the merge already happened and cannot be undone. Reconcile `queue.json` to match forge
+reality (`status: merged`, `phase: done` — same as any other externally-observed merge, per
+`forge-sync.md` § Reconcile existing queue entries), then attribute and log using the `merged_by`
+field (`queue-dag.md` Field rules — set **only** by `phase-loop.md` § Merge protocol step 4, in the
+same atomic write as `status: merged`; deliberately **not** `status: in-flight`, which reflects
+concurrent worker activity unrelated to who actually called `gh pr merge` and is ambiguous in both
+directions — it is set for any active review/implement work, not merge attempts specifically, and it
+flips to `merged` in the same turn a real internal violation would occur):
 
-- **`merged_by == "blackhole"`** (the marker was set — blackhole's own
-  orchestrator executed step 4 despite step 0 saying stop, proving step 0 was
-  bypassed or buggy): log **`V-MERGE-01` (BLOCK)** — a genuine internal
-  process violation, blocks the campaign turn until acknowledged (per
-  `blackhole-vcodes.md`'s BLOCK severity contract: fix or escalate to the
-  user with justification).
-- **`merged_by` absent** (blackhole never executed step 4 for this issue —
-  it was structurally impossible for blackhole to do so while step 0 holds,
-  so the merge came from outside): log **`V-MERGE-02` (WARN)** — an external
-  actor (human via the forge UI, a different tool) merged the PR outside
-  blackhole's control.
+- **`merged_by == "blackhole"`** (the marker was set — blackhole's own orchestrator executed step 4
+  despite step 0 saying stop, proving step 0 was bypassed or buggy): log **`V-MERGE-01` (BLOCK)** —
+  a genuine internal process violation, blocks the campaign turn until acknowledged (per
+  `blackhole-vcodes.md`'s BLOCK severity contract: fix or escalate to the user with justification).
+- **`merged_by` absent** (blackhole never executed step 4 for this issue — it was structurally
+  impossible for blackhole to do so while step 0 holds, so the merge came from outside): log
+  **`V-MERGE-02` (WARN)** — an external actor (human via the forge UI, a different tool) merged the
+  PR outside blackhole's control.
 
 **`merge_mode: leave-open` carve-out** (ADR-006): for issues where
-`config.json.merge_mode == "leave-open"`, an externally-observed merge (`gh
-pr view --json state,mergedAt` showing `MERGED`) is **not** drift — it is the
-designed completion path (a human merges the LGTM'd PR blackhole
-intentionally left open). Do not log `V-MERGE-01` or `V-MERGE-02` for these
-issues; reconcile `queue.json` to `status: merged`, `phase: done` via the
-existing generic forge-sync reconciliation path (`forge-sync.md` § Reconcile
-existing queue entries) with no V-code logged. This carve-out takes
-precedence over the `merged_by`-attribution bullets above whenever
-`merge_mode == "leave-open"` — those bullets classify drift only for
-non-`leave-open` issues.
+`config.json.merge_mode == "leave-open"`, an externally-observed merge
+(`gh pr view --json state,mergedAt` showing `MERGED`) is **not** drift — it is the designed
+completion path (a human merges the LGTM'd PR blackhole intentionally left open). Do not log
+`V-MERGE-01` or `V-MERGE-02` for these issues; reconcile `queue.json` to `status: merged`,
+`phase: done` via the existing generic forge-sync reconciliation path (`forge-sync.md` § Reconcile
+existing queue entries) with no V-code logged. This carve-out takes precedence over the
+`merged_by`-attribution bullets above, which classify drift only for non-`leave-open` issues.
 
-Both cases are audit-only: the ledger row records what happened, it does not
-and cannot reverse the merge. This single detection point (§3) is the sole
-trigger for both `V-MERGE-01` and `V-MERGE-02` — they are not two separate
-checks, only two attributions of the same drift observation.
+Both cases are audit-only: the ledger row records what happened, it does not and cannot reverse the
+merge. This single detection point (§3) is the sole trigger for both `V-MERGE-01` and `V-MERGE-02` —
+they are not two separate checks, only two attributions of the same drift observation.
 
 **Restack on observed human merge (ADR-026 D6):** when this section observes a `leave-open`
 externally-observed merge (the carve-out branch above), rescan the campaign's other open PRs and
@@ -251,24 +221,21 @@ sibling reached LGTM), the batch does **not** merge as a single atomic
 multi-PR operation. Compute the merge order and execute sequentially:
 
 1. Take the in-scope, now-all-LGTM issue set.
-2. Topologically sort it on `merge_after` edges (same technique as § 2's
-   cycle-detection graph, minus cycles since § 2 already guarantees none
-   remain unresolved at this point).
-3. For each issue in that order: re-check `mergeEligible(issue)` (a `merge_after`
-   entry may resolve mid-batch as earlier PRs merge), then run the normal
-   `phase-loop.md` § Merge protocol for that one PR (merge method per § 9),
-   then persist `queue.json` (`status: merged`, `refreshed_at` bump) **before**
-   moving to the next issue in the order.
+2. Topologically sort it on `merge_after` edges (same technique as § 2's cycle-detection graph,
+   minus cycles since § 2 already guarantees none remain unresolved at this point).
+3. For each issue in that order: re-check `mergeEligible(issue)` (a `merge_after` entry may resolve
+   mid-batch as earlier PRs merge), then run the normal `phase-loop.md` § Merge protocol for that
+   one PR (merge method per `merge-risk.md`), then persist `queue.json` (`status: merged`, `refreshed_at` bump)
+   **before** moving to the next issue in the order.
 4. If the merged PR had open stacked children, run step 4.6's recovery (§ 7) for each of them
    inside this loop, before the next issue's turn. A recovered child gets a new head, so it must
    re-reach CI green before its own turn in the batch. That costs one CI cycle per stack level;
    collapsing a chain into one merge is a follow-up, not part of this procedure.
 
-Persisting after each individual merge — rather than issuing every `gh pr
-merge` call as one batch — is what turns a mid-batch failure into a resumable
-state: the next orchestrator turn picks up `mergeEligible()` evaluation
-exactly where it left off (predecessors already merged stay resolved), with
-no rollback logic required for the PRs that already landed.
+Persisting after each individual merge — rather than issuing every `gh pr merge` call as one batch —
+is what turns a mid-batch failure into a resumable state: the next orchestrator turn picks up
+`mergeEligible()` evaluation exactly where it left off (predecessors already merged stay resolved),
+with no rollback logic required for the PRs that already landed.
 
 ## 5. Review artifact presence + content gate (ADR-021 D3, issue #445; content check issue #806)
 
@@ -285,32 +252,30 @@ function reviewArtifactPresent(issue, pr_diff_paths, config):
     return expected in pr_diff_paths
 ```
 
-Presence alone is existence-only and does not catch a committed artifact whose content has
-drifted from the ledger (wrong verdict, a dropped `### Deferred` section — PR #773's actual
-failure mode). `mergeReadinessForReviewPromotion()`
-(`scripts/lib/merge-gate/review-artifact.ts`) therefore also runs
-`reviewArtifactContentMatchesLedger()` once presence has already passed: it re-renders the
+Presence alone is existence-only and does not catch a committed artifact whose content has drifted
+from the ledger (wrong verdict, a dropped `### Deferred` section — PR #773's actual failure mode).
+`mergeReadinessForReviewPromotion()` (`scripts/lib/merge-gate/review-artifact.ts`) therefore also
+runs `reviewArtifactContentMatchesLedger()` once presence has already passed: it re-renders the
 expected markdown via `renderReviewMarkdown()` (`scripts/lib/promote-review-artifact.ts:112`), a
 pure function of the findings ledger — an input the promoter does not control, unlike the
-manifest-based check this replaced (`manifestHasReviewRoute` was removed outright, issue #806:
-it verified an input the party being checked itself wrote). The committed file's own `created:`
+manifest-based check this replaced (`manifestHasReviewRoute` was removed outright, issue #806: it
+verified an input the party being checked itself wrote). The committed file's own `created:`
 frontmatter date is extracted and passed back in as the re-render's `today` override, so a
-cross-midnight gap between promotion and verification never causes a spurious mismatch — the
-only two things that can differ are actual content.
+cross-midnight gap between promotion and verification never causes a spurious mismatch — the only
+two things that can differ are actual content.
 
 Mechanical check: `bun run --cwd <abs repo-root> scripts/check-review-artifact.ts --config <abs>
 --issue <N> --title <title> --ledger <abs findings-ledger.json> --pr <P> --branch <branch> --head
 <sha> --repo-root <abs repo-root> --diff-file <abs paths.txt>` — `--head` is the reviewed head
 passed to promotion, not the post-promotion head (`implementer.md` § Promote Review Artifact);
-`--cwd` MUST equal `--repo-root`
-(issue #798 — pins the entry file and every transitive relative import to the tree named by
-`--repo-root`, closing the cwd-vs-repo-root module-resolution divergence rather than only
-detecting it). Every path-shaped flag must be absolute (`path.isAbsolute()`), or the CLI exits
-`2` with its usage message (issue #806 AC4; sidesteps the #798 cwd-relative-*argument*-resolution
-hazard class rather than sequencing behind it). Failure (missing
-file, or content mismatch against the ledger re-render) is a **hard stop** at merge step 2.5 —
-same class as a missing plan manifest declaration at implement time (`implementer.md` § Carry
-Staged Artifacts). Inert when either governance flag is `false`.
+`--cwd` MUST equal `--repo-root` (issue #798 — pins the entry file and every transitive relative
+import to the tree named by `--repo-root`, closing the cwd-vs-repo-root module-resolution divergence
+rather than only detecting it). Every path-shaped flag must be absolute (`path.isAbsolute()`), or
+the CLI exits `2` with its usage message (issue #806 AC4; sidesteps the #798
+cwd-relative-*argument*-resolution hazard class rather than sequencing behind it). Failure (missing
+file, or content mismatch against the ledger re-render) is a **hard stop** at merge step 2.5 — same
+class as a missing plan manifest declaration at implement time (`implementer.md` § Carry Staged
+Artifacts). Inert when either governance flag is `false`.
 
 ## 6. `pipelineVerdict(pr, queue) -> "lgtm" | "needs_changes" | "not_detected"` (ADR-026 D2)
 
@@ -351,8 +316,7 @@ existing CI-genuine-failure path — the identical `review_iteration` counter an
 (`review-core.md` § Review convergence), a third consumer of an existing mechanism, never a
 parallel counter (`V-INT-02`/`V-DRY-01`):
 
-1. **`queue.json`**: set `phase: implement`, `status: ready`, `review_iteration += 1` for the
-   issue.
+1. **`queue.json`**: set `phase: implement`, `status: ready`, `review_iteration += 1` for the issue.
 2. **STOP** merge protocol steps 1–5 for this turn — do not attempt `gh pr merge`.
 3. **Spawn implementer** on the next scheduling pass with the pipeline's comment content as the
    Objective — apply the findings via the implementer's existing standard workflow (never a
@@ -363,8 +327,7 @@ parallel counter (`V-INT-02`/`V-DRY-01`):
 | 0–2 | Auto-fix via implementer → re-check `pipelineVerdict()` on the new HEAD |
 | >= 3 | `rethink` — stop auto-fix and escalate to coordinator (`AskQuestion` via `askOrPark()`, `clarify-gates.md` § C3 adapter); see `review-core.md` § Review convergence rule 1 |
 
-`lgtm` and `not_detected` both proceed to step 1 unchanged (two-criteria run when
-`not_detected`).
+`lgtm` and `not_detected` both proceed to step 1 unchanged (two-criteria run when `not_detected`).
 
 ## 7. Stacked-child tip capture and post-merge repair (issue #794)
 
@@ -471,14 +434,13 @@ from a merge onto the campaign base, and `queue.json` then recorded a landing th
 `target_branch`. Stacking stays legitimate; the silence around it does not. § 7 owns the stacked
 *children* of a merging parent; this section owns the base the merging PR itself lands on.
 
-**Pre-merge assertion** (`phase-loop.md` § Merge protocol **Step 0.8**). Read the PR's
-`baseRefName` and require it to equal `config.json`'s `target_branch`. A different base proceeds
-only when `--stacked-into` **names the branch being landed into**. That flag asserts where this one
-merge lands; it is a per-merge assertion, not a stacking toggle (stacking is the only behavior,
-`queue-dag.md` Step 3b); an opt-in
-naming any other branch, and an unreadable `baseRefName`, both refuse. Refusal is a hard **STOP**
-for the turn, the same class as § 5's review-artifact stop — no V-code and no ledger row of its
-own.
+**Pre-merge assertion** (`phase-loop.md` § Merge protocol **Step 0.8**). Read the PR's `baseRefName`
+and require it to equal `config.json`'s `target_branch`. A different base proceeds only when
+`--stacked-into` **names the branch being landed into**. That flag asserts where this one merge
+lands; it is a per-merge assertion, not a stacking toggle (stacking is the only behavior,
+`queue-dag.md` Step 3b); an opt-in naming any other branch, and an unreadable `baseRefName`, both
+refuse. Refusal is a hard **STOP** for the turn, the same class as § 5's review-artifact stop — no
+V-code and no ledger row of its own.
 
 **Post-merge landing verification** (`phase-loop.md` § Merge protocol **step 4.7**). A
 `git log <target_branch> --grep=#<PR>` miss is proof the merge did not land there, never evidence
@@ -535,57 +497,6 @@ mistaken for a verified base-ref landing.
 | Post-merge `git log <target_branch> --grep=#<PR>` finds nothing after the retry budget | Terminal (§ 8, step 4.7, exit `1`) — the merge did not land on the base ref; never reclassified as replication lag, `merged_into` stays absent, and the issue does not advance to `done` |
 | Post-merge `git fetch`/`git log` exits non-zero, or `target_branch` resolves to no ref | Exit `3` (§ 8, step 4.7) — reported as *verification could not run*, never as a miss and never as `ok`; `merged_into` stays absent and the issue does not advance to `done`, but the failure names the transport, not the landing |
 | `merged_into` absent on an older `merged` row | `mergedIntoVerdict()` reports `unknown`, not `base` — an unverified landing stays visibly unverified rather than being backfilled by assumption |
-| Green CI, low-risk campaign PR (`blackhole/issue-N` or `blackhole/issue-N-<slug>`, none of the § 9 categories) | `phase-loop.md` step 4 squash-merges (`automerge: true`) |
-| Green CI, but the diff touches a § 9 high-risk category (or head is not `blackhole/issue-N[-slug]`) | Step 4 **does not merge**. Label `needs-chef`, comment the script's `comment` field, leave the PR open for Chef |
-| `needs-chef` already on the PR from a prior turn | Do not post a second `needs-chef:` comment; re-evaluate next turn if the diff changed |
-| `DELETE FROM` / `DROP TABLE` only in a test, fixture or markdown file, or in the classifier's own source (including its built copies) | Not `deletes-data` — `isTestPath()`, `isDocPath()` (any `.md`/`.mdx`) and the matcher's own path suffix are exempt; a `.sql`/`.dump` or migration path is always scanned, even under a test or docs directory |
-| `merge_mode: leave-open`, high-risk, CI green | Same hold half (label + comment); still no `gh pr merge` |
-
-## 9. `classifyMergeRisk(pr) -> automerge | needs-chef` — low-risk merge gate
-
-**Merge method.** Blackhole merges with `--squash` by default. A PR that has open stacked
-children is merged with `--merge` (a merge commit) when the repo allows it, because the child then
-already contains the parent's tip and recovery (§ 7) is a retarget with no commit, no push and no
-CI rerun. When the repo allows no merge commit, it stays `--squash` and § 7's replay is mandatory.
-`bun run scripts/stack-repair.ts merge-method --queue <abs queue.json> --repo-slug <owner/repo>
---forge <config.forge> --issue <N>` prints the choice as JSON (`method`, `flag`, `reason`); with unreadable repo settings and open stacked children it prints `hold: true` and exits 3 instead of choosing squash; `phase-loop.md` step 4 runs it.
-
-Blackhole may merge **its own** PRs only when CI is already green (step 1 / C3) **and** the
-diff is low-risk. Any other PR that has reached this point stays open for Chef (the orchestrator /
-owner) with label `needs-chef` and a short comment saying why. This is a PR-quality signal, not a
-fourth `mergeEligible()` condition (same shape as § 6 / Step 0.6).
-
-**Own PR:** head ref is `blackhole/issue-N` or `blackhole/issue-N-<slug>` (`V-BRANCH-03`). An omitted head ref is treated as own
-(the merge protocol already only considers campaign issues). Any other head is a hold.
-
-**Low-risk:** the changed-file list (and optional unified diff) touches **none** of:
-
-| Category | Typical paths / content |
-|----------|-------------------------|
-| `auth-login` | `auth/`, `login`, `oauth`, `sso`, `passport`, `*password*`, `*jwt*` |
-| `secrets-env` | `.env*`, `secrets`, `credentials`, `*.pem`/`*.key`, `.ssh/`, `.aws/credentials` |
-| `prod-db` | paths combining prod/production with db/database/sql/postgres/mysql/mongo |
-| `migrations` | `migrations/`, `migrate/`, `prisma/migrations/`, alembic, knexfile, flyway |
-| `github-workflows` | `.github/workflows/**` |
-| `release-tag` | `scripts/release.ts`, `scripts/release-cadence.ts`, `scripts/lib/release-cadence.ts`, `.github/releases/`, `git-create-release`, `package.json` version bump |
-| `deletes-data` | deleted `data/`/`dumps/`/`*.sql`/`*.csv` files, or `DROP TABLE`/`TRUNCATE TABLE x`/`DELETE FROM`, or `TRUNCATE` followed by a table name (`TRUNCATE x`, `TRUNCATE ${t}`; the word `truncate` followed by a quote, comma or `(`, as in shell command lists and calls, does not count), in a patch to a `.sql`/`.dump`/migration file or to non-test, non-markdown code (the classifier's own source and its built copies are exempt) |
-
-Mechanical check (exit `0` automerge, `1` hold, `2` usage) — judgment is above, arithmetic is not
-here:
-
-```
-bun run scripts/merge-risk.ts --name-status <abs> [--patches <abs unified diff>] --head-ref <branch>
-bun run scripts/merge-risk.ts --files <abs json>
-```
-
-`--files` JSON is `{ files: [{path, status, previousPath?}], patches?: [{path, patch}], headRef? }`.
-`--name-status` is `gh pr diff <n> --name-status` (or `git diff --name-status`). `--patches` is
-`gh pr diff <n>`; without it, `deletes-data` is path/status only. Stdout is the verdict JSON
-including a ready-to-post `comment` that starts with `needs-chef:`.
-
-Hold mechanics (`phase-loop.md` step 4, not here): create label `needs-chef` if missing, add it to
-the PR, comment once (skip if a `needs-chef:` comment already exists), set `queue.json` `notes` to
-`needs-chef: <categories>`, do not call `gh pr merge`.
 
 ## Consulted by
 
@@ -594,12 +505,11 @@ the PR, comment once (skip if a `needs-chef:` comment already exists), set `queu
 - `phase-loop.md` § Merge protocol, **Step 0.6** — hard `pipelineVerdict(pr, queue)` (§ 6) check between Step 0.5 and step 1.
 - `phase-loop.md` § Merge protocol, **Step 0.7** and **step 4.6** — stacked-child tip capture check before the merge and replay-merge recovery after it (§ 7).
 - `phase-loop.md` § Merge protocol, **Step 0.8** — hard pre-merge base assertion (§ 8) between Step 0.7 and step 1.
-- `phase-loop.md` § Merge protocol, **step 4** — low-risk automerge gate (§ 9) immediately before `gh pr merge` with the method § 9 names; hold path applies `needs-chef`.
+- `phase-loop.md` § Merge protocol, **step 4** — low-risk automerge gate (`merge-risk.md`) immediately before `gh pr merge` with the method it names; hold path applies `needs-chef`.
 - `phase-loop.md` § Merge protocol, **step 4.7** — post-merge landing verification (§ 8) after step 4.6's stacked-child repair.
 - `forge-sync.md` — cycle detection (§ 2), drift reconciliation (§ 3), and pipeline detection (§ 5.6, feeds § 6).
 - `orchestrator.md` Phase 5 — pointer reference only, no inline logic.
 
-None of these three files duplicate the algorithm above inline — they cite this
-doc by pointer (`` Per `merge-gate.md` § N `` style, matching the existing
-`orchestrator.md`/`queue-dag.md` citation convention) and call `mergeEligible()`
-as a black box.
+None of these three files duplicate the algorithm above inline — they cite this doc by pointer
+(`` Per `merge-gate.md` § N `` style, matching the existing `orchestrator.md`/`queue-dag.md`
+citation convention) and call `mergeEligible()` as a black box.

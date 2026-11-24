@@ -9,7 +9,7 @@ import {
   patchesFromUnifiedDiff,
 } from './lib/merge-gate/merge-risk.ts';
 
-// Merge-gate low-risk classifier (merge-gate.md § 9). Exit 0 automerge, 1 needs-chef hold, 2 usage.
+// Merge-gate low-risk classifier (merge-risk.md). Exit 0 automerge, 1 needs-chef hold, 2 usage.
 
 const USAGE =
   'Usage: bun run scripts/merge-risk.ts --files <json>\n' +

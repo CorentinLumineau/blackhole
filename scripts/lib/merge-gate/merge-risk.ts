@@ -1,4 +1,4 @@
-// merge-gate.md § 9 — whether a green campaign PR is low-risk enough for blackhole to squash-merge
+// merge-risk.md — whether a green campaign PR is low-risk enough for blackhole to squash-merge
 // itself. Pure function of the PR's changed files (and optional patches / head ref); the
 // label, comment, and `gh pr merge` call stay in phase-loop.md.
 

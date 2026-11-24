@@ -9,7 +9,7 @@ summary: "Make stacking the only overlap strategy: compute overlap against every
 status: current
 review_trigger: "on file change"
 created: 2026-11-11
-last_updated: 2026-11-11
+last_updated: 2026-11-23
 related: [decisions/ADR-027-forge-adapter-interface.md, decisions/ADR-048-github-rest-forge-channel.md, reference/product-principles.md]
 ---
 
@@ -99,7 +99,7 @@ Ranked by when they block work. D1, D2 and D9 block M1/M2. All eleven were answe
 | # | Decision | Options | Recommended | Why the alternative is still credible |
 |---|----------|---------|-------------|---------------------------------------|
 | D1 | Overlap predicate | (a) shared changed file (AC 1 literal); (b) shared file as prefilter, then `git merge-tree --write-tree <A> <B>` conflict as the decider | **(b)** | (a) is simpler and catches *semantic* coupling that merges cleanly but breaks at runtime. (b) matches the owner's words ("whenever they would conflict") and avoids the C1 serialization. AC 1's "by the files each PR actually changes" stays true: files are the input to both stages |
-| D2 | Merge method for a parent that has open stacked children | (a) keep squash everywhere (§ 9); (b) merge commit when `allow_merge_commit`, squash otherwise | **(b)** | Squash keeps `main` linear and one commit per issue. (b) removes the child push, the CI rerun and the review risk entirely, and is the single biggest lever on the issue's stated goal |
+| D2 | Merge method for a parent that has open stacked children | (a) keep squash everywhere (`merge-risk.md`, formerly `merge-gate.md` § 9); (b) merge commit when `allow_merge_commit`, squash otherwise | **(b)** | Squash keeps `main` linear and one commit per issue. (b) removes the child push, the CI rerun and the review risk entirely, and is the single biggest lever on the issue's stated goal |
 | D3 | A child overlaps two different open chains | (a) stack on the tip of the lowest-numbered root, then linearize: merge the older chain's tip into the younger chain's root when the campaign owns that root; (b) defer the child until one chain lands | **(a)** for owned roots, **(b)** when the younger root is external | (b) never touches a PR under review. (a) keeps throughput, but costs one CI run on the moved root |
 | D4 | Parent is a fork PR (cannot be a base branch) | (a) defer if not started; if already open, exempt with `unstackable-parent:fork:#N` and hold the merge until #N merges or closes; (b) hard-fail the gate | **(a)** | (b) is purer, but would wedge a campaign on a stranger's PR |
 | D5 | Chain depth cap | (a) none; (b) fixed constant 4 in code; (c) config key | **(b)** | (c) gives flexibility, but a config key is the start of the opt-out AC 5 forbids |
@@ -237,7 +237,7 @@ One PR per milestone. The milestones overlap on `queue-dag.md` and `merge-gate.m
 - **T3.3** Parent merge method (D2). When the PR has open stacked children and the repo allows
   merge commits, step 4 uses `merge_method: merge`; otherwise it uses `squash`. `stack-repair
   capture`'s graded warning is unchanged.
-  - **AC**: the `merge-gate.md` § 9 text and the `phase-loop.md` step 4 text agree.
+  - **AC**: the `merge-risk.md` text (formerly `merge-gate.md` § 9) and the `phase-loop.md` step 4 text agree.
   - **AC**: the `merge-risk.ts` tests are unaffected.
 
 ### M4: Enforcement gate and the no-opt-out guard (about 4 h)
