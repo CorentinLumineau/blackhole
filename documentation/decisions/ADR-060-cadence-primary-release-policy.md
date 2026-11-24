@@ -31,8 +31,8 @@ also stays inert until a tag ships its version: the installed plugin cache is ke
    hotfixes only, and its release commit carries `[skip release]` so the cadence does not race a direct push of it (a release merged through a PR is covered by the notes check below).
 2. **Early cut.** The gate cuts below the threshold when `package.json` is strictly above the
    latest `v*` tag, at least one PR is pending and HEAD lacks `[skip release]`. The tag is
-   `v<package.json version>`: the PR author's version wins, with no re-classification and never
-   lowered. The no-retag and Verify guards are unchanged.
+   `v<package.json version>`, or the classified version when the pending batch classifies
+   higher: never below the classified version, never below `package.json`. The no-retag and Verify guards are unchanged.
 3. **Milestones.** The cadence never closes a milestone. Closure stays in the maintainer pass of
    the governance rule.
 4. **Catalog availability.** There is no registry step. The versioned commit on `main` is what the

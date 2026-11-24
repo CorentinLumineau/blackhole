@@ -94,8 +94,8 @@ On each scheduled run (when enabled):
 `N<20` is a no-op unless `workflow_dispatch` `force: true`, with one exception: the **early cut**.
 When `package.json` is strictly above the latest `v*` tag (an unreleased PR bumped it, as
 V-PLUGIN-01 / ADR-030 require for a hook change) and at least one PR is pending, the cut fires
-below the threshold and tags `v<package.json version>`. The PR author's version wins; it is
-never re-classified or lowered. `[skip release]` on HEAD still blocks a below-threshold cut,
+below the threshold and tags `v<package.json version>`, or the classified version when the
+pending batch classifies higher: never below the classified version. `[skip release]` on HEAD still blocks a below-threshold cut,
 force or early. A second run after the tag lands does not retag.
 
 Catalog availability: there is no registry step. The versioned commit on `main` is what the

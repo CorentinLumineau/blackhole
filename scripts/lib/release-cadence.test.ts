@@ -10,6 +10,7 @@ import {
   classifyBatch,
   claudePrintArgs,
   earlyCutVersion,
+  higherCutVersion,
   evaluateCadenceGate,
   filterPrsSince,
   headHasSkipRelease,
@@ -323,5 +324,17 @@ describe('parseGhPullPages', () => {
     const page = (n: number) =>
       JSON.stringify([{ number: n, title: `p${n}`, body: '', merged_at: '2026-11-01T00:00:00Z' }]);
     expect(parseGhPullPages(`${page(1)}${page(2)}`).map((p) => p.number)).toEqual([1, 2]);
+  });
+});
+
+describe('higherCutVersion', () => {
+  test('keeps the bumped version when the classification is not above it', () => {
+    expect(higherCutVersion('0.30.2', '0.30.2')).toBe('0.30.2');
+    expect(higherCutVersion('0.31.0', '0.30.2')).toBe('0.31.0');
+  });
+
+  test('takes the classified version when it is above the bumped one', () => {
+    expect(higherCutVersion('0.30.2', '0.31.0')).toBe('0.31.0');
+    expect(higherCutVersion('0.34.1', '1.0.0')).toBe('1.0.0');
   });
 });

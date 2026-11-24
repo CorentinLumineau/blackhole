@@ -144,6 +144,11 @@ export function earlyCutVersion(pkgVersion: string, tagVersion: string): string 
   return null;
 }
 
+/** The higher of the bumped package version and the classified version; never below the classification. */
+export function higherCutVersion(early: string, classified: string): string {
+  return earlyCutVersion(classified, early) ?? early;
+}
+
 function bumpSemver(base: string, bump: SemverBump): string {
   const match = SEMVER.exec(base);
   if (!match) {

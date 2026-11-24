@@ -144,7 +144,7 @@ describe('releaseCommitPaths', () => {
 });
 
 describe('cutRelease early cut (1324)', () => {
-  const bumped = { pkgVersion: '0.30.2', prs: nPrs(3) };
+  const bumped = { pkgVersion: '0.30.2', prs: nPrs(4).slice(1) };
 
   test('an already-bumped package.json cuts below threshold at that version', async () => {
     const deps = mockDeps(bumped);
@@ -219,6 +219,26 @@ describe('cutRelease early cut (1324)', () => {
     });
     await cutRelease(cutArgs, deps);
     expect(deps.bits.tagged).toEqual(['v0.30.2']);
+  });
+});
+
+describe('early cut never goes below the classified version', () => {
+  test('a feat batch above a bumped patch tags the minor', async () => {
+    const deps = mockDeps({
+      pkgVersion: '0.30.2',
+      prs: [pr(1, 'feat(hooks): add a guard'), ...nPrs(4).slice(1)],
+    });
+    await cutRelease(cutArgs, deps);
+    expect(deps.bits.tagged).toEqual(['v0.31.0']);
+  });
+
+  test('dry-run proposes the classified minor over the bumped patch', async () => {
+    const status = await dryRunStatus(
+      { ...cutArgs, cut: false, json: true },
+      mockDeps({ pkgVersion: '0.30.2', prs: [pr(1, 'feat(hooks): add a guard'), ...nPrs(4).slice(1)] }),
+    );
+    expect(status.proposedTag).toBe('v0.31.0');
+    expect(status.proposedBump).toBe('minor');
   });
 });
 

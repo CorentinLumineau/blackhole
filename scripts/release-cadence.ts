@@ -16,6 +16,7 @@ import {
   classifyBatch,
   claudePrintArgs,
   earlyCutVersion,
+  higherCutVersion,
   evaluateCadenceGate,
   filterPrsSince,
   headHasSkipRelease,
@@ -341,11 +342,14 @@ export async function dryRunStatus(args: CliArgs, deps: ReleaseCadenceDeps): Pro
   });
   const batch = selectBatch(anchor.prs, CADENCE_THRESHOLD);
   const classified = batch.length > 0 ? classifyBatch(batch, anchor.baseVersion) : null;
+  const proposedVersion = anchor.earlyCutVersion
+    ? (classified ? higherCutVersion(anchor.earlyCutVersion, classified.nextVersion) : anchor.earlyCutVersion)
+    : (classified?.nextVersion ?? null);
   const status = {
     ...anchor,
     wouldCut: decision === 'cut',
-    proposedTag: anchor.earlyCutVersion ? `v${anchor.earlyCutVersion}` : classified ? `v${classified.nextVersion}` : null,
-    proposedBump: anchor.earlyCutVersion ? 'early' : (classified?.bump ?? null),
+    proposedTag: proposedVersion ? `v${proposedVersion}` : null,
+    proposedBump: anchor.earlyCutVersion && proposedVersion === anchor.earlyCutVersion ? 'early' : (classified?.bump ?? null),
     threshold: CADENCE_THRESHOLD,
     skipReleaseOnHead,
   };
@@ -421,10 +425,12 @@ export async function prepareCadenceRelease(
 
   const batch = selectBatch(anchor.prs, CADENCE_THRESHOLD);
   const classified = classifyBatch(batch, anchor.baseVersion);
-  const version = anchor.earlyCutVersion ?? classified.nextVersion;
+  const version = anchor.earlyCutVersion
+    ? higherCutVersion(anchor.earlyCutVersion, classified.nextVersion)
+    : classified.nextVersion;
   const tag = `v${version}`;
   if (anchor.earlyCutVersion) {
-    deps.log(`early cut: package.json already at ${version} (latest tag ${anchor.latestTag})`);
+    deps.log(`early cut: package.json at ${anchor.earlyCutVersion}, tagging ${version} (latest tag ${anchor.latestTag})`);
   }
 
   if (deps.tagExists(tag) || deps.remoteTagExists(tag)) {
@@ -440,7 +446,7 @@ export async function prepareCadenceRelease(
   const { notes, source } = notesForBatch(tag, batch, deps);
   deps.writeNotes(tag, notes);
   deps.bumpVersionAndBuild(version);
-  deps.log(`Prepared release ${tag} (${anchor.earlyCutVersion ? 'early' : classified.bump}, notes=${source})`);
+  deps.log(`Prepared release ${tag} (${anchor.earlyCutVersion && version === anchor.earlyCutVersion ? 'early' : classified.bump}, notes=${source})`);
   deps.log(`  PR range: #${batch[0]!.number}–#${batch[batch.length - 1]!.number} (${batch.length} of ${anchor.count})`);
   return tag;
 }
