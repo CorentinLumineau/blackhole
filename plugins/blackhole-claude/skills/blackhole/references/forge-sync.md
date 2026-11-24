@@ -26,7 +26,7 @@ issues (#333, #334)`, closed issues merged, or drift fixed. No prompt.
 
 ## Queue builder script
 
-`bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/forge-sync.ts` (logic in `scripts/lib/forge-sync.ts`) runs steps 4, 5, 6 and 7
+`bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/forge-sync.ts` (logic in `scripts/lib/forge-sync.ts`) runs steps 4, 5, 6 and 7
 below as code: it reads the open issues (and the closed ones when a live queue entry is missing
 from the open list) and the open and merged PRs through the configured forge's adapter, then
 writes `queue.json` through the state write guard (`blackhole-state.md` § Write protocol). It:
@@ -57,7 +57,7 @@ writes `queue.json` through the state write guard (`blackhole-state.md` § Write
   #N`, as `reconcileMerged`), `closed` when the forge closed it; a forge-open issue stays open.
 
 It never removes an entry. On a fresh checkout holding only `config.json` it also writes an empty
-`findings-ledger.json`, so `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts` can publish the page right after. A failed forge read
+`findings-ledger.json`, so `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts` can publish the page right after. A failed forge read
 writes nothing (exit 1); `auto_sync: false` reads and writes nothing; `--dry-run` prints the queue.
 The orchestrator stays the single writer: run it in the orchestrator's turn or when none runs; the
 queue is re-read just before the write and the sync re-applied to that copy. Write-back (§ 6.5),
@@ -80,7 +80,7 @@ Read optional scope from `.blackhole/config.json` (or `CAMPAIGN_CONFIG` env over
 
 ```bash
 # Pseudocode — prefer bun helper
-bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/forge-scope.ts list-args   # prints --milestone / --label flags
+bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/forge-scope.ts list-args   # prints --milestone / --label flags
 ```
 
 `readScope(config)` returns `{ milestone?, labels? }`. Empty `scope_labels: []` is
@@ -93,7 +93,7 @@ user-visible error — do not silently ingest zero issues.
 
 ```bash
 gh issue list --state open --json number,title,labels,body,milestone --limit 200 \
-  $(bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/forge-scope.ts list-args)
+  $(bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/forge-scope.ts list-args)
 ```
 
 When scope is active, `gh` applies milestone and label filters (labels use AND semantics).
@@ -234,11 +234,11 @@ Skip when `.blackhole/config.json` has `auto_sync: false` (offline — queue-onl
 
 ```bash
 # Print merged body from stdin
-bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/forge-deps.ts merge-body --deps 11,12 < body.md
+bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/forge-deps.ts merge-body --deps 11,12 < body.md
 
 # Fetch + apply for issue #13
 gh issue view 13 --json body -q .body | \
-  bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/forge-deps.ts merge-body --deps 11,12 | \
+  bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/forge-deps.ts merge-body --deps 11,12 | \
   gh issue edit 13 --body-file -
 ```
 
@@ -288,7 +288,7 @@ If issue body or branch name contains `fixes #N` / `closes #N`, link `pr` on
 queue entry for issue N.
 
 An open PR that links no queue issue (work opened without one: a trunk fix, a dependency bump, a
-branch sync) is not adopted into `queue.json`, whose entries are issues. `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts` lists it
+branch sync) is not adopted into `queue.json`, whose entries are issues. `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts` lists it
 instead, from the open-PR list it already fetches, under **Open PR with no queue entry**
 (`untracked_prs`, `coordinator-dashboard.md` § Status page), until a queue entry names it or it closes.
 
@@ -302,7 +302,7 @@ Use the **same scoped** issue list as step 2:
 
 ```bash
 OPEN_ISSUES=$(gh issue list --state open --json number \
-  $(bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/forge-scope.ts list-args) | jq 'length')
+  $(bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/forge-scope.ts list-args) | jq 'length')
 OPEN_PRS=$(gh pr list --state open --json number | jq 'length')
 ```
 
@@ -325,8 +325,8 @@ Every known PR dependency is mirrored onto the forge so a human merging by hand 
 dependency a human adds on the forge becomes a DAG edge. Run once per sync (§ 6.8), after § 6.5–6.7:
 
 ```bash
-bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/pr-deps-sync.ts --campaign-dir .blackhole                       # dry run: prints the plan
-bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/pr-deps-sync.ts --campaign-dir .blackhole --apply --out .blackhole/queue.json.tmp
+bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/pr-deps-sync.ts --campaign-dir .blackhole                       # dry run: prints the plan
+bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/pr-deps-sync.ts --campaign-dir .blackhole --apply --out .blackhole/queue.json.tmp
 ```
 
 `--apply` writes the forge and the updated queue to `--out`; install it through the
@@ -392,7 +392,7 @@ and the campaign discoverability label:
 
 ```bash
 gh issue create --title "..." --body "..." \
-  $(bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/forge-scope.ts create-args)
+  $(bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/forge-scope.ts create-args)
 ```
 
 `create-args` emits `--milestone` and `--label` flags from `scope_milestone` / `scope_labels`.

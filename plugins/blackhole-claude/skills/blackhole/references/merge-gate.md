@@ -32,7 +32,7 @@ above): the poll/retry/rerun mechanics themselves are `phase-loop.md` § Merge
 protocol step 2's, unchanged.
 
 - **Applies to `ci_wait: poll` only.** With `ci_wait: pr-events` (run context) the wait is event
-  driven (`project-thread-mode.md` § CI wait). Either way the verdict comes from `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/ci-verdict.ts
+  driven (`project-thread-mode.md` § CI wait). Either way the verdict comes from `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/ci-verdict.ts
   --checks <file> --runs <runs file>` (the head's `actions/runs`), which reads `merge_ready.required_checks`
   (`--required <name>` overrides). Nothing executed, or a required check missing or skipped, is
   `pending`; with no list any skipped gating check is `pending`, naming `merge_ready.required_checks`.
@@ -298,7 +298,7 @@ frontmatter date is extracted and passed back in as the re-render's `today` over
 cross-midnight gap between promotion and verification never causes a spurious mismatch — the
 only two things that can differ are actual content.
 
-Mechanical check: `bun run --cwd <abs repo-root> "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/check-review-artifact.ts --config <abs>
+Mechanical check: `bun run --cwd <abs repo-root> "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/check-review-artifact.ts --config <abs>
 --issue <N> --title <title> --ledger <abs findings-ledger.json> --pr <P> --branch <branch> --head
 <sha> --repo-root <abs repo-root> --diff-file <abs paths.txt>` — `--head` is the reviewed head
 passed to promotion, not the post-promotion head (`implementer.md` § Promote Review Artifact);
@@ -387,7 +387,7 @@ of `config.target_branch` — record `stacked_on` + `parent_tip_sha` on the chil
 entry (`queue-dag.md` Field rules) and surface the squash-merge warning:
 
 ```
-bun run --cwd <abs repo-root> "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/stack-repair.ts capture --queue <abs queue.json> \
+bun run --cwd <abs repo-root> "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/stack-repair.ts capture --queue <abs queue.json> \
   --repo-root <abs repo-root> --child-issue <N> --parent-issue <M> --repo-slug <owner/repo> --forge <config.forge> --apply
 ```
 
@@ -400,14 +400,14 @@ commits has an escape hatch for this stack, a squash-only repo does not.
 recorded *before* step 4 merges, and its step 4.6 runs the repair per child afterwards:
 
 ```
-bun run --cwd <abs child worktree> "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/stack-repair.ts repair --queue <abs queue.json> \
+bun run --cwd <abs child worktree> "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/stack-repair.ts repair --queue <abs queue.json> \
   --repo-root <abs child worktree> --repo-slug <owner/repo> --base <target branch> \
   --parent-issue <M> [--child-issue <N> --apply] [--forge <config.forge>]
 ```
 On Gitea each recovery prints a `ci-retrigger:` line (push-only; `forge-channels.md` § Operation table).
 
 **Recovery route per merge mode and landing.** The command is the same for each child
-(`bun run --cwd <abs child worktree> "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/stack-repair.ts <command> ...` with the flags above);
+(`bun run --cwd <abs child worktree> "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/stack-repair.ts <command> ...` with the flags above);
 the landing (merge commit, squash, rebase or closed unmerged) is classified by the script from git
 ancestry and the forge state, so the orchestrator never guesses it. The mode decides the trigger
 and what the child waits for. Every cell names a command and its HITL route (an `AskQuestion`
@@ -455,7 +455,7 @@ replay must equal the count from the recorded parent tip to the child head measu
 the same number the PR showed while its base was still the parent branch.
 
 **Has the parent landed?** Ask the forge, never git history: a squash or rebase landing is not an ancestor of the base, so waiting on ancestry never ends.
-Never run `git merge-base --is-ancestor <parent head> origin/<base>` to decide landing. Run `bun run --cwd <abs repo-root> "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/stack-repair.ts parent-landed --repo-slug <owner/repo> --forge <config.forge> (--parent-pr <P> | --queue <abs queue.json> --child-issue <N>)`;
+Never run `git merge-base --is-ancestor <parent head> origin/<base>` to decide landing. Run `bun run --cwd <abs repo-root> "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/stack-repair.ts parent-landed --repo-slug <owner/repo> --forge <config.forge> (--parent-pr <P> | --queue <abs queue.json> --child-issue <N>)`;
 it prints `{"parentPr","state","landed","mergedAt","mergeCommitSha"}` and exits `0` merged, `1` open, `4` closed unmerged (the abandoned column above), `3` unreadable
 (a waiter retries next turn, never reads `3` as open or landed). `repair` reads the same state.
 
@@ -488,8 +488,8 @@ and its exhaustion is terminal: the orchestrator is left no verdict meaning "tol
 Mechanical check for both halves (ADR-003 — the judgment is above, the arithmetic is not here):
 
 ```
-bun run --cwd <abs repo-root> "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/merge-base-guard.ts --mode pre-merge --base-ref <baseRefName> --target-branch <target_branch> [--stacked-into <branch>]
-bun run --cwd <abs repo-root> "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/merge-base-guard.ts --mode post-merge --pr <N> --target-branch <target_branch> --repo-root <abs repo-root> [--attempts <N>] [--interval-ms <N>]
+bun run --cwd <abs repo-root> "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/merge-base-guard.ts --mode pre-merge --base-ref <baseRefName> --target-branch <target_branch> [--stacked-into <branch>]
+bun run --cwd <abs repo-root> "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/merge-base-guard.ts --mode post-merge --pr <N> --target-branch <target_branch> --repo-root <abs repo-root> [--attempts <N>] [--interval-ms <N>]
 ```
 
 Exit `0` proceed, `1` refuse (reason on stderr), `2` malformed usage — the same exit-code
@@ -547,7 +547,7 @@ mistaken for a verified base-ref landing.
 children is merged with `--merge` (a merge commit) when the repo allows it, because the child then
 already contains the parent's tip and recovery (§ 7) is a retarget with no commit, no push and no
 CI rerun. When the repo allows no merge commit, it stays `--squash` and § 7's replay is mandatory.
-`bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/stack-repair.ts merge-method --queue <abs queue.json> --repo-slug <owner/repo>
+`bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/stack-repair.ts merge-method --queue <abs queue.json> --repo-slug <owner/repo>
 --forge <config.forge> --issue <N>` prints the choice as JSON (`method`, `flag`, `reason`); with unreadable repo settings and open stacked children it prints `hold: true` and exits 3 instead of choosing squash; `phase-loop.md` step 4 runs it.
 
 Blackhole may merge **its own** PRs only when CI is already green (step 1 / C3) **and** the
@@ -574,8 +574,8 @@ Mechanical check (exit `0` automerge, `1` hold, `2` usage) — judgment is above
 here:
 
 ```
-bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/merge-risk.ts --name-status <abs> [--patches <abs unified diff>] --head-ref <branch>
-bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/merge-risk.ts --files <abs json>
+bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/merge-risk.ts --name-status <abs> [--patches <abs unified diff>] --head-ref <branch>
+bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/merge-risk.ts --files <abs json>
 ```
 
 `--files` JSON is `{ files: [{path, status, previousPath?}], patches?: [{path, patch}], headRef? }`.

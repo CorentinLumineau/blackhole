@@ -252,7 +252,7 @@ after the transient 2-retry cap (`merge-gate.md` § CI-wait poller Reclassificat
 Permanent).
 
 **Dispatch**: orchestrator-inline, **not** a worker spawn — run
-`bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/ci-diagnosis.ts --pr <n>` foreground, then apply `ci-diagnosis.md` § Fix-loop
+`bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/ci-diagnosis.ts --pr <n>` foreground, then apply `ci-diagnosis.md` § Fix-loop
 routing (ledger `V-CI-01` append, `queue.json` → `phase: implement`, `review_iteration += 1`,
 STOP merge steps 3–5). Full classification taxonomy, environment repair rerun, and implementer
 spawn framing: `ci-diagnosis.md`.
@@ -369,11 +369,11 @@ above is what closes the gap, not a reason to treat the spawn prompt as self-aut
 Applies when a lane is set (`catchup.lane` in `config.json`, or `--lane` for one invocation); with no
 lane every claim answers `SKIP` and dispatch is unchanged. The claim is the account's statement on the
 forge: the label `in-progress:<lane>` plus the assignee, under the `catchup.claim_lease_hours` lease.
-`bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/claim.ts` is the one command; it prints one JSON line `{verdict, issue,
+`bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/claim.ts` is the one command; it prints one JSON line `{verdict, issue,
 lane, user, held_by}`.
 
 **Claim before dispatch.** Before the status moves to `in-flight`, run
-`bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/claim.ts --claim <N> --campaign-dir .blackhole [--lane <pinned>]`:
+`bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/claim.ts --claim <N> --campaign-dir .blackhole [--lane <pinned>]`:
 
 | Verdict | Action |
 |---------|--------|
@@ -381,7 +381,7 @@ lane, user, held_by}`.
 | `HELD` (a live claim of another lane), `CLOSED` | do not dispatch: `status: blocked`, `notes: another lane: in-progress:<held_by>` (the form `forge-sync` writes) |
 | exit 1 (forge failure) | do not dispatch this turn; retry next turn |
 
-**Release.** Run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/claim.ts --release <N> --campaign-dir .blackhole` on merge (after
+**Release.** Run `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/claim.ts --release <N> --campaign-dir .blackhole` on merge (after
 `phase-loop.md` § Merge protocol step 5), when a worker returns failed, on `stop --abandon` and on a
 `stop --now` worker that falls back to abandon, and on a stop for a claim with no open own PR. A claim
 with an open PR stays until merge: the lease covers an abandoned one. `NOT-HELD` touches nothing.

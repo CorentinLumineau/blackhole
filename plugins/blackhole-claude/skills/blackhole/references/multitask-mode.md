@@ -24,7 +24,7 @@ coordinator hop. See [claude-code-native.md](claude-code-native.md). This file d
 ```
 User: "finish the backlog" / attaches blackhole skill / /blackhole run
   ↓
-Coordinator: Phase 0 bootstrap (auto-sync) — run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts` → print **full** dashboard (`coordinator-dashboard.md`)
+Coordinator: Phase 0 bootstrap (auto-sync) — run `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts` → print **full** dashboard (`coordinator-dashboard.md`)
   ↓
 Coordinator: Task — attach `.cursor/agents/orchestrator.md` (not subagent_type enum), prompt: campaign-prompt.md, run_in_background: true
   ↓
@@ -76,14 +76,14 @@ Spawn prompt text, model/effort policy, and mis-spawn hazard detail: `campaign-p
 - Relay user chat as resume prompt to orchestrator
 - Resume orchestrator when: user input, blocker needing user, orchestrator **background turn completes** (idle notification) **and** queue work remains — this is the outer loop; the inner loop is the orchestrator's in-turn worker barrier, not coordinator polling workers
 - Spawn fresh orchestrator only when prior agent completed/failed entirely
-- Print the **full** dashboard (`bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts`) on campaign start and after each orchestrator turn notification — see `coordinator-dashboard.md`
+- Print the **full** dashboard (`bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts`) on campaign start and after each orchestrator turn notification — see `coordinator-dashboard.md`
 
 ## Coordinator turn flow (with visibility)
 
 ```
 Orchestrator turn completes (notification)
   ↓
-Coordinator: bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts → print full dashboard to user
+Coordinator: bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts → print full dashboard to user
   ↓
 If queue work remains and not blocked on user: resume orchestrator
   ↓
@@ -151,7 +151,7 @@ acts as manager for that peer: it answers the peer's messages below as a `manage
 
 ADR-057. Each campaign session keeps one record at
 `<git common dir>/blackhole/campaigns/<session>.json`, shared by every worktree of the clone,
-written by `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/peer-campaigns.ts heartbeat --turn <n>` and removed by `release`. A
+written by `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/peer-campaigns.ts heartbeat --turn <n>` and removed by `release`. A
 record names the worktree, host, role, `manager_session`, turn and `claims[]`: every non-done
 queue entry that is `in-flight`, or carries a `pr` and is not held for a peer
 (`another session:`, [forge-sync.md](forge-sync.md) § Queue builder script). It stays live for 40 minutes after its last
@@ -280,7 +280,7 @@ Acceptance fixture for Pattern B stall fix (#151):
 | 5 | routers | each **returns** `route{}` + `trigger` + `local_analyze` in its result JSON (never writes `queue.json`/`findings-ledger.json` directly — single-writer-orchestrator invariant) | N return payloads collected |
 | 6 | orchestrator | triage: validate JSON, apply mutations **serially, one router at a time** — construct + append the `routing_decisions` row from each return, set `phase: plan`, `status: ready`, clear in-flight workers | checkpoint workers empty; artifacts on disk |
 | 7 | orchestrator | turn-end checklist → end turn | coordinator receives idle |
-| 8 | coordinator | `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts` → resume orchestrator if more work | next phase dispatches **without user message** |
+| 8 | coordinator | `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts` → resume orchestrator if more work | next phase dispatches **without user message** |
 
 **Failure signal (pre-fix):** step 4 skipped → step 6 never runs → `notes: "router initial pass (WAVE 0)"` persists with `route{}` present.
 

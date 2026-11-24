@@ -88,8 +88,8 @@ A queue written before the enums above were enforced can still carry a legacy `s
 `scripts/queue-migrate.ts` rewrites them in one pass. Run from the repo that holds the campaign:
 
 ```bash
-bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/queue-migrate.ts            # dry run: prints each change, writes nothing
-bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/queue-migrate.ts --apply    # snapshots queue.json to archive/, installs through the guard
+bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/queue-migrate.ts            # dry run: prints each change, writes nothing
+bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/queue-migrate.ts --apply    # snapshots queue.json to archive/, installs through the guard
 ```
 
 `--campaign-dir <dir>` points it at a campaign directory other than `./.blackhole`. Run `--apply`
@@ -167,7 +167,7 @@ plus the pre-corruption value of `#868`'s stored `body_hash`.
 agents (Bash-only tool access) and for `recovery-protocol.md` §8's recompute step:
 
 ```bash
-echo '{"title": "Example Issue", "body": "This is the body."}' | bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/compute-body-hash.ts
+echo '{"title": "Example Issue", "body": "This is the body."}' | bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/compute-body-hash.ts
 ```
 
 **Worked example**:
@@ -291,7 +291,7 @@ overlaps another open PR without being stacked on it.
 Deferral alone cannot protect an overlapping issue once the blocker has an open, unmerged PR:
 under `merge_mode: leave-open` an LGTM'd PR counts as delivered while `main` still lacks its
 changes, so the "cleared" blocker would hand the next wave a stale base. Before creating a
-worktree, run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/stack-parent.ts --queue .blackhole/queue.json --issue <N>
+worktree, run `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/stack-parent.ts --queue .blackhole/queue.json --issue <N>
 --repo-slug <owner/repo> --repo-root <abs> --forge <config.forge>` (`pickStackParent`, `scripts/lib/stack-parent.ts`; it
 reads each open PR's files from the turn's open-PR snapshot, one fetch and no per-PR API call,
 unless `--parent-files '{"<parent>": [...]}'` is passed; the config `default_touch_paths` is read
@@ -388,7 +388,7 @@ On first `sync` with empty queue:
 
 ```bash
 gh issue list --state open --json number,title,labels,milestone --limit 200 \
-  $(bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/forge-scope.ts list-args)
+  $(bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/forge-scope.ts list-args)
 ```
 
 Create one `issues.<n>` entry per open issue: `phase: handle`, `status: ready`,
