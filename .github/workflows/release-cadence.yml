@@ -3,6 +3,7 @@ name: Release Cadence
 # Every-N-merged-PR release cut (N = CADENCE_THRESHOLD in scripts/lib/release-cadence.ts).
 # Cut job gated by repository variable RELEASE_CADENCE_ENABLED == 'true'
 # (owner enablement — see documentation/runbooks/release-cadence.md).
+# A package.json already above the latest tag cuts early, below the threshold.
 # When disabled, `disabled-notice` surfaces a warning so skips are not silent.
 #
 # This workflow never publishes a GitHub Release. It commits notes, bumps

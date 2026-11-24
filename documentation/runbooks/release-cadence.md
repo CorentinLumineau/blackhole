@@ -4,7 +4,7 @@ summary: "Day-2 operations for the every-20-merged-PR release cadence: owner ena
 status: current
 review_trigger: "on release workflow, release-cadence, or release script change"
 created: 2026-11-18
-last_updated: 2026-11-18
+last_updated: 2026-11-24
 ---
 
 # Release cadence
@@ -91,12 +91,21 @@ On each scheduled run (when enabled):
    `VERSIONED_MANIFESTS` match, commit with `[skip release]`, annotated tag, push `main` + tag.
 5. `.github/workflows/release.yml` publishes the GitHub Release from the notes file.
 
-`N<20` is a no-op unless `workflow_dispatch` `force: true`. `[skip release]` on HEAD still
-blocks a below-threshold force cut. A second run after the tag lands does not retag.
+`N<20` is a no-op unless `workflow_dispatch` `force: true`, with one exception: the **early cut**.
+When `package.json` is strictly above the latest `v*` tag (an unreleased PR bumped it, as
+V-PLUGIN-01 / ADR-030 require for a hook change) and at least one PR is pending, the cut fires
+below the threshold and tags `v<package.json version>`. The PR author's version wins; it is
+never re-classified or lowered. `[skip release]` on HEAD still blocks a below-threshold cut,
+force or early. A second run after the tag lands does not retag.
+
+Catalog availability: there is no registry step. The versioned commit on `main` is what the
+Claude `marketplace.json` and Codex `codex-marketplace.json` catalogs resolve, and the tag only
+names it (ADR-060).
 
 ## Manual / hotfix path
 
-Off-cadence releases still use [prj-create-release](../../.claude/skills/prj-create-release/SKILL.md):
+Hotfix-only; the cadence is the primary path (ADR-060). The release commit carries
+`[skip release]`. Off-cadence releases use [prj-create-release](../../.claude/skills/prj-create-release/SKILL.md):
 
 ```bash
 bun run release prepare vX.Y.Z
@@ -138,3 +147,5 @@ Follow-up issues must include `Pareto: gain=G effort=E priority=N` (Priority = G
 | `bun run release-cadence --prepare` | Write artifacts only (no tag/push) |
 | `bun run release-cadence --cut` | Full CI cut path |
 | `bun run release-cadence --cut --force` | Cut below the 20-PR threshold |
+
+A `package.json` already above the latest tag cuts early at that version without `--force`.

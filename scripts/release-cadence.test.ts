@@ -142,6 +142,61 @@ describe('releaseCommitPaths', () => {
   });
 });
 
+describe('cutRelease early cut (1324)', () => {
+  const bumped = { pkgVersion: '0.30.2', prs: nPrs(3) };
+
+  test('an already-bumped package.json cuts below threshold at that version', async () => {
+    const deps = mockDeps(bumped);
+    await cutRelease(cutArgs, deps);
+    expect(deps.bits.tagged).toEqual(['v0.30.2']);
+    expect(deps.bits.pushed).toEqual(['v0.30.2']);
+    expect(deps.bits.builtVersions).toEqual(['0.30.2']);
+    expect(deps.bits.notes.has('v0.30.2')).toBe(true);
+  });
+
+  test('package.json equal to the tag stays a no-op', async () => {
+    const deps = mockDeps({ pkgVersion: '0.30.1', prs: nPrs(3) });
+    await cutRelease(cutArgs, deps);
+    expect(deps.bits.tagged).toEqual([]);
+  });
+
+  test('[skip release] HEAD does not early cut', async () => {
+    const deps = mockDeps({ ...bumped, headSubject: 'chore(release): prepare v0.30.2 [skip release]' });
+    await cutRelease(cutArgs, deps);
+    expect(deps.bits.tagged).toEqual([]);
+  });
+
+  test('no pending PR does not early cut', async () => {
+    const deps = mockDeps({ ...bumped, prs: [] });
+    await cutRelease(cutArgs, deps);
+    expect(deps.bits.tagged).toEqual([]);
+  });
+
+  test('red Verify does not early cut', async () => {
+    const deps = mockDeps({ ...bumped, verify: false });
+    await cutRelease(cutArgs, deps);
+    expect(deps.bits.tagged).toEqual([]);
+  });
+
+  test('an existing tag for the bumped version refuses to retag', async () => {
+    const deps = mockDeps({ ...bumped, localTags: new Set(['v0.30.2']) });
+    await withExitMocked(async (exitSpy) => {
+      await expect(cutRelease(cutArgs, deps)).rejects.toBeInstanceOf(ProcessExitError);
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+    expect(deps.bits.pushed).toEqual([]);
+  });
+
+  test('hooks fix batch of 5 with a bumped patch version cuts that patch tag', async () => {
+    const deps = mockDeps({
+      pkgVersion: '0.30.2',
+      prs: [pr(1, 'fix(hooks): block stale cache'), ...nPrs(4).slice(1)],
+    });
+    await cutRelease(cutArgs, deps);
+    expect(deps.bits.tagged).toEqual(['v0.30.2']);
+  });
+});
+
 describe('cutRelease gates', () => {
   test('flag off in CI is a no-op — no tag, no push', async () => {
     const deps = mockDeps({ env: { CI: 'true', RELEASE_CADENCE_ENABLED: 'false' } });
@@ -415,5 +470,35 @@ describe('release-cadence.yml', () => {
 describe('Haiku pin', () => {
   test('exported model alias is haiku', () => {
     expect(HAIKU_MODEL_ALIAS).toBe('haiku');
+  });
+});
+
+describe('release policy docs (1324)', () => {
+  const read = (rel: string): string => fs.readFileSync(path.join(REPO, rel), 'utf-8');
+  const docs = [
+    '.claude/skills/prj-create-release/SKILL.md',
+    '.claude/skills/prj-create-release/references/checklist.md',
+    '.github/rules/release-milestone-governance.mdc',
+    'documentation/runbooks/release-cadence.md',
+    'documentation/decisions/ADR-060-cadence-primary-release-policy.md',
+  ];
+
+  test('no doc presents a separate marketplace publish step', () => {
+    for (const rel of docs) {
+      expect(read(rel)).not.toMatch(
+        /marketplace[ -]publish|publish(?:ing)? (?:to )?(?:the )?(?:Claude |Codex )?(?:marketplace|registry)/i,
+      );
+    }
+  });
+
+  test('skill marks the manual flow as hotfix-only with [skip release] and links the ADR', () => {
+    const skill = read('.claude/skills/prj-create-release/SKILL.md');
+    expect(skill).toContain('[skip release]');
+    expect(skill).toContain('ADR-060');
+    expect(skill).toMatch(/hotfix/i);
+  });
+
+  test('runbook documents the early cut', () => {
+    expect(read('documentation/runbooks/release-cadence.md')).toMatch(/early cut/i);
   });
 });

@@ -15,6 +15,7 @@ import {
   cadenceEnvAllowsCut,
   classifyBatch,
   claudePrintArgs,
+  earlyCutVersion,
   evaluateCadenceGate,
   filterPrsSince,
   headHasSkipRelease,
@@ -53,6 +54,7 @@ export type CadenceAnchor = {
   latestTag: string | null;
   prs: MergedPr[];
   baseVersion: string;
+  earlyCutVersion: string | null;
 };
 
 export type ReleaseCadenceDeps = {
@@ -87,7 +89,7 @@ function usage(): never {
   bun run release-cadence --cut                    CI: gate → notes → commit → tag → push
   bun run release-cadence --cut --force            Cut when N < ${CADENCE_THRESHOLD} (maintainer emergency)
 
-Threshold is CADENCE_THRESHOLD = ${CADENCE_THRESHOLD}. Existing .github/workflows/release.yml
+Threshold is CADENCE_THRESHOLD = ${CADENCE_THRESHOLD}; a package.json already above the latest tag cuts early at that version. Existing .github/workflows/release.yml
 publishes the GitHub Release from the annotated tag — this command never creates one itself.`);
   process.exit(1);
 }
@@ -258,11 +260,13 @@ export async function resolveAnchor(deps: ReleaseCadenceDeps): Promise<CadenceAn
     throw new Error(`Cannot read commit date for tag ${latestTag}`);
   }
   const prs = filterPrsSince(all, since);
+  const baseVersion = versionFromTag(latestTag, pkgVersion);
   return {
     count: prs.length,
     latestTag,
     prs,
-    baseVersion: versionFromTag(latestTag, pkgVersion),
+    baseVersion,
+    earlyCutVersion: latestTag ? earlyCutVersion(pkgVersion, baseVersion) : null,
   };
 }
 
@@ -331,14 +335,15 @@ export async function dryRunStatus(args: CliArgs, deps: ReleaseCadenceDeps): Pro
     mergedPrCount: anchor.count,
     threshold: CADENCE_THRESHOLD,
     force: args.force,
+    versionBumpedSinceTag: anchor.earlyCutVersion !== null,
   });
   const batch = selectBatch(anchor.prs, CADENCE_THRESHOLD);
   const classified = batch.length > 0 ? classifyBatch(batch, anchor.baseVersion) : null;
   const status = {
     ...anchor,
     wouldCut: decision === 'cut',
-    proposedTag: classified ? `v${classified.nextVersion}` : null,
-    proposedBump: classified?.bump ?? null,
+    proposedTag: anchor.earlyCutVersion ? `v${anchor.earlyCutVersion}` : classified ? `v${classified.nextVersion}` : null,
+    proposedBump: anchor.earlyCutVersion ? 'early' : (classified?.bump ?? null),
     threshold: CADENCE_THRESHOLD,
     skipReleaseOnHead,
   };
@@ -396,7 +401,12 @@ export async function prepareCadenceRelease(
     deps.log('Nothing to release.');
     return null;
   }
-  if (!opts.skipThresholdCheck && anchor.count < CADENCE_THRESHOLD && !args.force) {
+  if (
+    !opts.skipThresholdCheck &&
+    anchor.count < CADENCE_THRESHOLD &&
+    !args.force &&
+    !anchor.earlyCutVersion
+  ) {
     deps.log(
       `Only ${anchor.count} pending PR(s) since ${anchor.latestTag ?? 'beginning'} — below threshold ${CADENCE_THRESHOLD}.`,
     );
@@ -409,7 +419,11 @@ export async function prepareCadenceRelease(
 
   const batch = selectBatch(anchor.prs, CADENCE_THRESHOLD);
   const classified = classifyBatch(batch, anchor.baseVersion);
-  const tag = `v${classified.nextVersion}`;
+  const version = anchor.earlyCutVersion ?? classified.nextVersion;
+  const tag = `v${version}`;
+  if (anchor.earlyCutVersion) {
+    deps.log(`early cut: package.json already at ${version} (latest tag ${anchor.latestTag})`);
+  }
 
   if (deps.tagExists(tag) || deps.remoteTagExists(tag)) {
     deps.error(`Tag ${tag} already exists. Refusing to retag.`);
@@ -423,8 +437,8 @@ export async function prepareCadenceRelease(
 
   const { notes, source } = notesForBatch(tag, batch, deps);
   deps.writeNotes(tag, notes);
-  deps.bumpVersionAndBuild(classified.nextVersion);
-  deps.log(`Prepared release ${tag} (${classified.bump}, notes=${source})`);
+  deps.bumpVersionAndBuild(version);
+  deps.log(`Prepared release ${tag} (${anchor.earlyCutVersion ? 'early' : classified.bump}, notes=${source})`);
   deps.log(`  PR range: #${batch[0]!.number}–#${batch[batch.length - 1]!.number} (${batch.length} of ${anchor.count})`);
   return tag;
 }
@@ -444,6 +458,7 @@ export async function cutRelease(args: CliArgs, deps: ReleaseCadenceDeps): Promi
     mergedPrCount: first.count,
     threshold: CADENCE_THRESHOLD,
     force: args.force,
+    versionBumpedSinceTag: first.earlyCutVersion !== null,
   });
 
   if (firstDecision === 'skip') {
@@ -470,7 +485,13 @@ export async function cutRelease(args: CliArgs, deps: ReleaseCadenceDeps): Promi
   }
 
   const second = await resolveAnchor(deps);
-  if (!shouldRecheckAfterLock(first.count, second.count, CADENCE_THRESHOLD, args.force)) {
+  if (!shouldRecheckAfterLock(
+      first.count,
+      second.count,
+      CADENCE_THRESHOLD,
+      args.force,
+      first.earlyCutVersion !== null && second.earlyCutVersion !== null,
+    )) {
     deps.log(
       `Post-lock re-check: ${second.count} PR(s) since ${second.latestTag ?? 'beginning'} — below threshold; another run may have released.`,
     );
