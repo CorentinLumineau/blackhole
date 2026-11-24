@@ -12,7 +12,7 @@ related:
   - documentation/plans/plan-multi-repo-campaign.md
 ---
 
-# ADR-061: Multi-repo campaign model
+# ADR-062: Multi-repo campaign model
 
 ## Status
 
