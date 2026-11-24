@@ -83,8 +83,8 @@ describe('computePluginDrift', () => {
   // compared version strings — the pre-existing broken behavior — would fail this test.
   test('identical version but diverging file content yields hooks_hash_match: false', () => {
     withFixtureDirs((installedDir, repoDir) => {
-      write(installedDir, 'utils/worktree-removal-guard.js', 'module.exports = () => "stale-pre-774-behavior";');
-      write(repoDir, 'utils/worktree-removal-guard.js', 'module.exports = () => "patched-post-774-behavior";');
+      write(installedDir, 'utils/shell-invocation-scan.js', 'module.exports = () => "stale-pre-774-behavior";');
+      write(repoDir, 'utils/shell-invocation-scan.js', 'module.exports = () => "patched-post-774-behavior";');
       const result = computePluginDrift(installedDir, repoDir);
       expect(result.installed_present).toBe(true);
       expect(result.hooks_hash_match).toBe(false);
@@ -96,9 +96,9 @@ describe('computePluginDrift', () => {
   test('byte-identical installed and repo trees yield hooks_hash_match: true', () => {
     withFixtureDirs((installedDir, repoDir) => {
       write(installedDir, 'hooks.json', '{"hooks":{}}');
-      write(installedDir, 'utils/worktree-removal-guard.js', 'module.exports = () => true;');
+      write(installedDir, 'utils/shell-invocation-scan.js', 'module.exports = () => true;');
       write(repoDir, 'hooks.json', '{"hooks":{}}');
-      write(repoDir, 'utils/worktree-removal-guard.js', 'module.exports = () => true;');
+      write(repoDir, 'utils/shell-invocation-scan.js', 'module.exports = () => true;');
       const result = computePluginDrift(installedDir, repoDir);
       expect(result).toEqual({ installed_present: true, hooks_hash_match: true });
     });

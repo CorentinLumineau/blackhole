@@ -2,7 +2,7 @@
 
 The files in this directory (`hooks.json`, `validate-bash-command.js`,
 `validate-file-changes.js`, `patterns/`, `utils/`) are the source for the PreToolUse guards that
-enforce safety checks (worktree-removal guard, destructive Bash pattern denial, sensitive-file
+enforce safety checks (destructive Bash pattern denial, sensitive-file
 write denial, etc.) during a live Claude Code session. Each PreToolUse command hook in
 `hooks.json` sets `"onFailure": "block"` (Claude Code ≥2.1.295) so a missing `bun`, a crash, or
 the 15-second timeout refuses the tool call instead of failing open.
@@ -20,7 +20,7 @@ the content of the files themselves. Editing and merging a fix to any file in th
 **nothing** for an existing installation unless the plugin's version also changes: the cache
 directory for the already-installed version is never revisited, so the old (unpatched) copy keeps
 running indefinitely. This is exactly the incident #800 documents: three merged security fixes to
-`utils/worktree-removal-guard.js` (#761, #774, #777) shipped inert to every existing installation
+the since-removed worktree-removal guard (#761, #774, #777) shipped inert to every existing installation
 for weeks — both the installed copy and this repo's build reported the identical version string,
 so nothing signaled the divergence.
 
@@ -60,8 +60,8 @@ Worktree write containment and the main-clone git guard only constrain campaign 
 (`utils/campaign-scope.js`): a call whose `agent_type` names a blackhole agent, a call with an
 assigned worktree (declared or cwd-derived), or any call when `BLACKHOLE_HOOK_SCOPE=all` is set.
 An ordinary session that happens to load the plugin is left alone by those two guards. Every
-other guard (destructive patterns, sensitive files, system paths, traversal, Bash write targets,
-worktree removal) applies to every call.
+other guard (destructive patterns, sensitive files, system paths, traversal,
+Bash write targets) applies to every call.
 
 ## Campaign state dir trust
 

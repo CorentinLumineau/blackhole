@@ -121,19 +121,11 @@ Pop stash in the correct `wt-<issue>`; spawn implementers one wave at a time, re
 committed-but-unpushed history. A merged PR proves the *pushed* commits landed; it says nothing
 about commits made in the worktree after the last push (a post-push rebase, a follow-up commit).
 
-Mechanized (#532): a PreToolUse hook (`templates/hooks/pretooluse/utils/worktree-removal-guard.js`)
-now enforces this automatically for every `git worktree remove` call — including with `--force`,
-which bypasses git's own dirty-tree refusal but not this check — denying it (V-HOOK-01) when the
-target worktree's branch carries commits its remote does not have. The manual check below is what
-the hook runs; use it directly when investigating outside a Bash tool call the hook intercepts.
+No hook enforces this check (ADR-061): Claude Code auto mode prompts before a destructive removal,
+and the push-first rule is the prose below. Run the manual check yourself before every removal.
 When the worktree's branch has no upstream configured (`--no-track`, this campaign's own
-worktree-creation convention — #516), `@{u}` below has nothing to resolve; the hook falls back to
-comparing against `refs/remotes/origin/<branch>` instead, which a normal `git push` keeps current
-even without `-u`.
-
-The hook can only verify a call it can parse statically — see `blackhole-protocol.md` § Branch &
-Worktree Hygiene for the full standalone/literal-path requirement and the unverifiable-branch
-remedy (#551); the example below already satisfies it.
+worktree-creation convention — #516), `@{u}` below has nothing to resolve; compare against the ref
+the branch was pushed to instead (`git ls-remote origin refs/heads/<branch>`).
 
 Check first:
 
