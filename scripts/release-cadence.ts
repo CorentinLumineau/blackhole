@@ -453,7 +453,7 @@ export async function prepareCadenceRelease(
 
 export async function cutRelease(args: CliArgs, deps: ReleaseCadenceDeps): Promise<void> {
   if (!cadenceEnvAllowsCut(deps.env)) {
-    deps.log("RELEASE_CADENCE_ENABLED is not 'true' — skipping cadence cut.");
+    deps.log("RELEASE_CADENCE_ENABLED is 'false' (kill switch) — skipping cadence cut.");
     return;
   }
 
