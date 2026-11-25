@@ -38,6 +38,10 @@ describe('pareto-order CLI', () => {
   test('honors user_queue_order', () => {
     expect(run('--campaign-dir', campaign({ ...queue, user_queue_order: [2] }), '--limit', '2').out).toBe('[2,3]');
   });
+  test.each([[undefined], [[]]])('unpinned (user_queue_order %j) follows stored priority', (order) => {
+    const q = { ...queue, ...(order ? { user_queue_order: order } : {}) };
+    expect(run('--campaign-dir', campaign(q), '--limit', '3').out).toBe('[3,5,2]');
+  });
   test('a missing queue exits 1 naming the path', () => {
     const dir = campaign(null);
     const r = run('--campaign-dir', dir);
