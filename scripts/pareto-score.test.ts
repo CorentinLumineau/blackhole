@@ -61,6 +61,22 @@ describe('pareto-score', () => {
   });
 });
 
+describe('pareto-score duplicate scores', () => {
+  test('apply exits 2 naming the duplicate issue, before any forge call', () => {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'pareto-score-dup-'));
+    try {
+      const scores = path.join(d, 'scores.json');
+      const row = { number: 3, gain: 7, effort: 5, rationale: 'r' };
+      fs.writeFileSync(scores, JSON.stringify([row, row]));
+      const r = Bun.spawnSync(['bun', path.join(import.meta.dir, 'pareto-score.ts'), 'apply', '--campaign-dir', d, '--scores-file', scores], { stderr: 'pipe', stdout: 'pipe' });
+      expect(r.exitCode).toBe(2);
+      expect(r.stderr.toString()).toContain('duplicate score entries for issue #3');
+    } finally {
+      fs.rmSync(d, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('prose coverage', () => {
   test.each(['src/references/forge-sync.md', 'src/references/phase-loop.md'])('%s cites scripts/pareto-score.ts', (rel) => {
     expect(fs.readFileSync(path.join(import.meta.dir, '..', rel), 'utf8')).toContain('scripts/pareto-score.ts');

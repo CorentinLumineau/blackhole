@@ -5,7 +5,7 @@ import { adapterForCampaign } from './lib/forge-adapter/for-campaign.ts';
 import type { ForgeAdapter } from './lib/forge-adapter/types.ts';
 import type { QueueJson } from './lib/campaign-status/types.ts';
 import { readJsonFile } from './lib/fs.ts';
-import { applyScores, parseScores, scoreRequests, type ApplyOutcome, type ScoreRequest } from './lib/pareto-score.ts';
+import { applyScores, DuplicateScoreError, parseScores, scoreRequests, type ApplyOutcome, type ScoreRequest } from './lib/pareto-score.ts';
 import { installStateFile } from './lib/state-write-guard.ts';
 
 // Score-on-ingest, mechanical side (`forge-sync.md` § Score on ingest). `detect` prints the ready
@@ -63,7 +63,7 @@ async function main(): Promise<void> {
     console.log(JSON.stringify(command === 'detect' ? await runDetect(dir) : await runApply(dir, scoresFile as string), null, 2));
   } catch (error) {
     console.error(`pareto-score: ${error instanceof Error ? error.message : String(error)}`);
-    process.exit(1);
+    process.exit(error instanceof DuplicateScoreError ? 2 : 1);
   }
 }
 

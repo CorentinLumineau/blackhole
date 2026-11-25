@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import type { QueueJson } from './campaign-status/types.ts';
 import type { ForgeAdapter, ForgeIssue } from './forge-adapter/types.ts';
-import { applyScores, parseScores, scoreRequests, upsertRationaleLine } from './pareto-score.ts';
+import { applyScores, DuplicateScoreError, parseScores, scoreRequests, upsertRationaleLine } from './pareto-score.ts';
 
 const issue = (number: number, body = '', labels: string[] = [], extra: Partial<ForgeIssue> = {}): ForgeIssue => ({ number, title: `Issue ${number}`, body, labels: labels.map((name) => ({ name })), milestone: null, state: 'OPEN', ...extra });
 const queue = (entries: Record<string, Record<string, unknown>>): QueueJson => ({ issues: entries as QueueJson['issues'] });
@@ -42,6 +42,14 @@ describe('parseScores', () => {
     ['non-integer number', [{ number: '3', gain: 5, effort: 5, rationale: 'r' }]],
   ])('rejects %s', (_name, raw) => {
     expect(() => parseScores(raw)).toThrow();
+  });
+});
+
+describe('parseScores duplicates', () => {
+  test('rejects two entries for the same issue number with a named error', () => {
+    const row = { number: 3, gain: 7, effort: 5, rationale: 'why' };
+    expect(() => parseScores([row, { ...row, gain: 2 }])).toThrow(DuplicateScoreError);
+    expect(() => parseScores([row, { ...row, gain: 2 }])).toThrow('duplicate score entries for issue #3');
   });
 });
 
@@ -94,6 +102,19 @@ describe('applyScores', () => {
       { number: 8, result: 'skipped', reason: 'not in the queue' },
     ]);
     expect(r.queue.issues!['3']!.pareto).toBeUndefined();
+  });
+
+  test('applies a repeated issue number once, skipping the repeat', async () => {
+    const { adapter, calls } = fake();
+    const r = await applyScores(adapter, queue({ '3': { status: 'ready' } }), [issue(3, 'x', ['ready'])], [score, { ...score, gain: 1 }]);
+    expect(r.outcomes).toEqual([
+      { number: 3, result: 'scored' },
+      { number: 3, result: 'skipped', reason: 'duplicate score entry for this issue' },
+    ]);
+    expect(r.queue.issues!['3']!.pareto!.gain).toBe(score.gain);
+    const single = fake();
+    await applyScores(single.adapter, queue({ '3': { status: 'ready' } }), [issue(3, 'x', ['ready'])], [score]);
+    expect(calls).toEqual(single.calls);
   });
 
   test('a forge error propagates', async () => {

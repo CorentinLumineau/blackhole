@@ -11,6 +11,14 @@ export type ScoreRequest = { number: number; title: string; labels: string[]; bo
 export type Score = { number: number; gain: number; effort: number; rationale: string };
 export type ApplyOutcome = { number: number; result: 'scored' | 'already-scored' | 'skipped'; reason?: string };
 
+/** A scores file naming one issue twice: each entry would resolve against the same pre-edit issue snapshot. */
+export class DuplicateScoreError extends Error {
+  constructor(readonly issueNumber: number) {
+    super(`duplicate score entries for issue #${issueNumber}`);
+    this.name = 'DuplicateScoreError';
+  }
+}
+
 const BODY_EXCERPT = 4000;
 const RATIONALE_MAX = 200;
 const RATIONALE_LINE = /^[ \t]*Pareto rationale:[^\r\n]*$/im;
@@ -28,10 +36,13 @@ export function scoreRequests(queue: QueueJson | null, issues: ForgeIssue[]): Sc
 /** The returned scores, validated: an array of `{number, gain, effort, rationale}`, gain and effort in 1..10. */
 export function parseScores(raw: unknown): Score[] {
   if (!Array.isArray(raw)) throw new TypeError('scores must be a JSON array');
+  const seen = new Set<number>();
   return raw.map((row, idx) => {
     const r = row as Partial<Score> | null;
     if (!r || !Number.isInteger(r.number) || typeof r.rationale !== 'string' || !r.rationale.trim()) throw new TypeError(`scores[${idx}] needs an integer number and a non-empty rationale`);
     paretoPriority(r.gain as number, r.effort as number);
+    if (seen.has(r.number)) throw new DuplicateScoreError(r.number);
+    seen.add(r.number);
     return { number: r.number as number, gain: r.gain as number, effort: r.effort as number, rationale: r.rationale };
   });
 }
@@ -56,7 +67,13 @@ export async function applyScores(adapter: ForgeAdapter, queue: QueueJson, issue
   const store = (n: number, pareto: Pareto): void => {
     next.issues![String(n)] = { ...next.issues![String(n)]!, pareto };
   };
+  const handled = new Set<number>();
   for (const score of scores) {
+    if (handled.has(score.number)) {
+      outcomes.push({ number: score.number, result: 'skipped', reason: 'duplicate score entry for this issue' });
+      continue;
+    }
+    handled.add(score.number);
     const entry = next.issues![String(score.number)];
     const issue = open.get(score.number);
     if (!entry || !issue) {
