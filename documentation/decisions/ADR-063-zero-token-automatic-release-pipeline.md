@@ -224,8 +224,8 @@ change a mechanism above.
 | Parameter | blackhole | monorepo |
 |-----------|-----------|----------|
 | `VERIFY_WORKFLOW` | `Verify` (`verify.yml`) | `main-verify` (trust mode; the repo's main-push CI workflow if `CI_MODE=gate`) |
-| `SHIPPED_PATHS` | the three distribution roots under `plugins/` (`scripts/lib/build/paths.ts:13,23,45`) plus the root trees the Codex catalog sources (`skills/`, `agents/`, `rules/`, `references/`, `templates/`, `codex-skills/`, `codex-agents/`, `SKILL.md`, the plugin manifest directories); slice 1 verifies the list (question 5) | `apps/invest`, `apps/voyage`, `apps/croissant` |
-| `COUNTED_PATHS` | equal to the shipped set | `apps/invest` (today's invest changelog part; question 5 asks about voyage and croissant) |
+| `SHIPPED_PATHS` | the three distribution roots under `plugins/` (`scripts/lib/build/paths.ts:13,23,45`) plus the root trees the Codex catalog sources (`skills/`, `agents/`, `rules/`, `references/`, `templates/`, `codex-skills/`, `codex-agents/`, `SKILL.md`, the plugin manifest directories); slice 1 verifies the list (question 5) | the union of the path rules of its `scripts/release-deploy-apps.sh` (invest, voyage and croissant trees, `packages/**`, the root lockfile and manifests), so one path map decides both a cut and a deploy |
+| `COUNTED_PATHS` | equal to the shipped set | the invest changelog part, as today (#5286 there); voyage and croissant merges still trigger the age flush (question 5) |
 | `THRESHOLD` | 10 (`CADENCE_THRESHOLD`, unchanged) | 20 (owner ruling 2026-11-18) |
 | `MAX_AGE` | 24 h | 24 h |
 | `COOLDOWN` | 6 h | 6 h |
