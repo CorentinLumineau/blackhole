@@ -144,6 +144,7 @@ require `gh issue create` + `deferred_to_issue`.
 - [forge-sync.md](references/forge-sync.md)
 - [config-template.md](references/config-template.md)
 - [worker-schemas.md](references/worker-schemas.md)
+- [reviewer-schemas.md](references/reviewer-schemas.md)
 - [checkpoint-protocol.md](references/checkpoint-protocol.md)
 - [ground-truth.md](references/ground-truth.md)
 
