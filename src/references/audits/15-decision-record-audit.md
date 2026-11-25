@@ -10,7 +10,7 @@ vcodes: [V-FIX-01]
     cited, not restated, `V-DRY`).
 *   **Cross-check**: for each such heading found in the PR body, confirm the worker JSON's
     `decision_records[]` array carries a row with the matching `kind` (`root-cause` \|
-    `refactor` \| `reuse` \| `improvement` respectively, per `worker-schemas.md` §
+    `refactor` \| `reuse` \| `improvement` respectively, per `implementer-schemas.md` §
     `decision_records[]`).
 *   **Root-cause escalation (`V-FIX-01`, `BLOCK`)**: when the plan frontmatter carries
     `task_type: bugfix`, the Cross-check above applies at `BLOCK` severity for the `root-cause`
