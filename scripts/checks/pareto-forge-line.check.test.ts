@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
-import { BUILD_REFERENCE_DIRS, REQUIRED_SITE_MARKERS, findMissingSiteMarkers, findParetoLineViolations, runChecks } from './pareto-forge-line.check.ts';
+import { beforeEach, describe, expect, test } from 'bun:test';
+import { BUILD_REFERENCE_DIRS, REQUIRED_SITE_MARKERS, checkBuildFilingSites, findParetoLineViolations, runChecks } from './pareto-forge-line.check.ts';
 
 // Issue #1530 — pins the forge-line contract: line plus exactly the matching bucket label.
 
@@ -47,25 +47,48 @@ describe('findParetoLineViolations', () => {
   });
 });
 
-describe('findMissingSiteMarkers', () => {
-  test('returns only the absent markers', () => {
-    expect(findMissingSiteMarkers('has a and b', ['a', 'b', 'c'])).toEqual(['c']);
+describe('build filing-site grounding (temp tree)', () => {
+  const DIRS = ['a/references', 'b/references', 'c/references'] as const;
+  const full = (file: string) => REQUIRED_SITE_MARKERS[file]!.join('\n');
+  let tree: Record<string, string>;
+  const reader = (rel: string) => (rel in tree ? tree[rel]! : null);
+  beforeEach(() => {
+    tree = {};
+    for (const d of DIRS) for (const f of Object.keys(REQUIRED_SITE_MARKERS)) tree[`${d}/${f}`] = full(f);
+  });
+
+  test('every build carrying every marker passes, one result per build', () => {
+    const r = checkBuildFilingSites(DIRS, reader);
+    expect(r.map((x) => x.id)).toEqual(['V-PARETOLINE-01', 'V-PARETOLINE-02', 'V-PARETOLINE-03']);
+    expect(r.every((x) => x.ok)).toBe(true);
+  });
+
+  test('a build forge-sync.md lacking the ingest heading fails only that build', () => {
+    tree['b/references/forge-sync.md'] = full('forge-sync.md').replace('### Score on ingest', '');
+    const r = checkBuildFilingSites(DIRS, reader);
+    expect(r.map((x) => x.ok)).toEqual([true, false, true]);
+    expect(r[1]!.id).toBe('V-PARETOLINE-02');
+    expect(r[1]!.detail).toContain('b/references/forge-sync.md lacks `### Score on ingest`');
+  });
+
+  test('a phase-loop.md without the label flag fails its build', () => {
+    tree['c/references/phase-loop.md'] = full('phase-loop.md').replace('--label "$pareto_label"', '');
+    const r = checkBuildFilingSites(DIRS, reader);
+    expect(r[2]!.ok).toBe(false);
+    expect(r[2]!.detail).toContain('--label "$pareto_label"');
+  });
+
+  test('a missing file fails its build', () => {
+    delete tree['a/references/hunt/filing.md'];
+    const r = checkBuildFilingSites(DIRS, reader);
+    expect(r[0]).toEqual({ id: 'V-PARETOLINE-01', ok: false, detail: 'a/references/hunt/filing.md missing' });
   });
 });
 
-describe('build filing-site grounding', () => {
-  test('covers all three builds', () => {
-    expect(BUILD_REFERENCE_DIRS).toEqual([
-      'skills/blackhole/references',
-      'plugins/blackhole-claude/skills/blackhole/references',
-      'codex-skills/blackhole/references',
-    ]);
-    expect(Object.keys(REQUIRED_SITE_MARKERS)).toEqual(['forge-sync.md', 'hunt/filing.md', 'phase-loop.md']);
-  });
-
-  test('every build on the live tree carries every filing-site marker', () => {
+describe('build filing-site grounding (live tree)', () => {
+  test('all three builds carry every marker', () => {
     const results = runChecks();
-    expect(results).toHaveLength(3);
+    expect(results).toHaveLength(BUILD_REFERENCE_DIRS.length);
     expect(results.filter((r) => !r.ok)).toEqual([]);
   });
 });

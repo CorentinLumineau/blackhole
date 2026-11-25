@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import type { ForgeAdapter, ForgeIssue } from './lib/forge-adapter/types.ts';
-import { runApply, runDetect } from './pareto-score.ts';
+import { runApply, runDetect, runVerify } from './pareto-score.ts';
 
 const issue = (number: number, body = ''): ForgeIssue => ({ number, title: `Issue ${number}`, body, labels: [], milestone: null, state: 'OPEN' });
 let dir: string;
@@ -24,6 +24,22 @@ const forge = (issues: ForgeIssue[]) => {
   return { adapter, edits };
 };
 const queueOnDisk = () => JSON.parse(fs.readFileSync(path.join(dir, 'queue.json'), 'utf8'));
+
+describe('pareto-score verify', () => {
+  const ready = (n: number, body: string, labels: string[]): ForgeIssue => ({ ...issue(n, body), labels: labels.map((name) => ({ name })) }) as ForgeIssue;
+  test('lists open ready issues with a missing line or wrong bucket label, ignoring non-ready ones', async () => {
+    const issues = [
+      ready(3, 'Pareto: gain=8 effort=3 priority=64', ['ready', 'pareto:P2']),
+      ready(4, 'no line', ['ready']),
+      ready(5, 'Pareto: gain=8 effort=3 priority=64', ['ready', 'pareto:P3']),
+      ready(6, 'no line', ['bug']),
+    ];
+    expect(await runVerify(dir, { adapter: forge(issues).adapter })).toEqual([
+      { number: 4, reason: 'missing or invalid `Pareto:` body line' },
+      { number: 5, reason: 'missing bucket label pareto:P2 for priority 64' },
+    ]);
+  });
+});
 
 describe('pareto-score', () => {
   test('detect lists the unscored ready issues', async () => {

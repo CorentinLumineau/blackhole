@@ -453,6 +453,10 @@ The scoring is the orchestrator's own judgement; the script only finds and write
 
 Re-scoring issues that already carry a line is a separate step (#1520), not part of this one.
 
+`bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/pareto-score.ts verify` is the read-only audit: it lists open `ready` issues whose
+`Pareto:` line is missing or invalid, or whose labels are not exactly the one matching `pareto:P*`
+bucket, and exits 1 when the list is non-empty. Run it after `apply` when a batch looks mis-ranked.
+
 ## Campaign Comment Identity Marker (issue #685)
 
 Every forge comment the campaign posts — issue or PR thread, `gh issue comment` or
