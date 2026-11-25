@@ -49,7 +49,7 @@ const changedSource = (c: AuditContext): string[] =>
 const docsGate = (c: AuditContext): boolean => c.config?.docs_governance?.enabled === true;
 const writeGate = (c: AuditContext): boolean => docsGate(c) && c.config?.docs_governance?.write_governance !== false;
 const planHasHeading = (c: AuditContext, heading: string): boolean =>
-  new RegExp(`^## ${heading}\\s*$`, 'm').test(c.planText ?? '');
+  new RegExp(`^## ${heading}\\b`, 'm').test(c.planText ?? '');
 const planFrontmatterValue = (c: AuditContext, key: string): string | undefined =>
   new RegExp(`^${key}:\\s*(\\S+)\\s*$`, 'm').exec(/^---\n([\s\S]*?)\n---/.exec(c.planText ?? '')?.[1] ?? '')?.[1];
 

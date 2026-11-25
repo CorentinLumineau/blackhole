@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { readJsonFile } from './lib/fs.ts';
 import { parseFlags } from './lib/argv-flags.ts';
 import { isFrontendPath, loadFrontendPathSet } from './lib/frontend-paths.ts';
 import { latestRoute } from './lib/route-artifacts.ts';
@@ -54,15 +55,6 @@ const readInput = (file: string, label: string): string => {
   }
 };
 
-const readJsonInput = (file: string, label: string): unknown => {
-  const raw = readInput(file, label);
-  try {
-    return JSON.parse(raw);
-  } catch (e) {
-    throw new Error(`${label} ${file} is not valid JSON: ${(e as Error).message}`);
-  }
-};
-
 // Route resolution is `latestRoute`'s (latest ledger routing_decisions row, else the queue entry).
 const routeFor = (
   queue: Queue,
@@ -90,12 +82,12 @@ export const buildAuditContext = (input: AuditContextInput): AuditContext => {
     if (found.length > 0) throw new Error(`--no-plan-reason refused: plan artifact(s) exist for issue ${input.issueRef}: ${found.join(', ')}; pass --plan-file`);
   }
   const planText = input.planFile ? readInput(input.planFile, 'plan file') : undefined;
-  const config = readJsonInput(input.configFile, 'config file') as AuditContext['config'];
-  const queue = readJsonInput(input.queueFile, 'queue file') as Queue;
+  const config = readJsonFile(input.configFile, `config file ${input.configFile}`) as AuditContext['config'];
+  const queue = readJsonFile(input.queueFile, `queue file ${input.queueFile}`) as Queue;
   const ledgerFile = input.ledgerFile ?? path.join(path.dirname(input.queueFile), 'findings-ledger.json');
-  const ledger = input.ledgerFile || fs.existsSync(ledgerFile) ? readJsonInput(ledgerFile, 'ledger file') : null;
+  const ledger = input.ledgerFile || fs.existsSync(ledgerFile) ? readJsonFile(ledgerFile, `ledger file ${ledgerFile}`) : null;
   const route = routeFor(queue, ledger, input.issueRef, input.queueFile);
-  const changedFiles = run(['git', 'diff', '--name-only', `${input.baseRef}...${input.head}`], input.repoDir)
+  const changedFiles = run(['git', 'diff', '--name-only', '--no-renames', `${input.baseRef}...${input.head}`], input.repoDir)
     .split('\n')
     .filter(Boolean);
   if (changedFiles.length === 0) {

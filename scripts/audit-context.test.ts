@@ -72,7 +72,7 @@ describe('buildAuditContext', () => {
     expect(() => buildAuditContext({ ...input, configFile: path.join(dir, 'nope.json') })).toThrow('config file');
     expect(() => buildAuditContext({ ...input, queueFile: path.join(dir, 'nope.json') })).toThrow('queue file');
     put('.blackhole/bad.json', '{not json');
-    expect(() => buildAuditContext({ ...input, configFile: path.join(dir, '.blackhole/bad.json') })).toThrow('not valid JSON');
+    expect(() => buildAuditContext({ ...input, configFile: path.join(dir, '.blackhole/bad.json') })).toThrow('config file');
   });
 
   test('an issue absent from the queue throws instead of yielding an empty route', () => {
@@ -129,5 +129,28 @@ describe('buildAuditContext', () => {
     expect(buildAuditContext(input).route).toMatchObject({ task_type: 'newest', size: 'size:xs' });
     fs.rmSync(path.join(dir, '.blackhole/findings-ledger.json'));
     expect(buildAuditContext(input).route).toMatchObject({ task_type: 'feature' });
+  });
+
+  test('a rename out of templates/hooks lists both source and destination', () => {
+    const rdir = fs.mkdtempSync(path.join(os.tmpdir(), 'audit-ctx-rename-'));
+    try {
+      const g = (...a: string[]) => {
+        const r = Bun.spawnSync({ cmd: ['git', '-C', rdir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...a], stdout: 'pipe', stderr: 'pipe' });
+        if (r.exitCode !== 0) throw new Error(r.stderr.toString());
+      };
+      g('init', '-q', '-b', 'main');
+      fs.mkdirSync(path.join(rdir, 'templates/hooks'), { recursive: true });
+      fs.writeFileSync(path.join(rdir, 'templates/hooks/moved.ts'), 'export const moved = true;\n'.repeat(20));
+      g('add', '.');
+      g('commit', '-q', '-m', 'base');
+      g('checkout', '-q', '-b', 'pr');
+      g('mv', 'templates/hooks/moved.ts', 'scripts-moved.ts');
+      g('commit', '-q', '-am', 'move');
+      const ctx = buildAuditContext({ ...input, repoDir: rdir });
+      expect(ctx.changedFiles.sort()).toEqual(['scripts-moved.ts', 'templates/hooks/moved.ts']);
+      expect(requiredAuditModules(ctx)).toContain('29-plugin-cache-version-bump-audit.md');
+    } finally {
+      fs.rmSync(rdir, { recursive: true, force: true });
+    }
   });
 });

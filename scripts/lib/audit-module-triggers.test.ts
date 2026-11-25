@@ -14,6 +14,13 @@ describe('requiredAuditModules', () => {
     expect(requiredAuditModules(ctx)).toEqual(['16-threat-model-audit.md']);
   });
 
+  test('suffixed Threat Model and Performance Budget headings still trigger modules 16 and 17', () => {
+    const t = { ...base, planText: '---\ntrack: standard\n---\n## Threat Model (security_review_required)\n| row |' };
+    expect(requiredAuditModules(t)).toContain('16-threat-model-audit.md');
+    const p = { ...base, planText: '## Performance Budget (perf_review_required)\nx' };
+    expect(requiredAuditModules(p)).toContain('17-performance-budget-audit.md');
+  });
+
   test('a Quick-track security review requires the threat-model module without the heading', () => {
     const ctx = { ...base, planText: '---\ntrack: quick\n---\nbody', route: { security_review_required: true } };
     expect(requiredAuditModules(ctx)).toContain('16-threat-model-audit.md');
