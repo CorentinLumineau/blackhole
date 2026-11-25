@@ -67,6 +67,12 @@ export type StackParentOptions = {
    * narrowed touch_paths.
    */
   parentFiles?: Record<string, string[]>;
+  /**
+   * Parent issue -> `APPEND_ONLY_PATHS` files its open PR only adds rows to (`pureAdditionFiles`).
+   * Those files are not an overlap with that parent: two PRs adding rows to the same index merge
+   * clean. Absent or unlisted means unknown, so the file still counts.
+   */
+  pureAdditions?: Record<string, string[]>;
 };
 
 const AMENDMENT = /^- .*? — (widen|narrow) — `([^`]+)`/;
@@ -186,7 +192,10 @@ export const pickStackParent = (
       if (n === issue || v.pr == null || CLOSED_STATUSES.has(v.status ?? '')) return false;
       const files = opts.parentFiles?.[String(n)];
       // A list holding only regenerated files filters to empty: a known no-overlap, not unknown.
-      if (files?.length) return globsMatchFiles(matchable, withoutRegenerated(files));
+      if (files?.length) {
+        const exempt = new Set(opts.pureAdditions?.[String(n)]);
+        return globsMatchFiles(matchable, withoutRegenerated(files).filter((f) => !exempt.has(f)));
+      }
       const theirs = knownPaths(v.touch_paths, opts.defaultTouchPaths);
       return mine.length > 0 && theirs.length > 0 && touchPathsOverlap(mine, theirs);
     })

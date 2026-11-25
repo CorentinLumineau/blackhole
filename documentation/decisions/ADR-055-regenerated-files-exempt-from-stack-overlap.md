@@ -216,6 +216,9 @@ All three scorers pick Option A unanimously, but the two critics' margins are be
   `conflict`. The textual conflict of two rows in the same gap resolves at merge time as a pure
   two-sided insertion (`merge-conflict-protocol.md` class 3), never a lost row. The `--open-prs`
   snapshot channel has no checkout to read diffs from and keeps treating the file as an overlap.
-  Dispatch-time stacking (`pickStackParent`, `queue-dag.md` Step 3) is likewise unchanged: it has no
-  merge-tree, so ignoring the file there would hide a real row edit; it deliberately still stacks on
-  `APPEND_ONLY_PATHS` members, tracked as a follow-up.
+  Dispatch-time stacking (`pickStackParent`, `queue-dag.md` Step 3) has no merge-tree, so it reads
+  the parent PR's diff instead: `pureAdditionFiles` (`git diff --numstat` of the PR ref against its
+  merge base with the target branch) names the `APPEND_ONLY_PATHS` files the parent only adds rows
+  to, and `pickStackParent` drops exactly those files from the overlap. An edited or removed row, a
+  file absent at the merge base, an unreadable merge base or a binary diff keeps the file an
+  overlap. The candidate's own side is not yet written; the PR-time `V-STACK-02` check verifies it.
