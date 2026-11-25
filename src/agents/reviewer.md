@@ -51,6 +51,69 @@ Perform a systematic check on the PR diff and return findings mapped to V-codes:
     is itself a `V-TEST-05`-class defect in the review (an unmeaningful, evidence-free judgment).
 
 {{INCLUDE:references/audits/*}}
+
+## On-demand audit modules
+
+These audits are not inlined: each module's own first clause is a mechanical gate, so it is a
+file you Read only when its trigger holds. When unsure whether a trigger holds, Read the module. A module whose trigger holds MUST be read before the final JSON; skipping it is a missed audit. List every module you Read in the return's `loaded_modules` (its file name, e.g. `16-threat-model-audit.md`): the orchestrator re-evaluates each trigger by script and rejects a return that omits one.
+Each module keeps the `###` heading shown here, so `§ <Section>` citations resolve to its stub.
+
+### Docs-Only Execution Mode Compliance
+*   **Load when**: the plan at `PLAN_ABSOLUTE_PATH` declares `execution_mode: docs-only`, or the queue entry's `route.task_type` is `docs`, or no plan exists and every changed file is a documentation path (`**/*.md`, `documentation/**`, `codex-agents/*.yaml`).
+*   **Read**: `{{AGENT_DIR}}/skills/blackhole/references/audit-modules/08-docs-only-execution-mode.md`
+
+### Companion-File Audit (`V-ADA-01/02/03/04/05/06/07/08`)
+*   **Load when**: `.blackhole/config.json` resolves `docs_governance.enabled` to `true` and `docs_governance.companion_files` is not `false`.
+*   **Read**: `{{AGENT_DIR}}/skills/blackhole/references/audit-modules/10-companion-file-audit.md` (codes: `V-ADA-01`, `V-ADA-02`, `V-ADA-03`, `V-ADA-04`, `V-ADA-05`, `V-ADA-06`, `V-ADA-07`)
+
+### Recheck-Mode Compliance
+*   **Load when**: your prompt carries a prior findings list (`{finding_id, summary}[]`), which is recheck mode.
+*   **Read**: `{{AGENT_DIR}}/skills/blackhole/references/audit-modules/13-recheck-mode-compliance.md`
+
+### Information-Hierarchy Audit (`V-UX-01`)
+*   **Load when**: the diff touches frontend files by the `scripts/detect-frontend.sh` keyword set.
+*   **Read**: `{{AGENT_DIR}}/skills/blackhole/references/audit-modules/14-information-hierarchy-audit.md` (codes: `V-UX-01`, `V-UX-04`, `V-UX-05`, `V-UX-07`, `V-UX-08`, `V-UX-09`, `V-UX-10`)
+
+### Threat Model Audit (`V-THREAT-01/02/03`)
+*   **Load when**: the plan at `PLAN_ABSOLUTE_PATH` has a `## Threat Model` heading, or this is a security-mode review (`route.security_review_required` is `true`) of a plan with `track: quick`.
+*   **Read**: `{{AGENT_DIR}}/skills/blackhole/references/audit-modules/16-threat-model-audit.md` (codes: `V-THREAT-01`, `V-THREAT-02`, `V-THREAT-03`)
+
+### Performance Budget Audit (`V-PERF-01/02`)
+*   **Load when**: the plan at `PLAN_ABSOLUTE_PATH` has a `## Performance Budget` heading.
+*   **Read**: `{{AGENT_DIR}}/skills/blackhole/references/audit-modules/17-performance-budget-audit.md` (codes: `V-PERF-01`, `V-PERF-02`)
+
+### Owner-Ruling Violation Audit (`V-RULE-01`)
+*   **Load when**: the `docs_governance` gate of the Companion-File Audit holds and `documentation/reference/product-principles.md` exists in the reviewed repo.
+*   **Read**: `{{AGENT_DIR}}/skills/blackhole/references/audit-modules/19-owner-ruling-violation-audit.md` (codes: `V-RULE-01`)
+
+### UI Interpretation Gate Audit (`V-UI-01`, ADR-017)
+*   **Load when**: `route.ui` is `true` for this issue and its size is not `size:xs`.
+*   **Read**: `{{AGENT_DIR}}/skills/blackhole/references/audit-modules/21-ui-interpretation-gate-audit.md` (codes: `V-UI-01`)
+
+### Visual Evidence Audit (`V-VIS-01/02`, ADR-018)
+*   **Load when**: `.blackhole/config.json` has a non-empty `display_targets` array and `route.ui` is `true` (or the diff is frontend-touching by `scripts/detect-frontend.sh`).
+*   **Read**: `{{AGENT_DIR}}/skills/blackhole/references/audit-modules/22-visual-evidence-audit.md` (codes: `V-VIS-01`, `V-VIS-02`)
+
+### Staged Artifact Carry Audit (`V-AUTO-02`)
+*   **Load when**: `.blackhole/config.json` resolves `docs_governance.enabled` to `true` and `docs_governance.write_governance` is not `false`.
+*   **Read**: `{{AGENT_DIR}}/skills/blackhole/references/audit-modules/25-staged-artifact-carry-audit.md` (codes: `V-AUTO-02`, `V-AUTO-03`)
+
+### Doc-Governance Judgment Audit (`V-DOC-GOV-01..04`)
+*   **Load when**: the same `docs_governance` gate as the Staged Artifact Carry Audit holds and the diff adds, modifies, renames or deletes a file under `documentation/`.
+*   **Read**: `{{AGENT_DIR}}/skills/blackhole/references/audit-modules/27-doc-governance-judgment-audit.md` (codes: `V-DOC-GOV-01`, `V-DOC-GOV-02`, `V-DOC-GOV-03`, `V-DOC-GOV-04`, `V-DOC-03`)
+
+### ActionMan/Workclaude Discipline Audit (`V-GITFIX-01`, ADR-026 D4)
+*   **Load when**: `queue.json` has `pipeline_detection.actionman_workclaude` set to `true`.
+*   **Read**: `{{AGENT_DIR}}/skills/blackhole/references/audit-modules/28-actionman-workclaude-discipline-audit.md` (codes: `V-GITFIX-01`)
+
+### Plugin Cache Version-Bump Audit (`V-PLUGIN-01`, ADR-030)
+*   **Load when**: the diff touches any path under `templates/hooks/**`.
+*   **Read**: `{{AGENT_DIR}}/skills/blackhole/references/audit-modules/29-plugin-cache-version-bump-audit.md` (codes: `V-PLUGIN-01`)
+
+### V-TEST-09 Hooks-Claim Audit (`V-TEST-09`, issue #787)
+*   **Load when**: the diff changes at least one source file (under `src/**`, `scripts/**` or `templates/**`, excluding test and documentation files) and every changed source file is under `templates/hooks/**`; tests and documentation changed alongside do not count against it.
+*   **Read**: `{{AGENT_DIR}}/skills/blackhole/references/audit-modules/30-v-test09-hooks-claim-audit.md` (codes: `V-TEST-09`)
+
 ---
 
 ## Output Format
@@ -107,7 +170,8 @@ Return JSON matching `worker-schemas.md` reviewer contract:
   ],
   "verification_legs": [
     { "direction": "Authorization bypass via role param tampering", "mode": "reasoned", "evidence": "Read role-check middleware; no probe run — with-test-lock was contended" }
-  ]
+  ],
+  "loaded_modules": ["16-threat-model-audit.md"]
 }
 ```
 

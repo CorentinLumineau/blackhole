@@ -5,8 +5,8 @@ import { findMissingGateMarkers } from '../lib/check-common.ts';
 // BLOCK, implementer.md § 6) is structurally unmeasurable for any file under `templates/hooks/**`
 // — those modules execute only inside a subprocess spawned by `runPreToolUseHook`, never
 // instrumented by `bun test --coverage`. implementer.md § 6 requires `unmeasurable` (never
-// `pass`) for a diff whose only changed source lives under that path; reviewer.md § 30 is the
-// judgment audit that blocks a PR violating that requirement. No new V-code — this module reuses
+// `pass`) for a diff whose only changed source lives under that path; reviewer.md § 30 (the on-demand
+// module 30-v-test09-hooks-claim-audit.md) is the judgment audit that blocks a PR violating that requirement. No new V-code — this module reuses
 // V-TEST-09 throughout.
 //
 // Two independent halves:
@@ -15,9 +15,9 @@ import { findMissingGateMarkers } from '../lib/check-common.ts';
 //      wired into reviewer.md § 30's "Mechanical backstop" bullet. Structurally advisory-only
 //      (`ok` is always `true`) — a flagged result is a signal to look closer, never a substitute
 //      for, or downgrade of, the review-time judgment finding itself.
-//   2. checkReviewerHooksClaimAuditGrounding — a static grounding check verifying reviewer.md
-//      § 30 carries the judgment audit, mirroring coverage-regression.check.ts's existing
-//      grounding pattern (blocking if the source markers go missing). Wired into runChecks() so
+//   2. checkReviewerHooksClaimAuditGrounding — a static grounding check verifying the on-demand
+//      module behind reviewer.md § 30 carries the judgment audit, mirroring
+//      coverage-regression.check.ts's existing grounding pattern (blocking if the source markers go missing). Wired into runChecks() so
 //      verify.ts's glob-discovery is satisfied without needing PR-scoped input (the changed-file
 //      list and claim text aren't available at verify-time).
 
@@ -52,7 +52,7 @@ export const REVIEWER_HOOKS_CLAIM_AUDIT_REQUIRED_MARKERS = [
 ];
 
 export const checkReviewerHooksClaimAuditGrounding = (): CheckResult => {
-  const missing = findMissingGateMarkers(read('src/agents/reviewer.md'), REVIEWER_HOOKS_CLAIM_AUDIT_REQUIRED_MARKERS);
+  const missing = findMissingGateMarkers(read('src/references/audit-modules/30-v-test09-hooks-claim-audit.md'), REVIEWER_HOOKS_CLAIM_AUDIT_REQUIRED_MARKERS);
   if (missing.length) {
     return { id: 'V-TEST-09', ok: false, detail: missing.map((m) => `reviewer.md missing "${m}"`).join('; ') };
   }
