@@ -12,7 +12,7 @@ Inputs for this mode: `review-core.md` § Reviewer prompt requirements (per-mode
     since the prior review pass) — do not re-run the full core audit checklist against the whole
     PR diff, only against the fix commits' changed lines.
 *   **Verification**: for each named prior finding, verify it is concretely fixed and emit a
-    `recheck` entry (`worker-schemas.md` § Reviewer) with `finding_id`, `verdict`
+    `recheck` entry (`reviewer-schemas.md` § Reviewer) with `finding_id`, `verdict`
     (`fixed`/`not_fixed`), and `evidence`. When `verdict: not_fixed`, also emit a corresponding
     `findings` entry for that same issue so the aggregate script and LGTM gate need no
     special-casing.
