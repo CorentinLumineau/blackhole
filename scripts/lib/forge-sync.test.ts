@@ -408,3 +408,24 @@ describe('syncQueue — mutual peer hold tie-break', () => {
     expect(claimants.slice(1)).toEqual([[LOW], [LOW], [LOW]]);
   });
 });
+
+describe('syncQueue — pareto', () => {
+  const LINE48 = 'Pareto: gain=8 effort=5 priority=48';
+  test('ingest stores the parsed body line, and no key without one', () => {
+    const r = sync({ issues: [issue(1, { body: `Text\n${LINE48}` }), issue(2, { body: 'Pareto: gain=8 effort=5 priority=47' }), issue(3)] });
+    expect(r.queue.issues['1'].pareto).toEqual({ gain: 8, effort: 5, priority: 48 });
+    expect('pareto' in r.queue.issues['2']).toBe(false);
+    expect('pareto' in r.queue.issues['3']).toBe(false);
+  });
+  test('reconcile updates a changed line and drops a deleted or invalid one', () => {
+    const queue = sync({ issues: [issue(1, { body: LINE48 })] }).queue;
+    const changed = sync({ queue, issues: [issue(1, { body: 'Pareto: gain=10 effort=4 priority=70' })] });
+    expect(changed.queue.issues['1'].pareto).toEqual({ gain: 10, effort: 4, priority: 70 });
+    expect('pareto' in sync({ queue, issues: [issue(1, { body: 'no line' })] }).queue.issues['1']).toBe(false);
+    expect('pareto' in sync({ queue, issues: [issue(1, { body: 'Pareto: gain=1 effort=1 priority=5' })] }).queue.issues['1']).toBe(false);
+  });
+  test('an entry the forge did not list keeps its pareto', () => {
+    const queue = sync({ issues: [issue(1, { body: LINE48 })] }).queue;
+    expect(sync({ queue, issues: [] }).queue.issues['1'].pareto).toEqual({ gain: 8, effort: 5, priority: 48 });
+  });
+});

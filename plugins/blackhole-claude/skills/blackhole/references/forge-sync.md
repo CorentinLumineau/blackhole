@@ -32,7 +32,7 @@ from the open list) and the open and merged PRs through the configured forge's a
 writes `queue.json` through the state write guard (`blackhole-state.md` § Write protocol). It:
 
 - ingests in-scope open issues and appends them to `user_queue_order`; refreshes title, labels,
-  milestone, size and `depends_on` (body lines join the queue's own edges, never replace them);
+  milestone, size and `depends_on` (body lines join the queue's own edges, never replace them); parses the body's `Pareto:` line into `pareto` (dropped when the line is gone or invalid);
 - blocks a `ready` entry held elsewhere (an `agent:*` / `in-progress:*` label naming a lane other
   than the own one, or an open PR closing it from another lane) with `another lane: <label|branch>`
   (`open PR: <branch>` for renovate/dependabot); only an entry carrying exactly that note goes back.
