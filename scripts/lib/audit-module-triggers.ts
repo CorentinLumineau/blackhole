@@ -22,8 +22,27 @@ export type AuditContext = {
   frontendDiff?: boolean;
 };
 
-const DOC_PATH = /^(documentation\/|.*\.md$)/;
-const HOOKS_PATH = /^templates\/hooks\//;
+// One home for every path set a predicate uses. `AUDIT_TRIGGER_GLOBS` is also what
+// `findTriggerGlobDrift` (audit-modules.check.ts, Leg E) requires each reviewer stub to spell out,
+// so the stub wording and the predicate cannot name different paths.
+const DOC_GLOBS = ['**/*.md', 'documentation/**', 'codex-agents/*.yaml'] as const;
+const HOOKS_GLOB = 'templates/hooks/**';
+const TEST_GLOBS = ['**/*.test.{ts,tsx,js,mjs}', '**/__tests__/**'] as const;
+// Hand-authored roots: a changed path outside them is a generated mirror, not source.
+const SOURCE_ROOT_GLOBS = ['src/**', 'scripts/**', 'templates/**'] as const;
+
+export const AUDIT_TRIGGER_GLOBS: Record<string, readonly string[]> = {
+  '08-docs-only-execution-mode.md': DOC_GLOBS,
+  '29-plugin-cache-version-bump-audit.md': [HOOKS_GLOB],
+  '30-v-test09-hooks-claim-audit.md': [HOOKS_GLOB, ...SOURCE_ROOT_GLOBS],
+};
+
+const matchesAny = (globs: readonly string[], file: string): boolean => globs.some((g) => new Bun.Glob(g).match(file));
+const isDocPath = (f: string): boolean => matchesAny(DOC_GLOBS, f);
+const isHooksPath = (f: string): boolean => matchesAny([HOOKS_GLOB], f);
+// Changed source: under a hand-authored root, and neither a test nor a documentation file.
+const changedSource = (c: AuditContext): string[] =>
+  c.changedFiles.filter((f) => matchesAny(SOURCE_ROOT_GLOBS, f) && !matchesAny(TEST_GLOBS, f) && !isDocPath(f));
 
 const docsGate = (c: AuditContext): boolean => c.config?.docs_governance?.enabled === true;
 const writeGate = (c: AuditContext): boolean => docsGate(c) && c.config?.docs_governance?.write_governance !== false;
@@ -36,7 +55,7 @@ export const AUDIT_MODULE_TRIGGERS: Record<string, (c: AuditContext) => boolean>
   '08-docs-only-execution-mode.md': (c) =>
     planFrontmatterValue(c, 'execution_mode') === 'docs-only' ||
     c.route?.task_type === 'docs' ||
-    (c.planText === undefined && c.changedFiles.length > 0 && c.changedFiles.every((f) => DOC_PATH.test(f))),
+    (c.planText === undefined && c.changedFiles.length > 0 && c.changedFiles.every(isDocPath)),
   '10-companion-file-audit.md': (c) => docsGate(c) && c.config?.docs_governance?.companion_files !== false,
   '13-recheck-mode-compliance.md': (c) => c.dispatch?.recheck === true,
   '14-information-hierarchy-audit.md': (c) => c.frontendDiff === true,
@@ -52,8 +71,8 @@ export const AUDIT_MODULE_TRIGGERS: Record<string, (c: AuditContext) => boolean>
   '25-staged-artifact-carry-audit.md': writeGate,
   '27-doc-governance-judgment-audit.md': (c) => writeGate(c) && c.changedFiles.some((f) => f.startsWith('documentation/')),
   '28-actionman-workclaude-discipline-audit.md': (c) => c.queue?.pipeline_detection?.actionman_workclaude === true,
-  '29-plugin-cache-version-bump-audit.md': (c) => c.changedFiles.some((f) => HOOKS_PATH.test(f)),
-  '30-v-test09-hooks-claim-audit.md': (c) => c.changedFiles.length > 0 && c.changedFiles.every((f) => HOOKS_PATH.test(f)),
+  '29-plugin-cache-version-bump-audit.md': (c) => c.changedFiles.some(isHooksPath),
+  '30-v-test09-hooks-claim-audit.md': (c) => changedSource(c).length > 0 && changedSource(c).every(isHooksPath),
 };
 
 export const requiredAuditModules = (ctx: AuditContext): string[] =>

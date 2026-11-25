@@ -64,6 +64,20 @@ describe('requiredAuditModules', () => {
     ]);
   });
 
+  test('a hooks PR that also changes a test file (and docs) still requires the V-TEST-09 claim audit', () => {
+    const files = ['templates/hooks/a.ts', 'scripts/hooks-validate-file.test.ts', 'documentation/x.md', 'plugins/blackhole-claude/scripts/gen.ts'];
+    expect(requiredAuditModules({ changedFiles: files })).toEqual(['29-plugin-cache-version-bump-audit.md', '30-v-test09-hooks-claim-audit.md']);
+  });
+
+  test('a hooks PR that also changes non-hooks source does not require the V-TEST-09 claim audit', () => {
+    expect(requiredAuditModules({ changedFiles: ['templates/hooks/a.ts', 'scripts/b.ts'] })).not.toContain('30-v-test09-hooks-claim-audit.md');
+  });
+
+  test('a codex-agents mirror alongside docs counts as documentation for the no-plan docs-only trigger', () => {
+    expect(requiredAuditModules({ changedFiles: ['src/agents/x.md', 'codex-agents/x.yaml'] })).toEqual(['08-docs-only-execution-mode.md']);
+    expect(requiredAuditModules({ changedFiles: ['codex-agents/x.yaml', 'scripts/a.ts'] })).toEqual([]);
+  });
+
   test('docs-only plan, docs task_type, or an all-documentation diff with no plan requires the docs-only module', () => {
     expect(requiredAuditModules({ ...base, planText: '---\nexecution_mode: docs-only\n---\nx' })).toEqual(['08-docs-only-execution-mode.md']);
     expect(requiredAuditModules({ ...base, route: { task_type: 'docs' } })).toEqual(['08-docs-only-execution-mode.md']);

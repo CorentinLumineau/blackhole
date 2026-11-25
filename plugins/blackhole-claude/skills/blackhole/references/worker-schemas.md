@@ -598,7 +598,9 @@ Each `findings[]` entry additionally carries `issue_ref: number` and `pr_ref: nu
 stamped by the script (issue #754) — never present on the raw `reviewer` input's Finding shape
 above, only on this aggregator's stamped output.
 
-CLI: `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/review-aggregate.ts --reviewer-file <path> --issue-ref <N> [--pr-ref <P>] [--prior-file <ledger-rows.json>] [--verification-file <verification-entries.json>] [--review-iteration <N>] [--base-ref <PR base branch>] [--repo-dir <PR worktree>] [--head <PR head ref>]`
+CLI: `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/review-aggregate.ts --reviewer-file <path> --issue-ref <N> [--pr-ref <P>] [--prior-file <ledger-rows.json>] [--verification-file <verification-entries.json>] [--review-iteration <N>] [--base-ref <PR base branch>] [--repo-dir <PR worktree>] [--head <PR head ref>] (--audit-context-file <audit-context.json> | --direct-review)`
+
+`--audit-context-file` (built by `scripts/audit-context.ts`) is required and the CLI exits non-zero without it (V-AUDIT-01); `--direct-review` is the only opt-out, for an orchestrator review that spawned no reviewer.
 
 `--base-ref` (ADR-134) enables the slop citation check. Without it, or when it does not resolve, every `V-UX-09`/`V-UX-10` `BLOCK` downgrades with an `[unverified slop citation: no-base-ref]` or `ref-unresolved` caveat.
 

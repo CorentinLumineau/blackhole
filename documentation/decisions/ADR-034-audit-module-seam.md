@@ -174,9 +174,14 @@ hand-arithmetic — see the implementation plan's T5 for the current baseline).
     `review-aggregate.ts --audit-context-file <json>` re-evaluates each module's trigger from facts
     the orchestrator holds (diff paths, plan text, config, route, queue, dispatch kind) and exits 1
     naming any module whose trigger holds but is absent from `loaded_modules` (an absent list fails
-    every triggered module). The reviewer-facing `Load when` stubs stay the wording; the predicate
-    table is the script-side copy and Leg E keeps the two directories aligned. A stub and its
-    predicate can still disagree in meaning; that residual is a review concern, not a gate.
-  - **Measured.** Compiled `agents/reviewer.md` 22,247 to 12,866 estimated tokens, about 9,381
+    every triggered module). The check is fail-closed and wired: the orchestrator builds the
+    context with `scripts/audit-context.ts` before every aggregate (`review-core.md` § Aggregate
+    invocation), and the CLI exits non-zero when the flag is absent. The single opt-out is
+    `--direct-review`, for the orchestrator's own docs-only review, which spawns no reviewer. The
+    reviewer-facing `Load when` stubs stay the wording; the predicate table is the script-side copy.
+    Leg E keeps the directories aligned and fails a stub that does not spell every path glob its
+    predicate uses (`AUDIT_TRIGGER_GLOBS`). A stub and its predicate can still disagree in meaning
+    beyond those globs; that residual is a review concern, not a gate.
+  - **Measured.** Compiled `agents/reviewer.md` 22,247 to 12,927 estimated tokens (51,711 B), about 9,320
     saved per reviewer spawn (`bun run scripts/worker-context-size.ts`). The saving remains
     because a normal backend diff in a repo without `docs_governance` triggers none of the 15.

@@ -7,6 +7,7 @@ import {
   ONDEMAND_AUDIT_MODULE_DIR,
   documentedCodes,
   findOnDemandStubDrift,
+  findTriggerGlobDrift,
   findTriggerTableDrift,
   findAuditModuleCountDrift,
   findAuditRegistryDrift,
@@ -365,6 +366,29 @@ describe('live on-demand split (issue #1387)', () => {
 
   test('every on-demand module has a predicate in the trigger table and vice versa (Leg E)', () => {
     expect(findTriggerTableDrift(lazy)).toEqual([]);
+  });
+
+  test('every path glob a predicate uses is spelled in its reviewer stub (Leg E globs)', () => {
+    expect(findTriggerGlobDrift(reviewerSrc(), lazy)).toEqual([]);
+  });
+});
+
+describe('findTriggerGlobDrift', () => {
+  const stubSrc = (load: string) => `### Docs Stub\n*   **Load when**: ${load}\n`;
+  const docs = [{ file: 'a.md', vcodes: [], section: 'Docs Stub' }];
+
+  test('red: a stub that omits a predicate glob (codex-agents/*.yaml) is reported', () => {
+    expect(findTriggerGlobDrift(stubSrc('docs: `**/*.md`, `documentation/**`'), docs, { 'a.md': ['**/*.md', 'documentation/**', 'codex-agents/*.yaml'] })).toEqual([
+      'a.md: stub does not spell the predicate path glob `codex-agents/*.yaml`',
+    ]);
+  });
+
+  test('red: a predicate whose module has no stub is reported', () => {
+    expect(findTriggerGlobDrift('no stubs here', docs, { 'a.md': ['x/**'] })).toEqual(['a.md: no stub to compare against AUDIT_TRIGGER_GLOBS']);
+  });
+
+  test('green: a stub spelling every glob reports nothing', () => {
+    expect(findTriggerGlobDrift(stubSrc('`**/*.md`, `codex-agents/*.yaml`'), docs, { 'a.md': ['**/*.md', 'codex-agents/*.yaml'] })).toEqual([]);
   });
 });
 

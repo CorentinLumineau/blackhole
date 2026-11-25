@@ -452,7 +452,7 @@ file you Read only when its trigger holds. When unsure whether a trigger holds, 
 Each module keeps the `###` heading shown here, so `§ <Section>` citations resolve to its stub.
 
 ### Docs-Only Execution Mode Compliance
-*   **Load when**: the plan at `PLAN_ABSOLUTE_PATH` declares `execution_mode: docs-only`, or the queue entry's `route.task_type` is `docs`, or no plan exists and every changed file is a documentation path.
+*   **Load when**: the plan at `PLAN_ABSOLUTE_PATH` declares `execution_mode: docs-only`, or the queue entry's `route.task_type` is `docs`, or no plan exists and every changed file is a documentation path (`**/*.md`, `documentation/**`, `codex-agents/*.yaml`).
 *   **Read**: `.claude/skills/blackhole/references/audit-modules/08-docs-only-execution-mode.md`
 
 ### Companion-File Audit (`V-ADA-01/02/03/04/05/06/07/08`)
@@ -508,7 +508,7 @@ Each module keeps the `###` heading shown here, so `§ <Section>` citations reso
 *   **Read**: `.claude/skills/blackhole/references/audit-modules/29-plugin-cache-version-bump-audit.md` (codes: `V-PLUGIN-01`)
 
 ### V-TEST-09 Hooks-Claim Audit (`V-TEST-09`, issue #787)
-*   **Load when**: the diff's only changed source files are under `templates/hooks/**`.
+*   **Load when**: the diff changes at least one source file (under `src/**`, `scripts/**` or `templates/**`, excluding test and documentation files) and every changed source file is under `templates/hooks/**`; tests and documentation changed alongside do not count against it.
 *   **Read**: `.claude/skills/blackhole/references/audit-modules/30-v-test09-hooks-claim-audit.md` (codes: `V-TEST-09`)
 
 ---

@@ -5,7 +5,7 @@ import { expandVcodeTableKey, parseVcodeTableRows } from '../lib/check-common.ts
 import { parseFrontmatterFields, parseMdFrontmatter } from '../lib/build/content.ts';
 import { REVIEWER_AUDIT_MODULE_COUNT, REVIEWER_ONDEMAND_AUDIT_MODULE_COUNT } from '../lib/build/facts.ts';
 import { markdownHeadings, sectionEnd } from '../lib/markdown-headings.ts';
-import { AUDIT_MODULE_TRIGGERS } from '../lib/audit-module-triggers.ts';
+import { AUDIT_MODULE_TRIGGERS, AUDIT_TRIGGER_GLOBS } from '../lib/audit-module-triggers.ts';
 
 // ADR-034 — audit-modules.check.ts: V-AUDIT-01 keeps the reviewer's audit-module registry and
 // the `blackhole-vcodes.md` table honest about each other, now that `src/agents/reviewer.md` is
@@ -120,6 +120,9 @@ const stubMatchesSection = (headingText: string, section: string): boolean =>
 const codesNamedIn = (text: string): Set<string> =>
   new Set([...text.matchAll(/V-[A-Z0-9-]*[A-Z]-\d+(?:\/\d+)*/g)].flatMap((m) => expandVcodeTableKey(m[0])));
 
+const stubBody = (lines: string[], stub: ReturnType<typeof markdownHeadings>[number]): string =>
+  lines.slice(stub.line, sectionEnd(markdownHeadings(lines), stub, lines.length)).join('\n');
+
 // Leg D — one `###` stub in the reviewer source per on-demand module. Pure over the source text so
 // the fixture tests can break each property on its own. `modules` come from `loadAuditModules`.
 export const findOnDemandStubDrift = (reviewerSrc: string, modules: AuditModule[]): string[] => {
@@ -136,7 +139,7 @@ export const findOnDemandStubDrift = (reviewerSrc: string, modules: AuditModule[
       errors.push(stubs.length === 0 ? `${m.file}: no stub heading for section "${m.section}" in reviewer.md` : `${m.file}: ${stubs.length} stubs for section "${m.section}" in reviewer.md`);
       continue;
     }
-    const body = lines.slice(stubs[0].line, sectionEnd(markdownHeadings(lines), stubs[0], lines.length)).join('\n');
+    const body = stubBody(lines, stubs[0]);
     if (!/\*\*Load when\*\*:/.test(body)) errors.push(`${m.file}: stub has no \`Load when\` trigger line`);
     if (!body.includes(`references/audit-modules/${m.file}`)) errors.push(`${m.file}: stub has no \`Read\` path to references/audit-modules/${m.file}`);
     const named = codesNamedIn(body);
@@ -153,6 +156,25 @@ export const findTriggerTableDrift = (modules: AuditModule[], triggers: Record<s
   ];
 };
 
+// Leg E, second half — every path glob a predicate uses (`AUDIT_TRIGGER_GLOBS`) is spelled out in
+// that module's stub, so the reviewer-facing `Load when` line and the script predicate share one
+// path set. A glob added to a predicate without the stub (or the reverse) fails here.
+export const findTriggerGlobDrift = (
+  reviewerSrc: string,
+  modules: AuditModule[],
+  globs: Record<string, readonly string[]> = AUDIT_TRIGGER_GLOBS,
+): string[] => {
+  const lines = reviewerSrc.split('\n');
+  const headings = markdownHeadings(lines).filter((h) => h.level === 3);
+  return Object.entries(globs).flatMap(([file, wanted]) => {
+    const section = modules.find((m) => m.file === file)?.section;
+    const stub = section ? headings.find((h) => stubMatchesSection(h.text.replace(/`/g, ''), section)) : undefined;
+    if (!stub) return [`${file}: no stub to compare against AUDIT_TRIGGER_GLOBS`];
+    const body = stubBody(lines, stub);
+    return wanted.filter((g) => !body.includes(g)).map((g) => `${file}: stub does not spell the predicate path glob \`${g}\``);
+  });
+};
+
 const checkAuditModules = (): CheckResult => {
   const inline = loadAuditModules(path.join(root, AUDIT_MODULE_DIR));
   const onDemand = loadAuditModules(path.join(root, ONDEMAND_AUDIT_MODULE_DIR));
@@ -163,6 +185,7 @@ const checkAuditModules = (): CheckResult => {
     ...findAuditModuleCountDrift(REVIEWER_ONDEMAND_AUDIT_MODULE_COUNT, onDemand.length, 'REVIEWER_ONDEMAND_AUDIT_MODULE_COUNT', ONDEMAND_AUDIT_MODULE_DIR),
     ...findOnDemandStubDrift(fs.readFileSync(path.join(root, 'src/agents/reviewer.md'), 'utf-8'), onDemand),
     ...findTriggerTableDrift(onDemand),
+    ...findTriggerGlobDrift(fs.readFileSync(path.join(root, 'src/agents/reviewer.md'), 'utf-8'), onDemand),
   ];
   return errors.length ? { id: 'V-AUDIT-01', ok: false, detail: errors.join('; ') } : { id: 'V-AUDIT-01', ok: true };
 };

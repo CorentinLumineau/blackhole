@@ -303,9 +303,14 @@ primary full-audit dispatch with that one addition, not a fifth independent mode
 
 ## Aggregate invocation
 
-After `reviewer` completes, the orchestrator runs:
+After `reviewer` completes, the orchestrator first builds the audit context, then aggregates:
 
 ```bash
+bun run scripts/audit-context.ts \
+  --repo-dir <PR worktree> --base-ref <PR base branch> --head <PR head ref> \
+  --issue-ref <N> --dispatch <full|recheck|verification> \
+  --plan-file <PLAN_ABSOLUTE_PATH> --config-file <.blackhole/config.json> \
+  --queue-file <.blackhole/queue.json> --out <audit-context.json>
 bun run scripts/review-aggregate.ts \
   --reviewer-file <path> \
   --issue-ref <N> \
@@ -313,10 +318,17 @@ bun run scripts/review-aggregate.ts \
   [--prior-file <ledger-rows.json>] \
   [--verification-file <verification-entries.json>] \
   --review-iteration <queue review_iteration> \
+  --audit-context-file <audit-context.json> \
   --base-ref <PR base branch> \
   --repo-dir <PR worktree> \
   --head <PR head ref>
 ```
+
+`--audit-context-file` is required (V-AUDIT-01): without it the aggregate exits non-zero, because a
+reviewer that skipped an on-demand audit module whose trigger holds would otherwise pass unseen. For
+a recheck dispatch pass the last reviewed head as `audit-context.ts --base-ref`, so the context
+covers the fix commits only. The one opt-out is `--direct-review`, for the orchestrator's own
+docs-only review (§ Docs-only PRs), which spawns no reviewer and so has no `loaded_modules` to check.
 
 `--base-ref` (ADR-134) runs the slop citation check on every `V-UX-09`/`V-UX-10` `BLOCK`, using
 the vendored `scripts/lib/slop-citation/slop-citation-check.mjs` against the PR checkout named by
@@ -345,7 +357,7 @@ Output schema: `worker-schemas.md` § Review aggregate.
 
 ## Docs-only PRs
 
-Orchestrator may perform direct review for docs-only PRs, but must still run `review-aggregate.ts` on findings before ledger append.
+Orchestrator may perform direct review for docs-only PRs, but must still run `review-aggregate.ts` (with `--direct-review`, § Aggregate invocation) on findings before ledger append.
 
 When the orchestrator performs this direct review (bypassing a `reviewer` spawn), it must apply `reviewer.md` § Docs-Only Execution Mode Compliance's checks itself before running `review-aggregate.ts` — severity `BLOCK` on any check failure. See `reviewer.md` § Docs-Only Execution Mode Compliance for the check definitions; not restated here.
 

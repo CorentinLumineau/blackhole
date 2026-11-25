@@ -16,9 +16,12 @@ const baseFinding = (overrides: Partial<Finding> = {}): Finding => ({
   ...overrides,
 });
 
-async function runReviewAggregateCli(args: string[]) {
+// The audit-context gate is fail-closed, so a CLI test about anything else declares itself a
+// direct review; the gate's own tests pass `strict` to see the real behaviour.
+async function runReviewAggregateCli(args: string[], { strict = false } = {}) {
+  const gate = strict || args.includes('--audit-context-file') ? [] : ['--direct-review'];
   const proc = Bun.spawn({
-    cmd: ['bun', 'run', scriptPath, ...args],
+    cmd: ['bun', 'run', scriptPath, ...args, ...gate],
     stdout: 'pipe',
     stderr: 'pipe',
     cwd: root,
@@ -1220,6 +1223,19 @@ describe('review-aggregate --audit-context-file (on-demand audit modules)', () =
     const r = await runReviewAggregateCli(args(reviewer, ['--audit-context-file', ctx]));
     expect(r.exitCode).toBe(1);
     expect(r.stderr).toContain('16-threat-model-audit.md');
+  });
+
+  test('exits non-zero with a clear message when neither --audit-context-file nor --direct-review is given', async () => {
+    const reviewer = write('r0.json', { status: 'complete', findings: [], loaded_modules: ['16-threat-model-audit.md'] });
+    const r = await runReviewAggregateCli(args(reviewer), { strict: true });
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toContain('--audit-context-file is required');
+  });
+
+  test('--direct-review is the explicit opt-out for an orchestrator review that spawned no reviewer', async () => {
+    const reviewer = write('r0b.json', { status: 'complete', findings: [] });
+    const r = await runReviewAggregateCli(args(reviewer, ['--direct-review']), { strict: true });
+    expect(r.exitCode).toBe(0);
   });
 
   test('aggregates normally once the triggered module is listed', async () => {

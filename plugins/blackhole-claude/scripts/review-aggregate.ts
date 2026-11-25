@@ -477,6 +477,7 @@ function parseArgs(argv: string[]): {
   repoDir?: string;
   head?: string;
   auditContextFile?: string;
+  directReview: boolean;
 } {
   const flags = parseFlags(argv.slice(2));
   return {
@@ -490,6 +491,7 @@ function parseArgs(argv: string[]): {
     repoDir: typeof flags['repo-dir'] === 'string' ? flags['repo-dir'] : undefined,
     head: typeof flags['head'] === 'string' ? flags['head'] : undefined,
     auditContextFile: typeof flags['audit-context-file'] === 'string' ? flags['audit-context-file'] : undefined,
+    directReview: flags['direct-review'] === true,
   };
 }
 
@@ -523,11 +525,11 @@ function isVerificationEntryArray(value: unknown): value is VerificationEntry[] 
 }
 
 if (import.meta.main) {
-  const { reviewerFile, issueRef, prRef, priorFile, verificationFile, reviewIteration, baseRef, repoDir, head, auditContextFile } = parseArgs(process.argv);
+  const { reviewerFile, issueRef, prRef, priorFile, verificationFile, reviewIteration, baseRef, repoDir, head, auditContextFile, directReview } = parseArgs(process.argv);
 
   if (!reviewerFile || !issueRef) {
     console.error(
-      'Usage: bun run scripts/review-aggregate.ts --reviewer-file <path> --issue-ref <N> [--pr-ref <P>] [--prior-file <ledger-rows.json>] [--verification-file <verification-entries.json>] [--review-iteration <N>] [--base-ref <PR base ref>] [--repo-dir <PR checkout>] [--head <PR head ref>] [--audit-context-file <audit-context.json>]',
+      'Usage: bun run scripts/review-aggregate.ts --reviewer-file <path> --issue-ref <N> [--pr-ref <P>] [--prior-file <ledger-rows.json>] [--verification-file <verification-entries.json>] [--review-iteration <N>] [--base-ref <PR base ref>] [--repo-dir <PR checkout>] [--head <PR head ref>] (--audit-context-file <audit-context.json> | --direct-review)',
     );
     process.exit(1);
   }
@@ -553,15 +555,17 @@ if (import.meta.main) {
       throw new Error('reviewer file: invalid reviewer JSON shape');
     }
 
-    // Fail closed: a full review whose diff matches an on-demand module's trigger but whose
-    // `loaded_modules` omits that module skipped an audit (ADR-034 amendment, V-PARETO-02).
+    // Fail closed: a review whose diff matches an on-demand module's trigger but whose
+    // `loaded_modules` omits that module skipped an audit (ADR-034 amendment, V-AUDIT-01). The
+    // context comes from `scripts/audit-context.ts`; the only caller with none is the orchestrator's
+    // own docs-only direct review, which spawns no reviewer and so has no `loaded_modules` to check.
     if (auditContextFile) {
       const unloaded = findUnloadedAuditModules(readJsonFile(auditContextFile, 'audit context file') as AuditContext, reviewerRaw.loaded_modules);
       if (unloaded.length > 0) {
         throw new Error(`reviewer skipped on-demand audit module(s) whose trigger holds: ${unloaded.join(', ')} — re-spawn the reviewer`);
       }
-    } else {
-      console.error('warning: --audit-context-file omitted — on-demand audit module loading is not verified');
+    } else if (!directReview) {
+      throw new Error('--audit-context-file is required (build it with scripts/audit-context.ts); pass --direct-review only for an orchestrator direct review that spawned no reviewer');
     }
 
     let priorFindings: Finding[] | undefined;
