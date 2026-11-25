@@ -143,3 +143,28 @@ duplicate content in nine trees until `V-INCLUDE-01` fails CI.
 **Protocol surface.** One new BLOCK V-code (`V-INCLUDE-01`), one new check file, one
 `src/references/blackhole-vcodes.md` row-count bump (verified from a live table count, not
 hand-arithmetic — see the implementation plan's T5 for the current baseline).
+
+## Post-acceptance amendments
+
+- **2026-11-25, issue #1387 (on-demand modules for mechanically gated audits).** The seam above
+  rejected runtime loading because it adds fetches to every turn. Measured at spawn, that cost is
+  the smaller one: every reviewer spawn paid for all 33 modules (22,247 estimated tokens, bytes / 4)
+  although 15 of them open with a clause that says "skip this section" (a config key, plan
+  frontmatter or heading, a diff path, a queue field, or the spawn mode). This amendment allows a
+  hybrid and reverses nothing: the build seam, `{{INCLUDE:<dir>/*}}`, `BUILD_INPUT_ONLY_DIRS` and
+  the 18 inlined modules are unchanged.
+  - **Rule.** A module may be on-demand only if its first detection or gate clause is mechanical.
+    Judgment-triggered modules (for example `V-DOCSYNC-01`'s public-API surface, `V-PROOF-01`'s
+    user-visible change) stay inlined, as do modules that apply to every diff.
+  - **Where.** On-demand bodies live in `src/references/audit-modules/` and are mirrored into the
+    reference trees like `hunt/` (not build-input-only). `src/agents/reviewer.md` keeps one `###`
+    stub per module under `## On-demand audit modules`, with the module's own heading text, a
+    one-line `Load when` trigger and a `Read` path, so `§ <Section>` citations still resolve.
+  - **Fail-open.** One sentence in that section: when unsure whether a trigger holds, Read the
+    module; a module whose trigger holds must be read before the final JSON.
+  - **Checks.** `V-AUDIT-01` Legs A to C scan both directories and count each against its own
+    constant (`REVIEWER_AUDIT_MODULE_COUNT`, `REVIEWER_ONDEMAND_AUDIT_MODULE_COUNT`); Leg D fails a
+    module with no stub, a stub without its `Load when` line, its `Read` path or a V-code the module
+    claims. The generated-stub alternative stays deferred until a second consumer exists.
+  - **Measured.** Compiled `agents/reviewer.md` 22,247 to 12,712 estimated tokens
+    (`bun run scripts/worker-context-size.ts`).

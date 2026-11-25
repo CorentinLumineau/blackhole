@@ -69,14 +69,25 @@ export const INCLUDE_MARKER_SITES: string[] = ['src/agents/reviewer.md', 'src/ag
 export const IMPLEMENTER_GATE_MODULE_COUNT = 16;
 
 /**
- * Number of reviewer audit modules under `src/references/audits/` (V-AUDIT-01). Declared side of
+ * Number of reviewer audit modules under `src/references/audits/` (V-AUDIT-01), the ones inlined
+ * into `src/agents/reviewer.md` by its include marker. The on-demand modules are counted
+ * separately by `REVIEWER_ONDEMAND_AUDIT_MODULE_COUNT`; together they are the whole registry. Declared side of
  * a declared-fact / independent-scan pair, the same shape `VCODE_TABLE_ROW_COUNT` uses: the
  * scanned side is `scripts/checks/audit-modules.check.ts` listing the directory. Replaces the
  * former `CONTENT_GATE_BUDGETS['src/agents/reviewer.md']` row — after the ADR-034 seam the
  * reviewer's growth unit is "one more module", not "N more lines in one section", so the fact
  * that has to be consciously bumped when an audit is added is a module count, not a LOC ceiling.
  */
-export const REVIEWER_AUDIT_MODULE_COUNT = 33;
+export const REVIEWER_AUDIT_MODULE_COUNT = 18;
+
+/**
+ * Number of reviewer audit modules under `src/references/audit-modules/` (V-AUDIT-01 Legs C/D,
+ * issue #1387): audits whose own first clause is a mechanical gate (a config key, plan frontmatter
+ * or heading, a diff path, a queue field, or the spawn mode). They are mirrored to the reference
+ * trees like `hunt/`, not inlined, and `reviewer.md` carries one stub each. Independent scan side:
+ * `scripts/checks/audit-modules.check.ts` listing the directory.
+ */
+export const REVIEWER_ONDEMAND_AUDIT_MODULE_COUNT = 15;
 
 // § facts — ADR revisit watch items (issue #710). A declared-fact / independent-scan pair, the
 // same shape `VCODE_TABLE_ROW_COUNT`/`CONTENT_GATE_BUDGETS`/`DOC_HEALTH_THRESHOLDS` already use:
