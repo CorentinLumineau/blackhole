@@ -148,7 +148,7 @@ mock.module('./lib/build/content.ts', () => ({
 }));
 
 const PLAN_TEMPLATE = 'src/references/plan-template.md';
-const PLANNER = 'src/agents/planner.md';
+const PLANNER = 'src/references/planner-tracks/04-design-track.md';
 const ORCHESTRATOR_DISPATCH = 'src/references/orchestrator-dispatch.md';
 
 const verdict = (id: string) => runChecks().find((r) => r.id === id);
@@ -201,7 +201,7 @@ describe('runChecks verdicts (V-DESIGN-01 / V-DESIGN-02)', () => {
     expect(verdict('V-DESIGN-02')).toEqual({
       id: 'V-DESIGN-02',
       ok: false,
-      detail: 'planner.md missing "design-aggregate.ts"; planner.md missing "MUST NOT substitute its own judgment"',
+      detail: 'planner-tracks/04-design-track.md missing "design-aggregate.ts"; planner-tracks/04-design-track.md missing "MUST NOT substitute its own judgment"',
     });
   });
 
@@ -219,7 +219,7 @@ describe('runChecks verdicts (V-DESIGN-01 / V-DESIGN-02)', () => {
     readOverrides.set(PLANNER, PLANNER_FIXTURE_STALE);
     readOverrides.set(ORCHESTRATOR_DISPATCH, ORCHESTRATOR_FIXTURE_STALE);
     expect(verdict('V-DESIGN-02')?.detail).toBe(
-      'planner.md missing "design-aggregate.ts"; planner.md missing "MUST NOT substitute its own judgment"; ' +
+      'planner-tracks/04-design-track.md missing "design-aggregate.ts"; planner-tracks/04-design-track.md missing "MUST NOT substitute its own judgment"; ' +
         'orchestrator-dispatch.md missing "applies only the worker JSON\'s `status` field"',
     );
     expect(verdict('V-DESIGN-02')?.ok).toBe(false);

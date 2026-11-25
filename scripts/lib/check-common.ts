@@ -31,6 +31,22 @@ export const findMissingGateMarkers = (content: string, required: string[]): str
 export const readComposedAgentDoc = (rel: string): string =>
   expandIncludes(read(rel), path.join(root, rel));
 
+// Slice 6 of #1387: `planner.md` keeps one stub per track and the track bodies live in
+// `PLANNER_TRACK_MODULE_DIR`, read on demand. A content scan of "what the planner instructs"
+// reads the shell plus every track module (directory order = track order), each through
+// `read()` so a fixture override of a single module still takes effect.
+export const PLANNER_TRACK_MODULE_DIR = 'src/references/planner-tracks';
+
+export const readPlannerTrackModules = (): string[] =>
+  fs
+    .readdirSync(path.join(root, PLANNER_TRACK_MODULE_DIR))
+    .filter((f) => f.endsWith('.md'))
+    .sort()
+    .map((f) => read(`${PLANNER_TRACK_MODULE_DIR}/${f}`));
+
+export const readPlannerWithTracks = (): string =>
+  [readComposedAgentDoc('src/agents/planner.md'), ...readPlannerTrackModules()].join('\n');
+
 // ADR-034: the repo-relative form (`src/<dir>`) of every declared build-input-only module
 // directory, for a prose sweep whose declared scope is "agent instruction text". A sweep over
 // `src/agents`/`src/references` alone stops covering a gate the moment it becomes a module;
