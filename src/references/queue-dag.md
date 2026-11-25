@@ -368,7 +368,7 @@ Waves respect both dependency order and touch_paths conflict deferral. An issue 
 ### Step 5 — Batch selection
 
 Take up to `parallel_max` (default 4 from config) from the **current wave's** ready set, ordered by
-`user_queue_order` then the Step 4 order. Spawn workers in **one orchestrator turn**.
+`user_queue_order` then the Step 4 order (print the batch with `bun run scripts/pareto-order.ts --limit <parallel_max>`). Spawn workers in **one orchestrator turn**.
 
 ### Step 6 — Persist
 

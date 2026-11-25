@@ -150,7 +150,7 @@ to implementer at spawn time yet — same non-wiring status as `execution_mode` 
 ## Worker return format
 
 See [worker-schemas.md](worker-schemas.md) implementer contract. Orchestrator appends `new_findings` to ledger (`phase: implement`) before
-ending turn. For each new finding concerning improvements, best practices, UX/UI, performance, or coverage, the orchestrator files a new GitHub tracking issue (`gh issue create`) to schedule it in the backlog campaign queue.
+ending turn. For each new finding concerning improvements, best practices, UX/UI, performance, or coverage, the orchestrator files a new GitHub tracking issue (`gh issue create`) to schedule it in the backlog campaign queue, with the `Pareto:` line and `pareto:P*` label from `scripts/pareto-file.ts` (`forge-sync.md` § Pareto line and label).
 See [multitask-mode.md](multitask-mode.md) § Claude Code harness notes for how to verify a spawned worker's completion without chat polling.
 
 **Unverified-claim hold (issue #204)**: the orchestrator treats a worker completion report

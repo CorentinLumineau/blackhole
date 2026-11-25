@@ -169,7 +169,7 @@ See `{{AGENT_DIR}}/skills/blackhole/references/orchestrator-runtime.md` § Incid
 *   **Calculate Priority**:
     $$\text{Priority} = \text{Gain} \times (11 - \text{Effort})$$
 *   **Gating Cut-off**:
-    *   If $\text{Priority} \ge 30$, execute `scope_args=$(bun scripts/forge-scope.ts create-args) || exit 1; gh issue create --title "[Discovery] <Name>" --body "..." $scope_args` to push it to the GitHub forge, and log it as `deferred`.
+    *   If $\text{Priority} \ge 30$, execute `scope_args=$(bun scripts/forge-scope.ts create-args) || exit 1; gh issue create --title "[Discovery] <Name>" --body "..." $scope_args` to push it to the GitHub forge, and log it as `deferred`. The issue carries the `Pareto:` line and `pareto:P*` label from `scripts/pareto-file.ts` (`forge-sync.md` § Pareto line and label).
     *   If $\text{Priority} < 30$, set status in ledger to `archived` and skip issue creation to avoid backlog noise.
 *   **Ready Queue Sorting**: Automatically sort the ready set in `queue.json` in descending order of their Priority score, ensuring high-ROI issues are scheduled for implementation first.
 

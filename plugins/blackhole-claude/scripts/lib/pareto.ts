@@ -40,3 +40,29 @@ export function parseParetoLine(body: string): Pareto | null {
   }
   return null;
 }
+
+/**
+ * Writes the one `Pareto:` line into an issue body: replaces the first existing line (valid or
+ * stale) in place, drops any further `Pareto:` lines, appends when none exists. Idempotent, and
+ * leaves the surrounding line endings untouched.
+ */
+export function upsertParetoLine(body: string, scoring: { gain: number; effort: number }): string {
+  const line = formatParetoLine(scoring);
+  const anyLine = /^[ \t]*Pareto:[^\r\n]*$/gim;
+  let seen = false;
+  const next = body.replace(new RegExp(`(?:\\r?\\n)?${anyLine.source}`, 'gim'), (match) => {
+    if (seen) return '';
+    seen = true;
+    return match.replace(/[^\r\n]*$/, line);
+  });
+  return seen ? next : `${body}\n\n${line}`;
+}
+
+/** The label edit that leaves exactly one `pareto:*` label on an issue: the bucket of `priority`. */
+export function reconcileParetoLabels(currentLabels: string[], priority: number): { add: string[]; remove: string[] } {
+  const want = paretoLabel(priority);
+  return {
+    add: currentLabels.includes(want) ? [] : [want],
+    remove: currentLabels.filter((l) => l.startsWith('pareto:') && l !== want),
+  };
+}
