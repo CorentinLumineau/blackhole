@@ -44,6 +44,8 @@ export type QueueIssue = {
   /** Parent epic issue; a workstream source (`status_page.streams.from: epic`). */
   epic_parent?: number | null;
   route?: Route;
+  /** Parsed from the forge body's `Pareto:` line by the forge sync (`scripts/lib/pareto.ts`); absent when unscored. */
+  pareto?: { gain: number; effort: number; priority: number };
 };
 
 export type QueueJson = {

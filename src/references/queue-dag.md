@@ -70,6 +70,7 @@ name alone.
 | `stacked_on_pr` | number \| null | Optional (default `null`); the canonical stack edge: the open PR number this issue's PR is based on. Unlike `stacked_on` it can name a PR that has no queue issue (the owner's own PR, another session's PR), so an external parent is representable. Set once at stack creation, in the same atomic write as `stacked_on` when the parent is a queue issue. Overlap against every open PR in the repo, not only queue rows, is read from the open-PR snapshot (`scripts/lib/open-pr-snapshot.ts`, `scripts/lib/stack-overlap.ts`) |
 | `parent_branch` | string \| null | Optional (default `null`); the head branch of `stacked_on_pr`, recorded with it. It is the branch the child's PR targets; a queue parent's value is `blackhole/issue-<stacked_on>` |
 | `parent_tip_sha` | string \| null | Optional (issue #794, default `null`); `stacked_on`'s branch tip, captured by `git rev-parse` **at stack creation**. It is the merge base the post-merge stacked-child replay merge uses (`merge-gate.md` § 7). Capturing it at merge time is already too late: once the parent branch is deleted the boundary cannot be reconstructed without reading the merged PR's commit list by hand. Written only by `scripts/stack-repair.ts capture --apply`, run by the orchestrator (`blackhole-state.md` § Single-writer invariant) through the state-write-guard |
+| `pareto` | `{gain, effort, priority}` \| absent | Optional; parsed by the forge sync from the issue body's `Pareto: gain=G effort=E priority=N` line (`scripts/lib/pareto.ts`: `priority = gain * (11 - effort)`, buckets P1 >= 70, P2 50-69, P3 30-49, P4 < 30), synced every turn, never hand-edited. Absent when the body has no valid line; such an issue sorts last in its wave |
 | `milestone` | string \| null | Optional (ADR-005); the issue's forge milestone **title** (not number), synced from forge every turn (`forge-sync.md` § 5 — never hand-edited). Consumed by `merge-gate.md` § 1 Condition 3 for gated-batch scope matching against `config.json`'s `scope_milestone` |
 | `labels` | string[] | Optional (ADR-005, default `[]`); the issue's forge label names, synced from forge every turn (`forge-sync.md` § 5 — never hand-edited). Consumed by `merge-gate.md` § 1 Condition 3 for gated-batch scope matching against `config.json`'s `scope_labels` |
 | `merged_by` | `"blackhole"` \| absent | Optional (ADR-005); set **only** by `phase-loop.md` § Merge protocol step 4, in the same atomic write that sets `status: merged` — a causal marker meaning "blackhole's own orchestrator executed this merge." Absent (not `false` — absent) means "not merged by blackhole in this session" (either not merged at all, or merged by an external actor). This is the sole signal `merge-gate.md` § 3 uses to attribute `V-MERGE-01` vs `V-MERGE-02` — deliberately **not** `status: in-flight`, which reflects concurrent worker activity unrelated to who called `gh pr merge` |
@@ -358,7 +359,7 @@ Before batch selection, compute **execution waves** via topological sort on `dep
 
 1. Wave 0: issues with empty `depends_on` (and ready per Step 2)
 2. Wave N: issues whose dependencies are all `merged` or `closed` in prior waves
-3. Within each wave, apply conflict filter (Step 3) and Pareto sort (descending Priority)
+3. Within each wave, apply conflict filter (Step 3), then order by stored Pareto priority desc, effort asc, oldest issue first (`bun run scripts/pareto-order.ts`, the executable form of Steps 4-5)
 
 Log wave number before spawning: `WAVE <N>: issues [301, 298, ...]`.
 
@@ -367,7 +368,7 @@ Waves respect both dependency order and touch_paths conflict deferral. An issue 
 ### Step 5 — Batch selection
 
 Take up to `parallel_max` (default 4 from config) from the **current wave's** ready set, ordered by
-`user_queue_order` then Pareto Priority. Spawn workers in **one orchestrator turn**.
+`user_queue_order` then the Step 4 order. Spawn workers in **one orchestrator turn**.
 
 ### Step 6 — Persist
 
