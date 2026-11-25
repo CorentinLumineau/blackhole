@@ -341,6 +341,48 @@ describe('mergeTreeVerdict (real git)', () => {
     expect(viaGit).toEqual({ kind: 'none' });
   });
 
+  // Two PRs each touch documentation/decisions/INDEX.md in the same gap (a row after the last one).
+  // `edit` rewrites the existing row 'ADR-001' instead of only adding one.
+  const adrIndexFixture = (p2Edits: boolean): string => {
+    const repo = makeTempDir('merge-tree-adr-index');
+    dirs.push(repo);
+    git(repo, 'init', '-q', '-b', 'main');
+    fs.mkdirSync(path.join(repo, 'documentation/decisions'), { recursive: true });
+    const idx = path.join(repo, 'documentation/decisions/INDEX.md');
+    fs.writeFileSync(idx, '| ADR-001 |\n');
+    git(repo, 'add', '.');
+    git(repo, 'commit', '-q', '-m', 'base');
+    git(repo, 'checkout', '-q', '-b', 'p1', 'main');
+    fs.writeFileSync(idx, '| ADR-001 |\n| ADR-002 |\n');
+    git(repo, 'commit', '-q', '-am', 'p1');
+    git(repo, 'checkout', '-q', '-b', 'p2', 'main');
+    fs.writeFileSync(idx, p2Edits ? '| ADR-001 amended |\n| ADR-003 |\n' : '| ADR-001 |\n| ADR-003 |\n');
+    git(repo, 'commit', '-q', '-am', 'p2');
+    return repo;
+  };
+
+  test('#1537: two PRs that only append distinct rows to decisions/INDEX.md are no overlap', () => {
+    const run = runner(adrIndexFixture(false));
+    expect(run(['merge-tree', '--write-tree', '--no-messages', 'p1', 'p2']).code).toBe(1);
+    expect(mergeTreeVerdict(run, 'p1', 'p2')).toBe('clean');
+    const snap = snapshot(
+      spr(7, ['documentation/decisions/INDEX.md'], { headRefName: 'p1' }),
+      spr(9, ['documentation/decisions/INDEX.md'], { headRefName: 'p2' }),
+    );
+    const viaGit = pickParent(9, snap, { conflicts: (me, other) => mergeTreeVerdict(run, me.headRefName, other.headRefName) });
+    expect(viaGit).toEqual({ kind: 'none' });
+  });
+
+  test('#1537: a PR that edits an existing decisions/INDEX.md row still overlaps', () => {
+    const run = runner(adrIndexFixture(true));
+    expect(mergeTreeVerdict(run, 'p1', 'p2')).toBe('conflict');
+  });
+
+  test('#1537: the append-only exemption is exact-path: another file with pure additions still conflicts', () => {
+    const run = runner(adrIndexFixture(false));
+    expect(mergeTreeVerdict(run, 'p1', 'p2', new Set(), new Set())).toBe('conflict');
+  });
+
   test('#1303 git channel: a same-line source conflict beside the INDEX row still conflicts', () => {
     const run = runner(indexFixture('1', '1'));
     expect(mergeTreeVerdict(run, 'p1', 'p2')).toBe('conflict');

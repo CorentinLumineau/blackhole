@@ -4,7 +4,7 @@ summary: "A path regenerated wholesale from the merged tree, with a blocking sta
 status: accepted
 review_trigger: "on a change to the V-STACK-02 overlap predicate, or a request to exempt another path from it"
 created: 2026-11-18
-last_updated: 2026-11-18
+last_updated: 2026-11-25
 related:
   - documentation/decisions/ADR-051-stacking-only-overlap-strategy.md
   - documentation/decisions/ADR-031-generate-documentation-index.md
@@ -58,7 +58,7 @@ The router missed two more decision sites:
 
 ## Decision
 
-1. **Set.** `REGENERATED_PATHS` is a code constant in `scripts/lib/stack-overlap.ts` (never a config key, V-STACK-03). Its only member is `ROOT_DOC_INDEX_PATH`, exported by `scripts/lib/doc-index-generate.ts`, the generator that writes the file. A path qualifies only when it is regenerated wholesale from the merged tree and a blocking verify check fails when it is stale. `documentation/decisions/INDEX.md` (hand-appended `append_row`) and build output trees do not qualify.
+1. **Set.** `REGENERATED_PATHS` is a code constant in `scripts/lib/stack-overlap.ts` (never a config key, V-STACK-03). Its only member is `ROOT_DOC_INDEX_PATH`, exported by `scripts/lib/doc-index-generate.ts`, the generator that writes the file. A path qualifies only when it is regenerated wholesale from the merged tree and a blocking verify check fails when it is stale. `documentation/decisions/INDEX.md` (hand-appended `append_row`) and build output trees do not qualify; the append-only amendment below covers the former differently.
 2. **Prefilter.** `pickParent` drops the set from both PRs' file lists before `shares()`. This is the only change the mcp channel (`--open-prs`) needs.
 3. **Predicate.** `mergeTreeVerdict` runs with `--name-only`. An exit-1 result whose conflicted-path list is non-empty and entirely inside the set is `clean`; an empty or unparseable list stays `conflict`, an unresolvable revision stays `unknown`. A conflict in any other file still stacks.
 4. **Dispatch.** `pickStackParent` drops exact set members from both issues' `touch_paths`, and a parent file list that filters to empty is a known no-overlap.
@@ -202,3 +202,17 @@ All three scorers pick Option A unanimously, but the two critics' margins are be
 - **Evidence**: all three scorers chose A. Every CRITICAL finding is on B, C or D. The verdict is blocked only on margin (critics 18.6% and 22.9% vs the 30% bar), and the runner-up differs per critic (C, then B).
 - **Recommended**: approve A, with the ADR-051 D1 amendment, and file a follow-up for review carry on regenerate-only commits.
 - **Alternative**: keep current behaviour. Every doc-carrying PR keeps stacking.
+
+## Post-acceptance amendments
+
+- **2026-11-25 - append-only rows in `documentation/decisions/INDEX.md` (#1537).** Every ADR PR
+  appends one row to that hand-appended file, so concurrent ADR PRs (#1508, #1514, #1536) always
+  conflicted there and could only be stacked, which defeats independent review. It is not
+  regenerated, so it stays out of `REGENERATED_PATHS`. Instead `APPEND_ONLY_PATHS`
+  (`scripts/lib/stack-overlap.ts`, a code constant, never a config key) lets `mergeTreeVerdict`
+  read a conflict as `clean` when every conflicted path is regenerated, or is an append-only path
+  where both PRs add lines and delete none against their merge base (`git diff --numstat`). A PR
+  that edits or removes an existing row, an unreadable merge base, or a binary diff stays a
+  `conflict`. The textual conflict of two rows in the same gap resolves at merge time as a pure
+  two-sided insertion (`merge-conflict-protocol.md` class 3), never a lost row. The `--open-prs`
+  snapshot channel has no checkout to read diffs from and keeps treating the file as an overlap.
