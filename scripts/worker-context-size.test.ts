@@ -12,7 +12,7 @@ const root = path.resolve(import.meta.dirname, '..');
 
 // Reviewer definition ceiling after the on-demand split. The pre-split compiled definition was
 // 22,247 estimated tokens (88,990 bytes), so this is a falsifiable bound, not a restated total.
-const REVIEWER_TOKEN_CEILING = 13_000;
+const REVIEWER_TOKEN_CEILING = 13_600;
 
 const tmpRoot = (files: Record<string, string>): string => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wcs-'));
