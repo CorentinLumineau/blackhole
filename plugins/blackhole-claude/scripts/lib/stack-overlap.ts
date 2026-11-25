@@ -17,7 +17,7 @@ export const REGENERATED_PATHS: ReadonlySet<string> = new Set([ROOT_DOC_INDEX_PA
 
 /**
  * Hand-appended index files whose conflict is not a stack overlap while both PRs only add rows
- * (ADR-055 amendment, #1537). Unlike `REGENERATED_PATHS` no tool regenerates them, so the exemption
+ * (ADR-055 amendment). Unlike `REGENERATED_PATHS` no tool regenerates them, so the exemption
  * is conditional: it holds only when neither side removed or edited a line (`onlyAddsLines`).
  */
 export const APPEND_ONLY_PATHS: ReadonlySet<string> = new Set(['documentation/decisions/INDEX.md']);
@@ -123,10 +123,12 @@ export const mergeTreeVerdict = (
 };
 
 /** True when, against their merge base, both `a` and `b` add lines to `file` and delete none. Any doubt is false. */
-const onlyAddsLines = (git: (args: string[]) => GitResult, a: string, b: string, file: string): boolean => {
+export const onlyAddsLines = (git: (args: string[]) => GitResult, a: string, b: string, file: string): boolean => {
   const mb = git(['merge-base', a, b]);
   const base = mb.stdout.trim();
   if (mb.code !== 0 || !base) return false;
+  // Absent at the base means both sides created the file: an add/add conflict, never a row addition.
+  if (git(['cat-file', '-e', `${base}:${file}`]).code !== 0) return false;
   return [a, b].every((rev) => {
     const r = git(['diff', '--numstat', '--no-renames', base, rev, '--', file]);
     const m = /^(\d+)\t(\d+)\t/.exec(r.stdout);

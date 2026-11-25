@@ -216,3 +216,6 @@ All three scorers pick Option A unanimously, but the two critics' margins are be
   `conflict`. The textual conflict of two rows in the same gap resolves at merge time as a pure
   two-sided insertion (`merge-conflict-protocol.md` class 3), never a lost row. The `--open-prs`
   snapshot channel has no checkout to read diffs from and keeps treating the file as an overlap.
+  Dispatch-time stacking (`pickStackParent`, `queue-dag.md` Step 3) is likewise unchanged: it has no
+  merge-tree, so ignoring the file there would hide a real row edit; it deliberately still stacks on
+  `APPEND_ONLY_PATHS` members, tracked as a follow-up.
