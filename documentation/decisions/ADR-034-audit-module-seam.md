@@ -232,3 +232,16 @@ hand-arithmetic — see the implementation plan's T5 for the current baseline).
     and no `loaded_modules[]` declaration: the orchestrator cannot see which gates a worker read.
     The stub states that a gate whose condition holds and whose module was not read is a skipped
     gate; the reviewer's plan-compliance audit remains the evidence the gate ran.
+
+## Worker V-code lookup
+
+Every worker shell's `Binding rules:` line used to point at `blackhole-vcodes.md`, which a worker
+read whole (37,283 B, about 9.3k estimated tokens per spawn). The six shells now carry one
+identical line telling the worker to `grep -nF 'V-<FAMILY>-'` the table for each code it cites or
+a gate names, and to read the whole table only when the task needs the full code set. The table
+stays the single source: a family prefix matches the grouped rows (`V-SOLID-01/03`,
+`V-KISS-01 / V-YAGNI-01`), and the row's Severity column is the only source of a finding's
+severity, which `review-aggregate.ts` post-processes. `scripts/worker-vcode-lookup.test.ts` pins
+the six lines as identical and runs the lookup against the table. Residual risk: a worker that
+never looks a code up can miss a rule it would have read; the reviewer's V-code audit remains the
+backstop.
