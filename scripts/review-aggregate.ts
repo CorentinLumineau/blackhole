@@ -652,7 +652,8 @@ if (import.meta.main) {
         `${result.unresolved_recheck.length} unresolved_recheck entr${result.unresolved_recheck.length === 1 ? 'y' : 'ies'} — see the "unresolved_recheck" field in stdout output`,
       );
     }
-    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    const echoed = auditContext.noPlanReason ? { ...result, no_plan_reason: auditContext.noPlanReason } : result;
+    process.stdout.write(`${JSON.stringify(echoed, null, 2)}\n`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(message);

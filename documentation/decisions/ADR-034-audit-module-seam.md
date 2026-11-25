@@ -192,6 +192,13 @@ hand-arithmetic — see the implementation plan's T5 for the current baseline).
     verification spawn whose envelope is never aggregated on its own, so a load check for it had no
     call site. Rather than add a second aggregate hop, it moved back to `src/references/audits/`
     (19 inlined, 14 on-demand).
+  - **Direct review follows module 08's predicate.** `--direct-review` is accepted only when module
+    08's own plan-first trigger holds (a plan declaring neither `execution_mode: docs-only` nor
+    `task_type: docs` is not docs-only, whatever the extensions) as well as the path and
+    other-trigger checks. `audit-context.ts` refuses `--no-plan-reason` when a plan artifact exists
+    next to the queue file, records the reason in the context (echoed by the aggregate as
+    `no_plan_reason`), fails on an empty diff, and resolves the route through `latestRoute`
+    (latest ledger `routing_decisions` row, else the queue entry).
   - **Residual risk.** `loaded_modules[]` is a declaration by the reviewer. The gate proves a module
     was listed, not that it was read or applied: a reviewer can name a module without reading it. The
     check closes the silent-skip case, not the dishonest one; the reviewer's own findings and the

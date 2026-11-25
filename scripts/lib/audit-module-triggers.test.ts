@@ -113,13 +113,20 @@ describe('findUnloadedAuditModules', () => {
 });
 
 describe('directReviewBlockers', () => {
+  test('a plan-bearing non-docs-only PR whose diff is only .md is blocked; a docs-only plan is allowed', () => {
+    const featurePlan = '---\ntrack: standard\n---\n## Objective\n';
+    expect(directReviewBlockers({ changedFiles: ['README.md'], planText: featurePlan }).join()).toContain('docs-only module trigger does not hold');
+    expect(directReviewBlockers({ changedFiles: ['README.md'], planText: '---\nexecution_mode: docs-only\n---\n' })).toEqual([]);
+    expect(directReviewBlockers({ changedFiles: ['README.md'], planText: featurePlan, route: { task_type: 'docs' } })).toEqual([]);
+  });
+
   test('a docs-only diff with no other trigger is allowed', () => {
     expect(directReviewBlockers({ changedFiles: ['README.md', 'documentation/a.md', 'codex-agents/x.yaml'] })).toEqual([]);
   });
 
   test('an empty diff, a source path, or a holding module trigger each block', () => {
     expect(directReviewBlockers({ changedFiles: [] })[0]).toContain('empty');
-    expect(directReviewBlockers({ changedFiles: ['README.md', 'scripts/a.ts'] })[0]).toContain('scripts/a.ts');
+    expect(directReviewBlockers({ changedFiles: ['README.md', 'scripts/a.ts'] }).join()).toContain('scripts/a.ts');
     const gated = directReviewBlockers({ changedFiles: ['README.md'], config: docsOn });
     expect(gated.join()).toContain('10-companion-file-audit.md');
     expect(gated.join()).not.toContain('08-docs-only');

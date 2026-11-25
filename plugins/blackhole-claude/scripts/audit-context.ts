@@ -2,11 +2,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { parseFlags } from './lib/argv-flags.ts';
 import { isFrontendPath, loadFrontendPathSet } from './lib/frontend-paths.ts';
+import { latestRoute } from './lib/route-artifacts.ts';
 import type { AuditContext } from './lib/audit-module-triggers.ts';
 
 // Usage: bun run scripts/audit-context.ts --repo-dir <PR worktree> --base-ref <diff base> --head <PR head>
 //   --issue-ref <N> --dispatch <full|recheck> (--plan-file <PLAN_ABSOLUTE_PATH> | --no-plan-reason <why>)
-//   --config-file <.blackhole/config.json> --queue-file <.blackhole/queue.json> [--out <file>]
+//   --config-file <.blackhole/config.json> --queue-file <.blackhole/queue.json> [--ledger-file <findings-ledger.json>] [--out <file>]
 // Builds the audit-context JSON `review-aggregate.ts --audit-context-file` consumes (ADR-034
 // amendment, V-AUDIT-01): the facts that decide which on-demand reviewer audit modules a spawn had
 // to load. Every input is required and a missing or unreadable one is a named error, never a
@@ -27,6 +28,8 @@ export type AuditContextInput = {
   /** Exactly one of `planFile` / `noPlanReason`. */
   planFile?: string;
   noPlanReason?: string;
+  /** Findings ledger holding `routing_decisions`; defaults to `findings-ledger.json` next to the queue file when present. */
+  ledgerFile?: string;
   configFile: string;
   queueFile: string;
 };
@@ -60,28 +63,50 @@ const readJsonInput = (file: string, label: string): unknown => {
   }
 };
 
-const routeFor = (queue: Queue, issueRef: string, queueFile: string): NonNullable<AuditContext['route']> => {
+// Route resolution is `latestRoute`'s (latest ledger routing_decisions row, else the queue entry).
+const routeFor = (
+  queue: Queue,
+  ledger: unknown,
+  issueRef: string,
+  queueFile: string,
+): NonNullable<AuditContext['route']> => {
   const entry = queue.issues?.[issueRef];
   if (!entry) throw new Error(`issue ${issueRef} is absent from queue file ${queueFile}; cannot resolve its route`);
   const size = typeof entry.size === 'string' ? (entry.size.startsWith('size:') ? entry.size : `size:${entry.size}`) : undefined;
-  return { ...(entry.route as AuditContext['route']), ...(size ? { size } : {}) };
+  const route = latestRoute(ledger as Parameters<typeof latestRoute>[0], queue as Parameters<typeof latestRoute>[1], Number(issueRef));
+  return { ...(route as AuditContext['route']), ...(size ? { size } : {}) };
 };
+
+const planArtifactsNextTo = (queueFile: string, issueRef: string): string[] =>
+  [`issue-${issueRef}.md`, `issue-${issueRef}-design.md`]
+    .map((n) => path.join(path.dirname(queueFile), 'plans', n))
+    .filter((p) => fs.existsSync(p));
 
 export const buildAuditContext = (input: AuditContextInput): AuditContext => {
   if (!input.issueRef) throw new Error('issue-ref is required');
   if (!!input.planFile === !!input.noPlanReason) throw new Error('pass exactly one of plan-file or no-plan-reason (a declared absence needs its reason)');
+  if (input.noPlanReason) {
+    const found = planArtifactsNextTo(input.queueFile, input.issueRef);
+    if (found.length > 0) throw new Error(`--no-plan-reason refused: plan artifact(s) exist for issue ${input.issueRef}: ${found.join(', ')}; pass --plan-file`);
+  }
   const planText = input.planFile ? readInput(input.planFile, 'plan file') : undefined;
   const config = readJsonInput(input.configFile, 'config file') as AuditContext['config'];
   const queue = readJsonInput(input.queueFile, 'queue file') as Queue;
-  const route = routeFor(queue, input.issueRef, input.queueFile);
+  const ledgerFile = input.ledgerFile ?? path.join(path.dirname(input.queueFile), 'findings-ledger.json');
+  const ledger = input.ledgerFile || fs.existsSync(ledgerFile) ? readJsonInput(ledgerFile, 'ledger file') : null;
+  const route = routeFor(queue, ledger, input.issueRef, input.queueFile);
   const changedFiles = run(['git', 'diff', '--name-only', `${input.baseRef}...${input.head}`], input.repoDir)
     .split('\n')
     .filter(Boolean);
+  if (changedFiles.length === 0) {
+    throw new Error(`the diff ${input.baseRef}...${input.head} is empty (base equals head?); an empty changedFiles would drop every path trigger — pass the real base ref`);
+  }
   const projectIsFrontend = run(['bash', FRONTEND_SCRIPT], input.repoDir).trim() === 'frontend=yes';
   const frontendPaths = loadFrontendPathSet();
   return {
     changedFiles,
     ...(planText !== undefined ? { planText } : {}),
+    ...(input.noPlanReason ? { noPlanReason: input.noPlanReason } : {}),
     config,
     route,
     queue: { pipeline_detection: queue.pipeline_detection },
@@ -103,6 +128,7 @@ if (import.meta.main) {
   const queueFile = str('queue-file');
   const planFile = str('plan-file');
   const noPlanReason = str('no-plan-reason');
+  const ledgerFile = str('ledger-file');
   const missing = [
     ['--repo-dir', repoDir],
     ['--base-ref', baseRef],
@@ -115,11 +141,11 @@ if (import.meta.main) {
   ].filter(([, v]) => !v).map(([k]) => k);
   if (missing.length > 0 || !repoDir || !baseRef || !head || !dispatch || !issueRef || !configFile || !queueFile) {
     console.error(`audit-context: missing required input(s): ${missing.join(', ')}`);
-    console.error('Usage: bun run scripts/audit-context.ts --repo-dir <PR worktree> --base-ref <diff base> --head <PR head> --issue-ref <N> --dispatch <full|recheck> (--plan-file <path> | --no-plan-reason <why>) --config-file <path> --queue-file <path> [--out <file>]');
+    console.error('Usage: bun run scripts/audit-context.ts --repo-dir <PR worktree> --base-ref <diff base> --head <PR head> --issue-ref <N> --dispatch <full|recheck> (--plan-file <path> | --no-plan-reason <why>) --config-file <path> --queue-file <path> [--ledger-file <findings-ledger.json>] [--out <file>]');
     process.exit(1);
   }
   try {
-    const ctx = buildAuditContext({ repoDir, baseRef, head, dispatch, issueRef, planFile, noPlanReason, configFile, queueFile });
+    const ctx = buildAuditContext({ repoDir, baseRef, head, dispatch, issueRef, planFile, noPlanReason, ledgerFile, configFile, queueFile });
     const out = str('out');
     if (out) fs.writeFileSync(out, JSON.stringify(ctx));
     else console.log(JSON.stringify(ctx));

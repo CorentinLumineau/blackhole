@@ -64,7 +64,7 @@ Per `review-core.md`:
 2. Build the audit context with `scripts/audit-context.ts`, then run `scripts/review-aggregate.ts` with `--audit-context-file <audit-context.json>` (required) and `--base-ref <PR base branch> --repo-dir <PR worktree> --head <PR head>` (review-core.md § Aggregate invocation) → deduplicated, ranked findings + `lgtm`
 3. Append aggregate output to ledger
 
-For docs-only PRs (per `review-core.md` § "Docs-only PRs"), step 1 is replaced: the orchestrator applies `reviewer.md` § Docs-Only Execution Mode Compliance itself instead of spawning `reviewer`, then proceeds to steps 2–3 unchanged.
+For docs-only PRs (per `review-core.md` § "Docs-only PRs"), step 1 is replaced: the orchestrator applies `reviewer.md` § Docs-Only Execution Mode Compliance itself instead of spawning `reviewer`, still passes `--direct-review` (with `--audit-context-file`) to `scripts/review-aggregate.ts`, then proceeds to steps 2–3 unchanged.
 
 Track `review_iteration` on queue entries. Increment after each `changes_requested` aggregate run. Escalate to coordinator when the aggregate returns `rethink` (trigger: `review-core.md` § Review convergence).
 

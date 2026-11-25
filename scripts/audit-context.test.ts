@@ -108,4 +108,26 @@ describe('buildAuditContext', () => {
   test('an unresolvable base ref throws instead of yielding an empty diff', () => {
     expect(() => buildAuditContext({ ...input, baseRef: 'no-such-ref' })).toThrow('failed');
   });
+
+  test('--no-plan-reason is refused when a plan artifact exists, and the reason is recorded otherwise', () => {
+    const { planFile: _omit, ...noPlan } = input;
+    put('.blackhole/plans/issue-7.md', 'plan');
+    expect(() => buildAuditContext({ ...noPlan, noPlanReason: 'skip' })).toThrow('plan artifact(s) exist for issue 7');
+    fs.rmSync(path.join(dir, '.blackhole/plans'), { recursive: true });
+    expect(buildAuditContext({ ...noPlan, noPlanReason: 'skip track' }).noPlanReason).toBe('skip track');
+  });
+
+  test('an empty diff (base equals head) throws a named error', () => {
+    expect(() => buildAuditContext({ ...input, baseRef: 'HEAD' })).toThrow('is empty');
+  });
+
+  test('the route is the latest ledger routing_decisions row, else the queue entry', () => {
+    put('.blackhole/findings-ledger.json', JSON.stringify({ routing_decisions: [
+      { id: 'r1', issue_ref: 7, route: { ui: false, task_type: 'old' } },
+      { id: 'r2', issue_ref: 7, route: { ui: true, task_type: 'newest' } },
+    ] }));
+    expect(buildAuditContext(input).route).toMatchObject({ task_type: 'newest', size: 'size:xs' });
+    fs.rmSync(path.join(dir, '.blackhole/findings-ledger.json'));
+    expect(buildAuditContext(input).route).toMatchObject({ task_type: 'feature' });
+  });
 });

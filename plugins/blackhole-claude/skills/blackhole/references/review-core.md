@@ -329,11 +329,11 @@ bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root un
 reviewer that skipped an on-demand audit module whose trigger holds would otherwise pass unseen.
 `audit-context.ts` takes every input as required (plan, config, queue, issue) and exits non-zero
 naming a missing or unreadable file or an issue absent from the queue; a no-plan track declares the
-absence with `--no-plan-reason`. For a recheck dispatch pass the last reviewed head as
+absence with `--no-plan-reason` (refused when `plans/issue-<N>.md` or `-design.md` exists next to the queue file; the reason is echoed in the aggregate output as `no_plan_reason`; an empty diff, base equal to head, also exits non-zero). The route is the latest ledger `routing_decisions` row, else the queue entry (`--ledger-file`, default `findings-ledger.json` next to the queue). For a recheck dispatch pass the last reviewed head as
 `audit-context.ts --base-ref`, so the context covers the fix commits only. The verification spawn
 (§ Independent security verification) is not aggregated on its own, so it has no dispatch kind.
 `--direct-review` is not an opt-out: it is accepted only alongside `--audit-context-file` and only
-when that context shows a docs-only diff (every path in the docs-only module's doc-path set) with no
+when that context shows a docs-only diff (module 08's plan-first predicate holds and every path is in the docs-only module's doc-path set) with no
 other on-demand module trigger holding; otherwise the aggregate exits 1 and the orchestrator spawns
 a reviewer (§ Docs-only PRs).
 

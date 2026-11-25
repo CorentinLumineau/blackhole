@@ -9,6 +9,8 @@ export type AuditContext = {
   changedFiles: string[];
   /** Contents of the plan file at PLAN_ABSOLUTE_PATH; absent when no plan exists. */
   planText?: string;
+  /** The declared reason no plan exists (a no-plan track); absent when a plan was read. */
+  noPlanReason?: string;
   /** Parsed `.blackhole/config.json`. */
   config?: { docs_governance?: { enabled?: boolean; companion_files?: boolean; write_governance?: boolean }; display_targets?: unknown[] };
   route?: { ui?: boolean; size?: string; task_type?: string; security_review_required?: boolean };
@@ -85,13 +87,18 @@ const DOCS_ONLY_MODULE = '08-docs-only-execution-mode.md';
 
 /**
  * Why an orchestrator direct review (no reviewer spawned, so no `loaded_modules` to check) is not
- * allowed for `ctx`; empty when it is. Allowed only for a docs-only diff (every changed path in the
- * `DOC_GLOBS` set the docs-only module's own trigger uses) where no on-demand module other than the
- * docs-only one has a trigger that holds, since the orchestrator reads none of them.
+ * allowed for `ctx`; empty when it is. Allowed only when module 08's own trigger holds (its
+ * plan-first docs-only predicate: a plan that declares neither `execution_mode: docs-only` nor
+ * `task_type: docs` is not docs-only whatever the extensions), every changed path is in the
+ * `DOC_GLOBS` set, and no other on-demand module trigger holds, since the orchestrator reads none
+ * of them.
  */
 export const directReviewBlockers = (ctx: AuditContext): string[] => {
   const blockers: string[] = [];
   if (ctx.changedFiles.length === 0) blockers.push('the diff is empty, so docs-only cannot be established');
+  if (!AUDIT_MODULE_TRIGGERS[DOCS_ONLY_MODULE](ctx)) {
+    blockers.push('the docs-only module trigger does not hold (the plan declares neither execution_mode: docs-only nor task_type: docs)');
+  }
   const nonDoc = ctx.changedFiles.filter((f) => !isDocPath(f));
   if (nonDoc.length > 0) blockers.push(`non-documentation path(s) changed: ${nonDoc.slice(0, 5).join(', ')}`);
   const others = requiredAuditModules(ctx).filter((file) => file !== DOCS_ONLY_MODULE);
