@@ -7,6 +7,7 @@ import {
   chainDepth,
   chainTip,
   mergeTreeVerdict,
+  onlyAddsLines,
   pickParent,
   reachesNode,
   effectiveParent,
@@ -341,6 +342,111 @@ describe('mergeTreeVerdict (real git)', () => {
     expect(viaGit).toEqual({ kind: 'none' });
   });
 
+  // Two PRs each touch documentation/decisions/INDEX.md in the same gap (a row after the last one).
+  // `edit` rewrites the existing row 'ADR-001' instead of only adding one.
+  const adrIndexFixture = (p2Edits: boolean): string => {
+    const repo = makeTempDir('merge-tree-adr-index');
+    dirs.push(repo);
+    git(repo, 'init', '-q', '-b', 'main');
+    fs.mkdirSync(path.join(repo, 'documentation/decisions'), { recursive: true });
+    const idx = path.join(repo, 'documentation/decisions/INDEX.md');
+    fs.writeFileSync(idx, '| ADR-001 |\n');
+    git(repo, 'add', '.');
+    git(repo, 'commit', '-q', '-m', 'base');
+    git(repo, 'checkout', '-q', '-b', 'p1', 'main');
+    fs.writeFileSync(idx, '| ADR-001 |\n| ADR-002 |\n');
+    git(repo, 'commit', '-q', '-am', 'p1');
+    git(repo, 'checkout', '-q', '-b', 'p2', 'main');
+    fs.writeFileSync(idx, p2Edits ? '| ADR-001 amended |\n| ADR-003 |\n' : '| ADR-001 |\n| ADR-003 |\n');
+    git(repo, 'commit', '-q', '-am', 'p2');
+    return repo;
+  };
+
+  test('#1537: two PRs that only append distinct rows to decisions/INDEX.md are no overlap', () => {
+    const run = runner(adrIndexFixture(false));
+    expect(run(['merge-tree', '--write-tree', '--no-messages', 'p1', 'p2']).code).toBe(1);
+    expect(mergeTreeVerdict(run, 'p1', 'p2')).toBe('clean');
+    const snap = snapshot(
+      spr(7, ['documentation/decisions/INDEX.md'], { headRefName: 'p1' }),
+      spr(9, ['documentation/decisions/INDEX.md'], { headRefName: 'p2' }),
+    );
+    const viaGit = pickParent(9, snap, { conflicts: (me, other) => mergeTreeVerdict(run, me.headRefName, other.headRefName) });
+    expect(viaGit).toEqual({ kind: 'none' });
+  });
+
+  test('#1537: a PR that edits an existing decisions/INDEX.md row still overlaps', () => {
+    const run = runner(adrIndexFixture(true));
+    expect(mergeTreeVerdict(run, 'p1', 'p2')).toBe('conflict');
+  });
+
+  test('the append-only exemption can be switched off: with no append-only paths a pure-addition conflict stays a conflict', () => {
+    const run = runner(adrIndexFixture(false));
+    expect(mergeTreeVerdict(run, 'p1', 'p2', new Set(), new Set())).toBe('conflict');
+  });
+
+  // p1 and p2 conflict on decisions/INDEX.md plus an optional second conflicted file, with p2's
+  // INDEX change chosen by `p2Index`.
+  const adrFixtureWith = (p2Index: string, extra = false): string => {
+    const repo = makeTempDir('merge-tree-adr-extra');
+    dirs.push(repo);
+    git(repo, 'init', '-q', '-b', 'main');
+    fs.mkdirSync(path.join(repo, 'documentation/decisions'), { recursive: true });
+    const idx = path.join(repo, 'documentation/decisions/INDEX.md');
+    fs.writeFileSync(idx, '| ADR-001 |\n| ADR-002 |\n');
+    fs.writeFileSync(path.join(repo, 'a.ts'), 'x\n');
+    git(repo, 'add', '.');
+    git(repo, 'commit', '-q', '-m', 'base');
+    git(repo, 'checkout', '-q', '-b', 'p1', 'main');
+    fs.writeFileSync(idx, '| ADR-001 edited |\n| ADR-002 |\n| ADR-010 |\n');
+    if (extra) fs.writeFileSync(path.join(repo, 'a.ts'), 'p1\n');
+    git(repo, 'commit', '-q', '-am', 'p1');
+    git(repo, 'checkout', '-q', '-b', 'p2', 'main');
+    fs.writeFileSync(idx, p2Index);
+    if (extra) fs.writeFileSync(path.join(repo, 'a.ts'), 'p2\n');
+    git(repo, 'commit', '-q', '-am', 'p2');
+    return repo;
+  };
+
+  test('one side editing an existing row while the other only adds is a conflict', () => {
+    const run = runner(adrFixtureWith('| ADR-001 |\n| ADR-002 |\n| ADR-011 |\n'));
+    expect(run(['merge-tree', '--write-tree', '--no-messages', 'p1', 'p2']).code).toBe(1);
+    expect(mergeTreeVerdict(run, 'p1', 'p2')).toBe('conflict');
+  });
+
+  test('one side deleting a row is a conflict', () => {
+    const run = runner(adrFixtureWith('| ADR-001 |\n| ADR-011 |\n'));
+    expect(mergeTreeVerdict(run, 'p1', 'p2')).toBe('conflict');
+  });
+
+  test('a second conflicted non-exempt file next to pure INDEX additions is a conflict', () => {
+    const repo = adrFixtureWith('| ADR-001 |\n| ADR-002 |\n| ADR-011 |\n', true);
+    // p1 only adds here too, so the INDEX alone would be exempt; a.ts is what must conflict.
+    git(repo, 'checkout', '-q', 'p1');
+    fs.writeFileSync(path.join(repo, 'documentation/decisions/INDEX.md'), '| ADR-001 |\n| ADR-002 |\n| ADR-010 |\n');
+    git(repo, 'commit', '-q', '-am', 'p1 adds only');
+    const run = runner(repo);
+    expect(mergeTreeVerdict(run, 'p1', 'p2')).toBe('conflict');
+  });
+
+  test('an add/add creation conflict on an append-only file is a conflict', () => {
+    const repo = makeTempDir('merge-tree-add-add');
+    dirs.push(repo);
+    git(repo, 'init', '-q', '-b', 'main');
+    fs.writeFileSync(path.join(repo, 'seed.txt'), 's\n');
+    git(repo, 'add', '.');
+    git(repo, 'commit', '-q', '-m', 'base');
+    for (const [b, row] of [['p1', 'ADR-001'], ['p2', 'ADR-002']] as const) {
+      git(repo, 'checkout', '-q', '-b', b, 'main');
+      fs.mkdirSync(path.join(repo, 'documentation/decisions'), { recursive: true });
+      fs.writeFileSync(path.join(repo, 'documentation/decisions/INDEX.md'), `| ${row} |\n`);
+      git(repo, 'add', '.');
+      git(repo, 'commit', '-q', '-m', b);
+    }
+    const run = runner(repo);
+    expect(run(['merge-tree', '--write-tree', '--no-messages', 'p1', 'p2']).code).toBe(1);
+    expect(mergeTreeVerdict(run, 'p1', 'p2')).toBe('conflict');
+  });
+
   test('#1303 git channel: a same-line source conflict beside the INDEX row still conflicts', () => {
     const run = runner(indexFixture('1', '1'));
     expect(mergeTreeVerdict(run, 'p1', 'p2')).toBe('conflict');
@@ -408,5 +514,27 @@ describe('effectiveParent', () => {
     expect(effectiveParent(issues, issues['8'])).toBe(7);
     expect(effectiveParent(issues, issues['5'])).toBeNull();
     expect(effectiveParent(issues, issues['7'])).toBeNull();
+  });
+});
+
+describe('onlyAddsLines (stub git)', () => {
+  const stub =
+    (numstat: string, mergeBase = { code: 0, stdout: 'base\n' }) =>
+    (args: string[]) => {
+      if (args[0] === 'merge-base') return { ...mergeBase, stderr: '' };
+      if (args[0] === 'cat-file') return { code: 0, stdout: '', stderr: '' };
+      return { code: 0, stdout: numstat, stderr: '' };
+    };
+
+  test('pure additions on both sides are true', () => {
+    expect(onlyAddsLines(stub('2\t0\tf\n'), 'a', 'b', 'f')).toBe(true);
+  });
+
+  test('a binary diff ("-\t-\t") is false', () => {
+    expect(onlyAddsLines(stub('-\t-\tf\n'), 'a', 'b', 'f')).toBe(false);
+  });
+
+  test('a failing merge-base is false', () => {
+    expect(onlyAddsLines(stub('2\t0\tf\n', { code: 1, stdout: '' }), 'a', 'b', 'f')).toBe(false);
   });
 });
