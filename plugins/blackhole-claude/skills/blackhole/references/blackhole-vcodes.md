@@ -1,8 +1,10 @@
 # Blackhole V-Codes
 
-Restate this table in every implementation and review agent prompt. Do not paste
-longer definitions (token cost, drift). Persist every finding to
-`findings-ledger.json`.
+Workers look a code up with `grep -nF 'V-<FAMILY>-' <this file>` (the family prefix
+matches grouped rows such as `V-SOLID-01/03` and `V-KISS-01 / V-YAGNI-01`) and read the
+whole table only when the task needs the full code set. The Severity column of the row is
+the only source of a finding's severity. Do not paste the table or longer definitions
+into a prompt (token cost, drift). Persist every finding to `findings-ledger.json`.
 
 | Code | Rule | Severity | Primary enforcement site |
 |------|------|----------|--------------------------|

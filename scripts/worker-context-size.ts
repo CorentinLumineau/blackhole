@@ -12,9 +12,9 @@ const root = path.resolve(import.meta.dirname, '..');
 // before with an after reproducibly, not to bill. No network, no tokenizer dependency. The harness
 // base (CLAUDE.md, rules, skill listing, MCP tool names) is outside this repo and not measured.
 
-// Files a worker is told to read whole (`Binding rules:` line and the schema/contract references).
+// Files a worker is told to read whole (the schema/contract references). blackhole-vcodes.md is
+// absent on purpose: the `Binding rules:` line makes it a grep lookup, not a whole read.
 export const MANDATORY_READS = [
-  'src/references/blackhole-vcodes.md',
   'src/references/worker-schemas.md',
   'src/references/review-core.md',
   'src/references/implementer-schemas.md',

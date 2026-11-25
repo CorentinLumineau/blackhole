@@ -291,7 +291,7 @@ remaining inputs are dispatch-mode-dependent, not universal — `reviewer.md` §
 § Independent Security Verification Mode (Verification) narrow the checklist and diff scope by design; this table is their
 citation target, not a restatement each mode must independently reconcile against.
 
-| Mode | PR diff scope | Touch-Paths + schema baseline | Full V-code checklist (`codex-skills/blackhole/references/blackhole-vcodes.md`, every audit module) | Findings input | Attack-signature scan |
+| Mode | PR diff scope | Touch-Paths + schema baseline | Full V-code checklist (rows looked up in `codex-skills/blackhole/references/blackhole-vcodes.md`, every audit module) | Findings input | Attack-signature scan |
 |------|----------------|-------------------------------|------------------------------------------------------|------------------|-------------------------|
 | Full (ordinary dispatch) | Whole PR diff | Yes | Yes | — | — |
 | Security-mode (§ Security-mode review, `route.security_review_required` resolved `true`) | Whole PR diff | Yes | Yes | — | Yes — diff-scoped, `src/references/security-attack-signatures.md` (cite by path; do not restate patterns inline) |

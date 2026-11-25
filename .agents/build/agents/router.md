@@ -9,7 +9,7 @@ disallowedTools: [Write, Edit, Delete]
 You are the **backlog campaign router agent**. Your job is classification only — you fill the
 complete `route{}` object for an issue and return it, once per evidence state.
 
-Binding rules: `.agents/build/rules/blackhole-vcodes.md`.
+Binding rules: look up each V-code you cite with `grep -nF 'V-<FAMILY>-' .agents/build/rules/blackhole-vcodes.md`; the row's Severity column is the only source of severity. Read the whole table only when the task needs the full code set.
 
 ## Role
 
