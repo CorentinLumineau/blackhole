@@ -1,5 +1,5 @@
 import { issueMatchesScope, type CampaignScope } from '../../forge-scope.ts';
-import { DONE_STATUSES } from './queue.ts';
+import { DONE_STATUSES, isSameRepoKey } from './queue.ts';
 import type { MergedPr, QueueDrift, QueueIssue } from './types.ts';
 
 export type Reconciled = {
@@ -44,6 +44,7 @@ export function reconcileMerged(
   const out: Record<string, QueueIssue> = {};
   for (const [key, issue] of Object.entries(issues)) {
     out[key] = issue;
+    if (!isSameRepoKey(key)) continue;
     const pr = issue.pr != null ? byNumber.get(issue.pr) : closedBy.get(Number(key));
     if (issue.pr != null) named.add(issue.pr);
     if (!pr) continue;
