@@ -186,10 +186,12 @@ describe('syncQueue — what a PR may claim', () => {
 });
 
 describe('syncQueue — user_queue_order', () => {
-  test('ingested issues are appended once, existing order kept', () => {
+  test('ingest never writes user_queue_order: owner pins pass through untouched', () => {
     const queue = { user_queue_order: [3, 1], issues: { '1': { title: 'a', phase: 'handle', status: 'ready' }, '3': { title: 'c', phase: 'handle', status: 'ready' } } };
-    expect(sync({ queue, issues: [issue(1), issue(2), issue(3), issue(4)] }).queue.user_queue_order).toEqual([3, 1, 2, 4]);
-    expect(sync({ issues: [issue(5)] }).queue.user_queue_order).toEqual([5]);
+    const r = sync({ queue, issues: [issue(1), issue(2), issue(3), issue(4)] });
+    expect(r.queue.user_queue_order).toEqual([3, 1]);
+    expect(r.added).toEqual([2, 4]);
+    expect(sync({ issues: [issue(5)] }).queue.user_queue_order).toEqual([]);
   });
 });
 

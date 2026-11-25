@@ -62,6 +62,20 @@ describe('selectBatch', () => {
   test('user_queue_order wins over Pareto, within the current wave', () => {
     expect(selectBatch(fixture(), 3, [2, 6])).toEqual([2, 3, 5]);
   });
+  test('unpinned issues follow stored priority, not key order or number', () => {
+    const issues = { '1': ready({ pareto: p(2, 9) }), '9': ready({ pareto: p(9, 1) }) } as Record<string, QueueIssue>;
+    expect(selectBatch(issues, 1)).toEqual([9]);
+    expect(selectBatch(issues, 2, [])).toEqual([9, 1]);
+  });
+  test('an empty user_queue_order gives exactly the Pareto order', () => {
+    expect(selectBatch(fixture(), 10, [])).toEqual(orderReady(fixture()).filter((n) => n !== 6));
+  });
+  test('a pinned low-priority issue ranks first in its wave', () => {
+    expect(selectBatch(fixture(), 2, [4])).toEqual([4, 3]);
+  });
+  test('a pin in a later wave does not leapfrog a lower-wave issue', () => {
+    expect(selectBatch(fixture(), 1, [6])).toEqual([3]);
+  });
   test('empty and non-positive limits', () => {
     expect(selectBatch({}, 4)).toEqual([]);
     expect(selectBatch(fixture(), 0)).toEqual([]);

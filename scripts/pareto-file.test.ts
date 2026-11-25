@@ -35,6 +35,11 @@ describe('pareto-file CLI', () => {
     fs.writeFileSync(f, 'hello');
     expect(run('body', '--gain', '7', '--effort', '5', '--body-file', f).out).toBe('hello\n\nPareto: gain=7 effort=5 priority=42');
   });
+  test('a valueless --gain exits 2 instead of reading as 1', () => {
+    const r = run('line', '--gain', '--effort', '5');
+    expect(r.code).toBe(2);
+    expect(r.out).toBe('');
+  });
   test.each([
     [['nope', '--gain', '7', '--effort', '5']],
     [['line', '--effort', '5']],

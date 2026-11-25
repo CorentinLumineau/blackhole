@@ -1,5 +1,5 @@
 import type { ForgeAdapter, ForgeIssue } from './types.ts';
-import { formatParetoLine, paretoLabel, paretoPriority, reconcileParetoLabels, upsertParetoLine } from '../pareto.ts';
+import { paretoLabel, paretoPriority, reconcileParetoLabels, upsertParetoLine } from '../pareto.ts';
 
 // One wrapper over the ForgeAdapter issue/label verbs, so every forge writes the same `Pareto:`
 // body line and `pareto:P1..P4` label (V-PARETO-02) without a per-adapter edit. Adapter errors
@@ -15,7 +15,7 @@ export async function issueCreateWithPareto(
   const label = paretoLabel(paretoPriority(scoring.gain, scoring.effort));
   return adapter.issueCreate({
     title: params.title,
-    body: `${params.body}\n\n${formatParetoLine(scoring)}`,
+    body: upsertParetoLine(params.body, scoring),
     labels: [...(params.labels ?? []).filter((l) => !l.startsWith('pareto:')), label],
   });
 }

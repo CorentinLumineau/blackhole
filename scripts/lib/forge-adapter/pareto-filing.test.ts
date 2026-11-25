@@ -21,6 +21,11 @@ describe('issueCreateWithPareto', () => {
     await issueCreateWithPareto(adapter, { title: 't', body: 'b', labels: ['ready', 'pareto:P4'] }, { gain: 7, effort: 5 });
     expect(calls).toEqual([['issueCreate', { title: 't', body: 'b\n\nPareto: gain=7 effort=5 priority=42', labels: ['ready', 'pareto:P3'] }]]);
   });
+  test('replaces a pre-existing Pareto line instead of adding a second', async () => {
+    const { adapter, calls } = fake();
+    await issueCreateWithPareto(adapter, { title: 't', body: 'b\n\nPareto: gain=1 effort=1 priority=10' }, { gain: 7, effort: 5 });
+    expect((calls[0]![1] as { body: string }).body).toBe('b\n\nPareto: gain=7 effort=5 priority=42');
+  });
 });
 
 describe('rescoreIssue', () => {

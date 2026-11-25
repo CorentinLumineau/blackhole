@@ -51,6 +51,7 @@ name alone.
 | Field | Values | Notes |
 |-------|--------|-------|
 | `pipeline_detection` | `{ actionman_workclaude: boolean, checked_at: ISO8601 }` \| absent | Optional (ADR-026); absent ≡ `{ actionman_workclaude: false, checked_at: null }`. Cached campaign-level detection of an installed ActionMan/workclaude review pipeline on the consumer forge, refreshed once per turn by `forge-sync.md`'s sync sequence — never re-derived per PR. `merge-gate.md` §6 `pipelineVerdict()` reads this cached flag to decide whether its C1 check applies at all |
+| `user_queue_order` | number[] \| absent | Owner pins only: issues the owner ordered ahead of the Pareto order (`clarify-gates.md` queue reorder, launch-gate scope order). Forge sync never writes it, so an ingested issue is ordered by its stored Pareto priority; absent or `[]` means pure Pareto order. Legacy ingest-appended entries are removed by `scripts/queue-migrate.ts` (§ Legacy values) |
 
 **Per-issue fields** (`issues.<n>.*`):
 
@@ -92,6 +93,13 @@ A queue written before the enums above were enforced can still carry a legacy `s
 bun run scripts/queue-migrate.ts            # dry run: prints each change, writes nothing
 bun run scripts/queue-migrate.ts --apply    # snapshots queue.json to archive/, installs through the guard
 ```
+
+The same pass cleans `user_queue_order`, which holds **only owner pins** (written by the owner's
+reorder, `clarify-gates.md`; never by ingest). Older forge syncs appended every ingested issue to it,
+which put ingest order ahead of Pareto order. Ingest left no marker, so the migration drops a number
+only when its issue has no queue entry, is `merged`/`closed`, or is still `ready` with an ingest note
+(`auto-sync ...` or `Ingested ...`), and keeps every other entry, listing it as `kept pin: #N` for the
+owner to review. A repeated run changes nothing.
 
 `--campaign-dir <dir>` points it at a campaign directory other than `./.blackhole`. Run `--apply`
 only while no orchestrator runs: the orchestrator is the single writer of `queue.json`
@@ -368,7 +376,8 @@ Waves respect both dependency order and touch_paths conflict deferral. An issue 
 ### Step 5 — Batch selection
 
 Take up to `parallel_max` (default 4 from config) from the **current wave's** ready set, ordered by
-`user_queue_order` then the Step 4 order (print the batch with `bun run scripts/pareto-order.ts --limit <parallel_max>`). Spawn workers in **one orchestrator turn**.
+owner pins from `user_queue_order`, then the Step 4 order (stored Pareto priority desc, effort asc,
+oldest issue first; print the batch with `bun run scripts/pareto-order.ts --limit <parallel_max>`). Spawn workers in **one orchestrator turn**.
 
 ### Step 6 — Persist
 

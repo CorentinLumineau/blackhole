@@ -22,7 +22,9 @@ function main(): void {
   const unknown = unknownFlagKeys(flags, ['gain', 'effort', 'labels', 'body-file']);
   if (unknown.length) fail(`Unknown flag(s): ${unknown.join(', ')}`);
   if (!['line', 'label', 'edit-args', 'body'].includes(command ?? '')) fail(`Unknown subcommand: ${command ?? '(none)'}`);
-  const scoring = { gain: Number(flags.gain), effort: Number(flags.effort) };
+  // A valueless flag binds to boolean `true`; Number(true) would read as 1, so only strings count.
+  const num = (v: unknown): number => (typeof v === 'string' ? Number(v) : NaN);
+  const scoring = { gain: num(flags.gain), effort: num(flags.effort) };
   let priority: number;
   try {
     priority = paretoPriority(scoring.gain, scoring.effort);
