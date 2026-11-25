@@ -1,6 +1,6 @@
 ---
 type: adr
-summary: "One release model for blackhole and the monorepo, zero model tokens: a workflow_run on the repo's main-CI workflow (daily cron only as backstop) cuts when a deterministic policy says so (batch threshold, age flush, cooldown, optional immediate class) from first-parent commit subjects, once the newest green CI run is an ancestor of the tip; the cut is resumable (state read from git, REST-created tag and Release, post-publish work in the same run); notes are deterministic only; consumers pull (marketplace autoUpdate, an orchestrator update-available line, a consumer-owned vendor-bump poll), the publisher never pushes into a consumer; blackhole never cuts, enforces or assumes a release model in a consumer repo and reads that repo's declared conventions instead; supersedes the trigger and notes parts of ADR-060"
+summary: "One release model for blackhole and the monorepo, zero model tokens: a workflow_run on the repo's main-CI workflow (daily cron only as backstop) cuts when a deterministic policy says so (batch threshold, age flush, cooldown, optional immediate class) from first-parent commit subjects, once the newest green CI run is an ancestor of the tip; the cut publishes its release commit and tag on HEAD in one atomic push, creates the Release by REST, resumes from state read from git, and runs post-publish work in the same run; notes are deterministic only; consumers pull (marketplace autoUpdate, an orchestrator update-available line, a consumer-owned vendor-bump poll), the publisher never pushes into a consumer; blackhole never cuts, enforces or assumes a release model in a consumer repo and reads that repo's declared conventions instead; supersedes the trigger and notes parts of ADR-060"
 status: accepted
 review_trigger: "on a change to the release workflows, the cut policy constants, the marketplace catalogs, branch protection on main, the consumer release contract, or the monorepo release cadence"
 created: 2026-11-25
@@ -57,11 +57,14 @@ states only what shapes the model.
    several commits behind the tip. A push-started run finds no green result and skips until the
    next, dropped, slot; and a rule "the green run must be on the live tip" would almost never hold
    there.
-3. **The cadence has never cut here.** All 19 runs ended `success` as no-ops (7 PRs merged since
-   v0.34.0, threshold 10), and `git log origin/main --grep 'chore(release)'` shows only manual
-   release PRs (v0.24.0 to v0.34.0, for example #1498). The monorepo's cut did run, and wedged: a
-   release commit reached `main`, the tag push was rejected, and every later run refused. A cut
-   that commits before it tags needs a way to resume.
+3. **The cadence has never cut here; the monorepo's cut did, and wedged.** All 19 runs here ended
+   `success` as no-ops (7 PRs merged since v0.34.0, threshold 10), and `git log origin/main --grep
+   'chore(release)'` shows only manual release PRs (v0.24.0 to v0.34.0, for example #1498). In the
+   monorepo a release commit reached `main`, the tag push was rejected three times with `workflows
+   scope may be required`, and every later run refused. Its fix (monorepo #5846) locates the cause
+   in the tag target, not the transport: tags on `HEAD` were accepted for 250 releases, and the one
+   tag on an older commit (the end of a backlog-drain slice) was refused. A cut that commits before
+   it tags can still leave a commit without a tag.
 4. **Releases are bursty.** 13 releases between 2026-11-10 and 2026-11-24 against about 100
    merged PRs in 8.1 days (about 12 a day); patches follow their minor by 7 minutes (v0.30.0 to
    v0.30.1) and 18 minutes (v0.27.0 to v0.27.1).
@@ -111,8 +114,8 @@ states only what shapes the model.
 | M4 | Policy | Four classes in one constants file: immediate, batch threshold, age flush, cooldown; numbers per repo | The shape is the model; the cost of a release differs per repo |
 | M5 | Version | Conventional classification (`type!:` or `BREAKING CHANGE:` major, `feat` minor, else patch); a major-0 repo bumps minor on a breaking change; the cut takes the higher of the classified version and the manifest | The pipeline is the bumper; hand-bumping PRs keep working |
 | M6 | Notes | Deterministic only, from commit subjects and trailers; one generator | Zero tokens; a rule-accepted author sentence cannot be improved by a model |
-| M7 | Publish | Release commit `chore(release): prepare vX.Y.Z [skip release]` pushed to `main`; tag and Release then created through the REST API, targeting that commit; `GITHUB_TOKEN` only; post-publish work (assets, deploy) runs as jobs of the same run | A REST ref avoids the push-time workflow-scope check that rejected the monorepo's tag push; token events start no workflows, so nothing may hang off a `release` or tag event |
-| M8 | Resumable | The cut reads its state from git and the forge and finishes what is left | A commit without a tag is the observed wedge; makes a lost push race harmless |
+| M7 | Publish | Release commit `chore(release): prepare vX.Y.Z [skip release]` and its tag pushed in one atomic push, the tag always on the cut's own `HEAD` and never on an older commit; the Release object then created through the REST API; `GITHUB_TOKEN` only; post-publish work (assets, deploy) runs as jobs of the same run | Tags on `HEAD` are the shape 250 monorepo releases proved; one atomic push leaves no commit-without-tag state; token events start no workflows, so nothing may hang off a `release` or tag event |
+| M8 | Resumable | The cut reads its state from git and the forge: a tag without a Release is finished; a release commit without a tag gets one tagging attempt, then a tracking issue and a stop | The remaining half-cut states are rare and cheap; anything else is refused loudly |
 | M9 | Milestones | Not part of the model; an optional step closes the milestone titled `v<version>` when it exists with zero open issues | A no-op where no such milestone exists |
 | M10 | Consumers | Pull, never push: autoUpdate for marketplace installs, an advisory update-available line in the orchestrator, a consumer-owned poll for a vendored pin | Keeps the publisher ignorant of its consumers; needs no cross-repo secret |
 | M11 | Plugin rule | The plugin never cuts, enforces or assumes a release model in a consumer repo; it reads that repo's declared conventions | Owner ruling 2026-11-25 |
@@ -135,8 +138,8 @@ newest completed run), a cancelled run is ignored, and a green run several commi
 is enough. Two refinements:
 - The immediate class (M4) additionally requires its trigger commits to be ancestors of `V`, so
   a hooks or security fix is verified before it ships.
-- If the push of the release commit is rejected as non-fast-forward, the run exits 0 as
-  superseded; M8 makes the next event finish the job.
+- If the atomic push of M7 is rejected as non-fast-forward, nothing was created; the run exits 0
+  as superseded and the next event evaluates again.
 
 The cost is stated, not hidden: commits between `V` and the tip ride in the release unverified by
 main CI. Each already passed its pre-merge gate, and the bound is the merges of one CI duration.
@@ -144,11 +147,15 @@ main CI. Each already passed its pre-merge gate, and the bound is the merges of 
 **M3. Pending set.** `git log --first-parent --format=... <latest v* tag>..HEAD`; the PR number
 is the last `(#N)` of the subject, the type comes from the conventional subject, trailers and
 `BREAKING CHANGE:` from the body, and the merge time from the committer date (the age clock). A
-commit without a conventional subject counts as a patch-level `other`. The pending set is
+commit without a conventional subject counts as a patch-level `other`; a commit with no `(#N)`
+(a direct commit, the release commit) is never counted as a PR. The pending set is
 release-relevant only when `git diff --quiet <tag> HEAD -- <shipped paths>` is false; docs, test
 and CI-only batches never cut, whatever their count, and ride with the next shipped change. The
 shipped set is one constant, `SHIPPED_PATHS`. A repo may count a narrower set toward the batch
-threshold (`COUNTED_PATHS`, default equal to the shipped set).
+threshold through a `COUNTS(commit)` predicate (default: the commit's own diff touches a shipped
+path). A repo with `DRAIN` on, facing a backlog of twice the threshold or more, releases the oldest
+`THRESHOLD` PRs in the notes, still tags `HEAD`, and keeps the leftovers pending; its window then
+starts at the newest non-drained release and skips PRs a catalog entry already claims.
 
 **M4. Policy.** Constants live in one file per repo (here `scripts/lib/release-cadence.ts`, the
 single home; the owner tunes them via question 5):
@@ -172,22 +179,26 @@ by hand keep working; the pipeline, not the author, is the normal bumper.
 `.github/releases/<tag>.md`, the contract `validateRelease` and Verify's `release-notes-gate`
 read). The git-cliff step and `cliff.toml` go.
 
-**M7. Publish.** The cut commits the notes and version files, pushes `main`, then creates the tag
-and the Release with the REST API (`gh release create <tag> --target <release-commit-sha>`),
-not `git push <tag>`. `GITHUB_TOKEN` suffices: no App or PAT. Post-publish work (here the
-`publish` job calling `release.yml` through `workflow_call`, in the monorepo its prod deploy job)
-runs in the same workflow run via `needs`; nothing waits on a `release: published` or tag-push
-event, because a token-created event starts no workflow. **This is unverified.** The monorepo's tag
-push was rejected with `workflows scope may be required` and the root cause is not established;
-nothing proves a REST-created ref clears it. Monorepo slice 0 (in its adoption record) is the single spike,
-and slice 2 here does not merge before its result (question 4).
+**M7. Publish.** The cut commits the notes and version files, then pushes the release commit
+and its tag in one atomic push (`git push --atomic origin HEAD:main vX.Y.Z`), the tag on that
+commit, which is the cut's `HEAD`; it then creates the Release (`gh release create <tag>
+--verify-tag`). `GITHUB_TOKEN` suffices: no App or PAT. Post-publish work (here the `publish` job
+calling `release.yml` through `workflow_call`, in the monorepo its prod deploy job) runs in the same
+workflow run via `needs`; nothing waits on a `release: published` or tag-push event, because a
+token-created event starts no workflow. Two things are unobserved: that GitHub accepts an atomic
+push with `GITHUB_TOKEN`, and the cause the monorepo's fix names (the target, not the transport).
+Fallback if atomic is refused: the pre-wedge sequence, push the commit and then tag it at once,
+which leaves the one half-cut state M8 handles. The first real cut in each repo is the check;
+slice 2 is not accepted before one is observed.
 
-**M8. Resumable cut.** The cut derives its state: nothing pending; a release commit on `main`
-(subject `chore(release): prepare vX.Y.Z [skip release]`, version above the latest tag) with no
-tag, in which case it creates the tag and Release at that commit; a tag with no Release, in which
-case it creates the Release; or done. Any other disagreement between the version manifest and the
-tags still refuses loudly: the refusal is correct for a corrupt repo and wrong for a half-finished
-cut.
+**M8. Resumable cut.** The cut derives its state: nothing pending; a tag with no Release, in
+which case it creates the Release (no workflow-scope check applies to a Release object); a release
+commit on `main` (subject `chore(release): prepare vX.Y.Z [skip release]`, version above the latest
+tag) with no tag, which only the fallback sequence or a hand edit can produce, in which case it
+makes one attempt to tag that commit and, if the forge refuses, opens the tracking issue and stops
+(it never reverts on its own); or done. Any other disagreement between the version manifest and
+the tags still refuses loudly: the refusal is correct for a corrupt repo and wrong for a
+half-finished cut.
 
 **M9. Milestones.** After publish, an optional step closes the milestone titled exactly
 `v<version>` when it exists with zero open issues, and otherwise only emits a notice. It never
@@ -225,10 +236,11 @@ change a mechanism above.
 |-----------|-----------|----------|
 | `VERIFY_WORKFLOW` | `Verify` (`verify.yml`) | `main-verify` (trust mode; the repo's main-push CI workflow if `CI_MODE=gate`) |
 | `SHIPPED_PATHS` | the three distribution roots under `plugins/` (`scripts/lib/build/paths.ts:13,23,45`) plus the root trees the Codex catalog sources (`skills/`, `agents/`, `rules/`, `references/`, `templates/`, `codex-skills/`, `codex-agents/`, `SKILL.md`, the plugin manifest directories); slice 1 verifies the list (question 5) | the union of the path rules of its `scripts/release-deploy-apps.sh` (invest, voyage and croissant trees, `packages/**`, the root lockfile and manifests), so one path map decides both a cut and a deploy |
-| `COUNTED_PATHS` | equal to the shipped set | the invest changelog part, as today (#5286 there); voyage and croissant merges still trigger the age flush (question 5) |
+| `COUNTS(commit)` | touches a shipped path (the default) | the PR's changelog part is invest (`partForPr`: title scope or `Changelog-Part:` trailer, as today, #5286 there); voyage and croissant merges still trigger the age flush (question 5) |
 | `THRESHOLD` | 10 (`CADENCE_THRESHOLD`, unchanged) | 20 (owner ruling 2026-11-18) |
 | `MAX_AGE` | 24 h | 24 h |
-| `COOLDOWN` | 6 h | 6 h |
+| `COOLDOWN` | 6 h | 6 h (a drain cut is exempt: after the first, later drain tags move only release commits, so they deploy nothing) |
+| `DRAIN` | off | on (landed in monorepo #5846; its question B) |
 | `IMMEDIATE` | `templates/hooks/**`, subjects `*(security)`, `fix(hooks)`, `fix(security)`, body `Release: immediate` | empty by default (a hotfix uses the `force` dispatch); enabling `Release: immediate` is an owner decision because it is an agent-triggerable prod deploy (question 6) |
 | Version and notes store | `package.json` plus the 7 `VERSIONED_MANIFESTS`; `.github/releases/<tag>.md` | the release catalog and the single `v*` tag series |
 | Post-publish train | `publish` job calling `release.yml` (`workflow_call`) | `deploy-prod` job, owner-gated |
@@ -266,9 +278,9 @@ blackhole V-code.
 | # | Where | What it does in a consumer | Must change |
 |---|-------|----------------------------|-------------|
 | 1 | `src/agents/coordinator.md:219-237` § Maintainer release routing (built into `plugins/blackhole-claude/agents/coordinator.md:201`) | Tells the owner to route a release request to `.claude/skills/prj-create-release/SKILL.md` and run `bun run release prepare\|validate\|tag\|push`, forbids `gh release create` without `.github/releases/vX.Y.Z.md`, and gates milestone closure on `gh release view`. None of those exist in a consumer; the monorepo has an unrelated skill of the same name | Remove the section from the shipped agent. A consumer's release request goes to its declared skill or contract; with none, the coordinator declines and says release is not blackhole's job here. Blackhole's own maintainer routing moves to this repo's `.claude/` rules |
-| 2 | `src/references/merge-risk.md:35`, `scripts/lib/merge-gate/merge-risk.ts:13,28,103,239` | The `release-tag` hold category lists this repo's script names, `.github/releases/` and any `package.json` version bump, so a consumer's PR that bumps its own version is held for the owner | Fill the category from the contract's hold paths plus generic release-machinery detection; remove the literal blackhole file names and the blanket version-bump trigger from the shipped table |
+| 2 | `src/references/merge-risk.md:35`, `scripts/lib/merge-gate/merge-risk.ts:101-109,236-240` | The `release-tag` hold category matches this repo's `scripts/release.ts` and `release-cadence.ts`, `.github/releases/`, `git-create-release` and `prj-create-release` directories (the monorepo has one under that name), and any patch that changes a `package.json` `version`. A consumer's PR that bumps its own version, or edits its own release skill, is held for the owner. The generic `.releaserc`, `release-please` and `semantic-release` patterns are consumer-neutral | Fill the category from the contract's hold paths plus the generic tool patterns; remove the literal blackhole names and the blanket version-bump trigger from the shipped table and the code |
 | 3 | `src/references/merge-conflict-protocol.md:160-169` § Hot files | Sets `package.json` `version` to `max(target, child)`, "bumped above the target's" | Apply only when the contract says `version_bump: per-pr`; otherwise keep the target's value and never author a bump |
-| 4 | `src/references/audits/29-plugin-cache-version-bump-audit.md`, `V-PLUGIN-01` in `src/references/blackhole-vcodes.md:138`, `templates/hooks/pretooluse/README.md:10-54` | A BLOCK reviewer gate on `templates/hooks/**` plus `package.json` `version`, shipped to every consumer's reviewer; vacuous only by path coincidence | Scope it explicitly to this repo (plugin-source identity), then retire it with the per-PR bump if question 8 is yes; update the README |
+| 4 | `src/references/audits/29-plugin-cache-version-bump-audit.md` (built into `plugins/blackhole-claude/agents/reviewer.md:800`), `V-PLUGIN-01` in `src/references/blackhole-vcodes.md:138`, `templates/hooks/pretooluse/README.md:10-54` | A BLOCK reviewer gate on `templates/hooks/**` plus `package.json` `version`, shipped inside every consumer's reviewer agent; vacuous only by path coincidence | Scope it explicitly to this repo (plugin-source identity), then retire it with the per-PR bump if question 8 is yes; update the README |
 | 5 | `src/references/decision-parking.md:52` | Lists "the release permission" among decisions allowed without asking; no such config key exists anywhere | Delete the phrase: the plugin has no release permission because it does not release |
 | 6 | `src/references/forge-channels.md:51` | A "Create release" forge-operation row; no playbook step uses it | Keep as a forge capability only if no playbook cites it; add a note that it is not a duty. Verify with the new check below |
 | 7 | `src/references/forge-sync.md:96-126`, `src/references/config-template.md:17,43` (`scope_milestone`) | Opt-in campaign scope by milestone title; fails sync if the configured milestone is missing | No change: the consumer chooses it. It is the model for the other rows |
@@ -336,6 +348,14 @@ minutes and a merge stream, the monorepo's green runs are always behind the tip,
 would almost never run; M2's ancestor rule accepts a bounded unverified delta, each commit of which
 already passed its pre-merge gate.
 
+### I. Create the tag through the REST API instead of pushing it
+Strongest case: a REST ref is not a push, so it might skip the push-time workflow-scope check
+(an earlier form of this ADR chose it for that reason). Rejected as the primary path: the
+monorepo's fix shows the rejected tag was on an older commit while tags on `HEAD` were accepted,
+so the target, not the transport, is the proven variable, and a REST tag on an older commit is as
+unproven as the push was. REST is used where it is certain to work: the Release object for an
+existing tag.
+
 ## Consequences
 
 ### Positive
@@ -357,9 +377,9 @@ already passed its pre-merge gate.
 - A consumer contract block is one more config surface to maintain.
 
 ### Risks
-- The REST-created tag may be rejected like the git push did. Mitigation: slice 0 of the
-  monorepo ADR runs it on the live wedge first; slice 2 here waits for the result; the fallback is
-  a credential decision (question 4).
+- GitHub may refuse the atomic push, or the target-not-transport diagnosis may be wrong.
+  Mitigation: the fallback sequence is the pre-wedge shape that tagged 250 releases on `HEAD`;
+  M8 bounds the one half-cut state it leaves; slice 2 waits for one observed cut.
 - The policy numbers (24 h, 6 h, 10 and 20) are guesses. Mitigation: constants plus
   `bun run release-cadence --json`.
 - A tip that never gets a green CI run under a merge stream. Mitigation: M2 needs only a green
@@ -398,19 +418,18 @@ the owner. Monorepo slices are in its adoption record.
 | # | Slice | Gated | Acceptance |
 |---|-------|-------|------------|
 | 1 | Deterministic core: git-log pending set, `SHIPPED_PATHS`, M4 policy, M5 version rule, M2 freshness predicate, M8 state detection, delete the AI-notes code and `gh` listing, tests per class | no | touched libs' tests; `--json` prints class and reason |
-| 2 | Workflow: M1 triggers, REST publish (M7) and resume (M8), remove the Haiku step, M9 milestone step, drop git-cliff and `cliff.toml` | yes (workflow) | one real cut observed; the `rg` check is empty; waits for the REST spike |
+| 2 | Workflow: M1 triggers, atomic publish (M7) and resume (M8), remove the Haiku step, M9 milestone step, drop git-cliff and `cliff.toml` | yes (workflow) | one real cut observed, atomic push or its fallback; the `rg` check is empty |
 | 3 | Docs: ADR-060 banner and INDEX row, runbook, `prj-create-release`, governance rule, delete `release.ts` prepare/main and `TEMPLATE.md`, ADR-030 amendment if question 8 is yes | no | Verify green; no stale reference to the manual path |
 | 4 | `plugin-update` signal and status line (M10) | no | fixture test: newer tag prints the line, offline prints nothing |
 | 5 | Remove the consumer-facing impositions: audit rows 1 to 6 (coordinator release routing, merge-risk table, conflict-protocol bump rule, `V-PLUGIN-01` scoping, phantom permission, forge-channels note) and the new playbook check | no | the check passes; `bun scripts/verify.ts` green; no shipped playbook names this repo's release tooling |
 | 6 | Consumer release contract: optional `release` config block, launch-gate discovery and confirmation, contract-aware PR body and merge-risk hold paths | no | config-registration and launch-gate tests; a fixture repo with a declared contract and one without |
 
 Order: 1 (safe alone, the cron path keeps working), then 2 with the owner removing the secret,
-then 3 to 6 in any order; 5 before 6 because it only removes. Slice 2 here and the monorepo's
-slice 3 both wait on the monorepo's slice 0.
+then 3 to 6 in any order; 5 before 6 because it only removes.
 
 ## Open questions for the owner
 
-Questions that concern only the monorepo are in its adoption record (M1 to M4 there).
+Questions that concern only the monorepo are in its adoption record (A and B there).
 
 1. **ADR number.** Open PRs #1508 and #1514 hold decision files numbered 061 and 062 (the
    title of #1514 says 061). This ADR takes 063 so `V-ADR-05` sees no duplicate.
@@ -419,9 +438,10 @@ Questions that concern only the monorepo are in its adoption record (M1 to M4 th
    parameters above, including the `workflow_run` trigger in the monorepo (replacing its `push`
    trigger) and the freshness rule M2 (accepting an unverified delta between the green SHA and the
    tip).
-4. **Tag rejection (both).** If the monorepo's slice 0 shows a REST-created tag is rejected like
-   the git push, accept a credential beyond `GITHUB_TOKEN` (a new owner-gated secret), or split the
-   tag from the workflow-touching range?
+4. **Atomic publish (both).** Accept the atomic push of commit and tag on `HEAD` (M7), with the
+   pre-wedge two-step sequence as the fallback? If GitHub rejects even a tag on `HEAD`, the fix
+   needs a credential beyond `GITHUB_TOKEN`: accept a new owner-gated secret, or stop and
+   re-diagnose?
 5. **Policy numbers and shipped sets.** Keep 10 PRs here and 20 in the monorepo, 24 h age flush
    and 6 h cooldown in both? Is the `SHIPPED_PATHS` starting list for this repo right? Should
    voyage-only and croissant-only merges count toward the monorepo's threshold, or only trigger the
