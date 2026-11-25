@@ -10,7 +10,7 @@ afterEach(() => { for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true
 
 const run = (...args: string[]) => {
   const r = Bun.spawnSync(['bun', SCRIPT, ...args], { stderr: 'pipe', stdout: 'pipe' });
-  return { code: r.exitCode, out: r.stdout.toString().trim(), err: r.stderr.toString() };
+  return { code: r.exitCode, out: r.stdout.toString().trim(), raw: r.stdout.toString(), err: r.stderr.toString() };
 };
 
 describe('pareto-file CLI', () => {
@@ -34,6 +34,16 @@ describe('pareto-file CLI', () => {
     const f = path.join(dir, 'body.md');
     fs.writeFileSync(f, 'hello');
     expect(run('body', '--gain', '7', '--effort', '5', '--body-file', f).out).toBe('hello\n\nPareto: gain=7 effort=5 priority=42');
+  });
+  test('body adds no trailing newline and is stable when re-run on its own output', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pareto-file-'));
+    dirs.push(dir);
+    const f = path.join(dir, 'body.md');
+    fs.writeFileSync(f, 'hello');
+    const first = run('body', '--gain', '7', '--effort', '5', '--body-file', f).raw;
+    expect(first).toBe('hello\n\nPareto: gain=7 effort=5 priority=42');
+    fs.writeFileSync(f, first);
+    expect(run('body', '--gain', '7', '--effort', '5', '--body-file', f).raw).toBe(first);
   });
   test('a valueless --gain exits 2 instead of reading as 1', () => {
     const r = run('line', '--gain', '--effort', '5');

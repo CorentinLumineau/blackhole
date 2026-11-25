@@ -40,7 +40,8 @@ function main(): void {
   } else {
     const file = flags['body-file'];
     if (typeof file !== 'string' || !fs.existsSync(file)) fail(`--body-file not found: ${String(file)}`);
-    process.stdout.write(`${upsertParetoLine(fs.readFileSync(file, 'utf8'), scoring)}\n`);
+    // No added newline: the body round-trips byte-for-byte, so a re-score of an unchanged body is a no-op.
+    process.stdout.write(upsertParetoLine(fs.readFileSync(file, 'utf8'), scoring));
   }
 }
 

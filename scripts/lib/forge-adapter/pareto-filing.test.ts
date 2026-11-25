@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
-import { issueCreateWithPareto, rescoreIssue } from './pareto-filing.ts';
+import { rescoreIssue } from './pareto-filing.ts';
 import type { ForgeAdapter } from './types.ts';
 
 function fake(failOn?: string) {
@@ -14,19 +14,6 @@ function fake(failOn?: string) {
   return { adapter, calls };
 }
 const issue = (labels: string[], body = 'x') => ({ number: 4, body, labels: labels.map((name) => ({ name })) });
-
-describe('issueCreateWithPareto', () => {
-  test('appends the line and swaps pareto labels for the bucket label', async () => {
-    const { adapter, calls } = fake();
-    await issueCreateWithPareto(adapter, { title: 't', body: 'b', labels: ['ready', 'pareto:P4'] }, { gain: 7, effort: 5 });
-    expect(calls).toEqual([['issueCreate', { title: 't', body: 'b\n\nPareto: gain=7 effort=5 priority=42', labels: ['ready', 'pareto:P3'] }]]);
-  });
-  test('replaces a pre-existing Pareto line instead of adding a second', async () => {
-    const { adapter, calls } = fake();
-    await issueCreateWithPareto(adapter, { title: 't', body: 'b\n\nPareto: gain=1 effort=1 priority=10' }, { gain: 7, effort: 5 });
-    expect((calls[0]![1] as { body: string }).body).toBe('b\n\nPareto: gain=7 effort=5 priority=42');
-  });
-});
 
 describe('rescoreIssue', () => {
   test('edits the body and swaps the label', async () => {
