@@ -127,13 +127,38 @@ export const onlyAddsLines = (git: (args: string[]) => GitResult, a: string, b: 
   const mb = git(['merge-base', a, b]);
   const base = mb.stdout.trim();
   if (mb.code !== 0 || !base) return false;
-  // Absent at the base means both sides created the file: an add/add conflict, never a row addition.
+  return [a, b].every((rev) => addsLinesSince(git, base, rev, file));
+};
+
+/**
+ * True when `rev` adds lines to `file` and deletes none since `base`. Absent at the base means the
+ * file is created, an add/add conflict candidate and never a row addition. Any doubt is false.
+ */
+const addsLinesSince = (git: (args: string[]) => GitResult, base: string, rev: string, file: string): boolean => {
   if (git(['cat-file', '-e', `${base}:${file}`]).code !== 0) return false;
-  return [a, b].every((rev) => {
-    const r = git(['diff', '--numstat', '--no-renames', base, rev, '--', file]);
-    const m = /^(\d+)\t(\d+)\t/.exec(r.stdout);
-    return r.code === 0 && m !== null && Number(m[1]) > 0 && Number(m[2]) === 0;
-  });
+  const r = git(['diff', '--numstat', '--no-renames', base, rev, '--', file]);
+  const m = /^(\d+)\t(\d+)\t/.exec(r.stdout);
+  return r.code === 0 && m !== null && Number(m[1]) > 0 && Number(m[2]) === 0;
+};
+
+/**
+ * The `files` (restricted to `appendOnly` members) that the PR at `rev` only adds rows to, measured
+ * against its merge base with `baseRef`. Dispatch has no second PR to merge-tree against, so this
+ * numstat is the evidence that a parent PR touching an append-only file is a pure row addition.
+ */
+export const pureAdditionFiles = (
+  git: (args: string[]) => GitResult,
+  baseRef: string,
+  rev: string,
+  files: readonly string[],
+  appendOnly: ReadonlySet<string> = APPEND_ONLY_PATHS,
+): string[] => {
+  const candidates = files.filter((f) => appendOnly.has(f));
+  if (!candidates.length) return [];
+  const mb = git(['merge-base', baseRef, rev]);
+  const base = mb.stdout.trim();
+  if (mb.code !== 0 || !base) return [];
+  return candidates.filter((f) => addsLinesSince(git, base, rev, f));
 };
 
 /** `git rev-parse` of both PR refs must equal the snapshot heads, else the verdict would read a stale fetch. */
