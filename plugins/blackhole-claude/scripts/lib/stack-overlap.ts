@@ -15,6 +15,13 @@ export const STACK_DEPTH_CAP = 4;
  */
 export const REGENERATED_PATHS: ReadonlySet<string> = new Set([ROOT_DOC_INDEX_PATH]);
 
+/**
+ * Hand-appended index files whose conflict is not a stack overlap while both PRs only add rows
+ * (ADR-055 amendment). Unlike `REGENERATED_PATHS` no tool regenerates them, so the exemption
+ * is conditional: it holds only when neither side removed or edited a line (`onlyAddsLines`).
+ */
+export const APPEND_ONLY_PATHS: ReadonlySet<string> = new Set(['documentation/decisions/INDEX.md']);
+
 /** `files` minus the exact members of `regenerated`; the one filter every overlap site applies. */
 export const withoutRegenerated = (files: readonly string[], regenerated: ReadonlySet<string> = REGENERATED_PATHS): string[] =>
   files.filter((f) => !regenerated.has(f));
@@ -94,13 +101,15 @@ export const chainTip = (
  * when stdout opens with the result tree id: git also exits 1 for a revision it cannot resolve, and
  * an old git without `--write-tree` fails another way. Neither of those is ever read as clean.
  * A conflict is clean only when its conflicted-path list (the lines after the tree id, up to the
- * first blank line) is non-empty and every path is in `regenerated`; an empty list stays a conflict.
+ * first blank line) is non-empty and every path is in `regenerated`, or in `appendOnly` with both
+ * sides only adding lines to it; an empty list stays a conflict.
  */
 export const mergeTreeVerdict = (
   git: (args: string[]) => GitResult,
   a: string,
   b: string,
   regenerated: ReadonlySet<string> = REGENERATED_PATHS,
+  appendOnly: ReadonlySet<string> = APPEND_ONLY_PATHS,
 ): ConflictVerdict => {
   const r = git(['merge-tree', '--write-tree', '--no-messages', '--name-only', a, b]);
   if (r.code === 0) return 'clean';
@@ -108,7 +117,23 @@ export const mergeTreeVerdict = (
   if (r.code !== 1 || !/^[0-9a-f]{40,64}$/.test(lines[0].trim())) return 'unknown';
   const blank = lines.indexOf('', 1);
   const conflicted = lines.slice(1, blank === -1 ? lines.length : blank);
-  return conflicted.length > 0 && withoutRegenerated(conflicted, regenerated).length === 0 ? 'clean' : 'conflict';
+  if (conflicted.length === 0) return 'conflict';
+  const rest = withoutRegenerated(conflicted, regenerated);
+  return rest.every((f) => appendOnly.has(f) && onlyAddsLines(git, a, b, f)) ? 'clean' : 'conflict';
+};
+
+/** True when, against their merge base, both `a` and `b` add lines to `file` and delete none. Any doubt is false. */
+export const onlyAddsLines = (git: (args: string[]) => GitResult, a: string, b: string, file: string): boolean => {
+  const mb = git(['merge-base', a, b]);
+  const base = mb.stdout.trim();
+  if (mb.code !== 0 || !base) return false;
+  // Absent at the base means both sides created the file: an add/add conflict, never a row addition.
+  if (git(['cat-file', '-e', `${base}:${file}`]).code !== 0) return false;
+  return [a, b].every((rev) => {
+    const r = git(['diff', '--numstat', '--no-renames', base, rev, '--', file]);
+    const m = /^(\d+)\t(\d+)\t/.exec(r.stdout);
+    return r.code === 0 && m !== null && Number(m[1]) > 0 && Number(m[2]) === 0;
+  });
 };
 
 /** `git rev-parse` of both PR refs must equal the snapshot heads, else the verdict would read a stale fetch. */

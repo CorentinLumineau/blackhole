@@ -303,9 +303,15 @@ primary full-audit dispatch with that one addition, not a fifth independent mode
 
 ## Aggregate invocation
 
-After `reviewer` completes, the orchestrator runs:
+After `reviewer` completes, the orchestrator first builds the audit context, then aggregates:
 
 ```bash
+bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/audit-context.ts \
+  --repo-dir <PR worktree> --base-ref <PR base branch> --head <PR head ref> \
+  --issue-ref <N> --dispatch <full|recheck> \
+  (--plan-file <PLAN_ABSOLUTE_PATH> | --no-plan-reason <why>) \
+  --config-file <.blackhole/config.json> --queue-file <.blackhole/queue.json> \
+  --out <audit-context.json>
 bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/review-aggregate.ts \
   --reviewer-file <path> \
   --issue-ref <N> \
@@ -313,10 +319,23 @@ bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root un
   [--prior-file <ledger-rows.json>] \
   [--verification-file <verification-entries.json>] \
   --review-iteration <queue review_iteration> \
+  --audit-context-file <audit-context.json> \
   --base-ref <PR base branch> \
   --repo-dir <PR worktree> \
   --head <PR head ref>
 ```
+
+`--audit-context-file` is required (V-AUDIT-01): without it the aggregate exits non-zero, because a
+reviewer that skipped an on-demand audit module whose trigger holds would otherwise pass unseen.
+`audit-context.ts` takes every input as required (plan, config, queue, issue) and exits non-zero
+naming a missing or unreadable file or an issue absent from the queue; a no-plan track declares the
+absence with `--no-plan-reason` (refused when `plans/issue-<N>.md` or `-design.md` exists next to the queue file; the reason is echoed in the aggregate output as `no_plan_reason`; an empty diff, base equal to head, also exits non-zero). The route is the latest ledger `routing_decisions` row, else the queue entry (`--ledger-file`, default `findings-ledger.json` next to the queue). For a recheck dispatch pass the last reviewed head as
+`audit-context.ts --base-ref`, so the context covers the fix commits only. The verification spawn
+(§ Independent security verification) is not aggregated on its own, so it has no dispatch kind.
+`--direct-review` is not an opt-out: it is accepted only alongside `--audit-context-file` and only
+when that context shows a docs-only diff (module 08's plan-first predicate holds and every path is in the docs-only module's doc-path set) with no
+other on-demand module trigger holding; otherwise the aggregate exits 1 and the orchestrator spawns
+a reviewer (§ Docs-only PRs).
 
 `--base-ref` (ADR-134) runs the slop citation check on every `V-UX-09`/`V-UX-10` `BLOCK`, using
 the vendored `scripts/lib/slop-citation/slop-citation-check.mjs` against the PR checkout named by
@@ -345,7 +364,7 @@ Output schema: `worker-schemas.md` § Review aggregate.
 
 ## Docs-only PRs
 
-Orchestrator may perform direct review for docs-only PRs, but must still run `review-aggregate.ts` on findings before ledger append.
+Orchestrator may perform direct review for docs-only PRs, but must still run `review-aggregate.ts` (with `--direct-review`, § Aggregate invocation) on findings before ledger append.
 
 When the orchestrator performs this direct review (bypassing a `reviewer` spawn), it must apply `reviewer.md` § Docs-Only Execution Mode Compliance's checks itself before running `review-aggregate.ts` — severity `BLOCK` on any check failure. See `reviewer.md` § Docs-Only Execution Mode Compliance for the check definitions; not restated here.
 
