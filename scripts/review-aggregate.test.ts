@@ -1204,3 +1204,28 @@ describe('review-aggregate CLI slop check on a real repo (ADR-134)', () => {
     expect(out.findings[0].summary).toContain('[unverified slop citation: missing-citation]');
   });
 });
+
+describe('review-aggregate --audit-context-file (on-demand audit modules)', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ra-audit-'));
+  const write = (name: string, v: unknown) => {
+    const p = path.join(dir, name);
+    fs.writeFileSync(p, JSON.stringify(v));
+    return p;
+  };
+  const ctx = write('ctx.json', { changedFiles: ['a.ts'], planText: '## Threat Model\nx' });
+  const args = (reviewer: string, extra: string[] = []) => ['--reviewer-file', reviewer, '--issue-ref', '1', ...extra];
+
+  test('exits 1 naming the module when loaded_modules omits a module whose trigger holds', async () => {
+    const reviewer = write('r1.json', { status: 'complete', findings: [], loaded_modules: [] });
+    const r = await runReviewAggregateCli(args(reviewer, ['--audit-context-file', ctx]));
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toContain('16-threat-model-audit.md');
+  });
+
+  test('aggregates normally once the triggered module is listed', async () => {
+    const reviewer = write('r2.json', { status: 'complete', findings: [], loaded_modules: ['16-threat-model-audit.md'] });
+    const r = await runReviewAggregateCli(args(reviewer, ['--audit-context-file', ctx]));
+    expect(r.exitCode).toBe(0);
+    expect(JSON.parse(r.stdout).status).toBe('approved');
+  });
+});

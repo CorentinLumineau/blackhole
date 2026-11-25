@@ -7,6 +7,7 @@ import {
   ONDEMAND_AUDIT_MODULE_DIR,
   documentedCodes,
   findOnDemandStubDrift,
+  findTriggerTableDrift,
   findAuditModuleCountDrift,
   findAuditRegistryDrift,
   loadAuditModules,
@@ -360,5 +361,23 @@ describe('live on-demand split (issue #1387)', () => {
 
   test('the fail-open sentence appears exactly once in the reviewer source', () => {
     expect(reviewerSrc().split('When unsure whether a trigger holds, Read the module.').length - 1).toBe(1);
+  });
+
+  test('every on-demand module has a predicate in the trigger table and vice versa (Leg E)', () => {
+    expect(findTriggerTableDrift(lazy)).toEqual([]);
+  });
+});
+
+describe('findTriggerTableDrift', () => {
+  test('red: a module with no predicate and a predicate with no module are both reported', () => {
+    const errors = findTriggerTableDrift([mod('a.md', []), mod('b.md', [])], { 'b.md': () => true, 'ghost.md': () => true });
+    expect(errors).toEqual([
+      'a.md: no predicate in AUDIT_MODULE_TRIGGERS',
+      'ghost.md: AUDIT_MODULE_TRIGGERS names a module absent from src/references/audit-modules',
+    ]);
+  });
+
+  test('green: matching sets report nothing', () => {
+    expect(findTriggerTableDrift([mod('a.md', [])], { 'a.md': () => true })).toEqual([]);
   });
 });

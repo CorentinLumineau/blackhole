@@ -275,6 +275,7 @@ below).
 | `recheck` | `{finding_id, verdict, evidence}[]` | required only when the reviewer was dispatched in recheck mode (`review-core.md` § Recheck mode); absent/omitted for a normal full-audit review |
 | `verification` | `{finding_id, verdict, evidence}[]` | required only when the reviewer was dispatched in independent verification mode (a `finding_id` is assigned for every non-pre-existing BLOCK) (`review-core.md` § Independent security verification, `reviewer.md` § Independent Security Verification Mode); absent/omitted for every other dispatch |
 | `verification_legs` | `{direction, mode, evidence}[]` | optional — ADR-036 (issue #815); a clean/negative investigation leg that produced no `Finding` object |
+| `loaded_modules` | `string[]` | optional — file names of the on-demand audit modules the reviewer Read (`reviewer.md` § On-demand audit modules); `review-aggregate.ts --audit-context-file` fails a return that omits a module whose trigger holds for the diff (`scripts/lib/audit-module-triggers.ts`) |
 
 The reviewer return declares no PR-number field — the PR under review is the dispatch's own
 input, not something the reviewer reports back. Where a worker contract does carry one, the

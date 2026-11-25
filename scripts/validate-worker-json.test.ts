@@ -588,6 +588,16 @@ describe('validateWorker implementer companion_repairs[] (issue #453)', () => {
   });
 });
 
+describe('validateWorker reviewer loaded_modules', () => {
+  const base = { status: 'complete', findings: [] };
+  test('accepts known on-demand module file names', () =>
+    expect(validateWorker('reviewer', { ...base, loaded_modules: ['16-threat-model-audit.md'] })).toEqual([]));
+  test('rejects an unknown module name', () =>
+    expect(validateWorker('reviewer', { ...base, loaded_modules: ['nope.md'] })).toEqual(['loaded_modules: unknown audit module "nope.md"']));
+  test('rejects a non-array value', () =>
+    expect(validateWorker('reviewer', { ...base, loaded_modules: 'x' })).toEqual(['loaded_modules: expected string[]']));
+});
+
 describe('validateWorker reviewer', () => {
   test('valid empty findings', () =>
     expectValid('reviewer', 'reviewer-complete-empty.json'));

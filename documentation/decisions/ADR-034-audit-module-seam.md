@@ -165,6 +165,18 @@ hand-arithmetic — see the implementation plan's T5 for the current baseline).
   - **Checks.** `V-AUDIT-01` Legs A to C scan both directories and count each against its own
     constant (`REVIEWER_AUDIT_MODULE_COUNT`, `REVIEWER_ONDEMAND_AUDIT_MODULE_COUNT`); Leg D fails a
     module with no stub, a stub without its `Load when` line, its `Read` path or a V-code the module
-    claims. The generated-stub alternative stays deferred until a second consumer exists.
-  - **Measured.** Compiled `agents/reviewer.md` 22,247 to 12,712 estimated tokens
-    (`bun run scripts/worker-context-size.ts`).
+    claims. Leg E fails a module with no predicate in `AUDIT_MODULE_TRIGGERS`
+    (`scripts/lib/audit-module-triggers.ts`) and a predicate with no module. The generated-stub
+    alternative stays deferred until a second consumer exists.
+  - **Mechanical load check (V-PARETO-02).** Twelve of the 15 modules enforce `BLOCK` codes, so
+    "keep every BLOCK module inlined" would have undone the split. Instead the reviewer return
+    carries `loaded_modules[]` (module file names; `validateReviewer` rejects unknown names), and
+    `review-aggregate.ts --audit-context-file <json>` re-evaluates each module's trigger from facts
+    the orchestrator holds (diff paths, plan text, config, route, queue, dispatch kind) and exits 1
+    naming any module whose trigger holds but is absent from `loaded_modules` (an absent list fails
+    every triggered module). The reviewer-facing `Load when` stubs stay the wording; the predicate
+    table is the script-side copy and Leg E keeps the two directories aligned. A stub and its
+    predicate can still disagree in meaning; that residual is a review concern, not a gate.
+  - **Measured.** Compiled `agents/reviewer.md` 22,247 to 12,866 estimated tokens, about 9,381
+    saved per reviewer spawn (`bun run scripts/worker-context-size.ts`). The saving remains
+    because a normal backend diff in a repo without `docs_governance` triggers none of the 15.

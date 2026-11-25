@@ -5,6 +5,7 @@ import { expandVcodeTableKey, parseVcodeTableRows } from '../lib/check-common.ts
 import { parseFrontmatterFields, parseMdFrontmatter } from '../lib/build/content.ts';
 import { REVIEWER_AUDIT_MODULE_COUNT, REVIEWER_ONDEMAND_AUDIT_MODULE_COUNT } from '../lib/build/facts.ts';
 import { markdownHeadings, sectionEnd } from '../lib/markdown-headings.ts';
+import { AUDIT_MODULE_TRIGGERS } from '../lib/audit-module-triggers.ts';
 
 // ADR-034 — audit-modules.check.ts: V-AUDIT-01 keeps the reviewer's audit-module registry and
 // the `blackhole-vcodes.md` table honest about each other, now that `src/agents/reviewer.md` is
@@ -27,6 +28,10 @@ import { markdownHeadings, sectionEnd } from '../lib/markdown-headings.ts';
 //   hand-written stub per module instead. Legs A-C scan both directories, so an on-demand module
 //   still owns its codes; Leg D proves each stub names the module's codes, a trigger and the Read
 //   path, because a stub that loses any of them silently turns that audit off.
+//   Leg E (trigger table, issue #1387): `scripts/lib/audit-module-triggers.ts` holds one script
+//   predicate per on-demand module, which `review-aggregate.ts --audit-context-file` compares
+//   against the reviewer's `loaded_modules[]`. Leg E proves the table and the directory name the
+//   same files, so a module added without a predicate cannot be skipped unnoticed.
 
 export const AUDIT_MODULE_DIR = 'src/references/audits';
 export const ONDEMAND_AUDIT_MODULE_DIR = 'src/references/audit-modules';
@@ -140,6 +145,14 @@ export const findOnDemandStubDrift = (reviewerSrc: string, modules: AuditModule[
   return errors;
 };
 
+export const findTriggerTableDrift = (modules: AuditModule[], triggers: Record<string, unknown> = AUDIT_MODULE_TRIGGERS): string[] => {
+  const files = new Set(modules.map((m) => m.file));
+  return [
+    ...modules.filter((m) => !(m.file in triggers)).map((m) => `${m.file}: no predicate in AUDIT_MODULE_TRIGGERS`),
+    ...Object.keys(triggers).filter((f) => !files.has(f)).map((f) => `${f}: AUDIT_MODULE_TRIGGERS names a module absent from ${ONDEMAND_AUDIT_MODULE_DIR}`),
+  ];
+};
+
 const checkAuditModules = (): CheckResult => {
   const inline = loadAuditModules(path.join(root, AUDIT_MODULE_DIR));
   const onDemand = loadAuditModules(path.join(root, ONDEMAND_AUDIT_MODULE_DIR));
@@ -149,6 +162,7 @@ const checkAuditModules = (): CheckResult => {
     ...findAuditModuleCountDrift(REVIEWER_AUDIT_MODULE_COUNT, inline.length),
     ...findAuditModuleCountDrift(REVIEWER_ONDEMAND_AUDIT_MODULE_COUNT, onDemand.length, 'REVIEWER_ONDEMAND_AUDIT_MODULE_COUNT', ONDEMAND_AUDIT_MODULE_DIR),
     ...findOnDemandStubDrift(fs.readFileSync(path.join(root, 'src/agents/reviewer.md'), 'utf-8'), onDemand),
+    ...findTriggerTableDrift(onDemand),
   ];
   return errors.length ? { id: 'V-AUDIT-01', ok: false, detail: errors.join('; ') } : { id: 'V-AUDIT-01', ok: true };
 };

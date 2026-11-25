@@ -448,7 +448,7 @@ Perform a systematic check on the PR diff and return findings mapped to V-codes:
 ## On-demand audit modules
 
 These audits are not inlined: each module's own first clause is a mechanical gate, so it is a
-file you Read only when its trigger holds. When unsure whether a trigger holds, Read the module. A module whose trigger holds MUST be read before the final JSON; skipping it is a missed audit.
+file you Read only when its trigger holds. When unsure whether a trigger holds, Read the module. A module whose trigger holds MUST be read before the final JSON; skipping it is a missed audit. List every module you Read in the return's `loaded_modules` (its file name, e.g. `16-threat-model-audit.md`): the orchestrator re-evaluates each trigger by script and rejects a return that omits one.
 Each module keeps the `###` heading shown here, so `§ <Section>` citations resolve to its stub.
 
 ### Docs-Only Execution Mode Compliance
@@ -567,7 +567,8 @@ Return JSON matching `worker-schemas.md` reviewer contract:
   ],
   "verification_legs": [
     { "direction": "Authorization bypass via role param tampering", "mode": "reasoned", "evidence": "Read role-check middleware; no probe run — with-test-lock was contended" }
-  ]
+  ],
+  "loaded_modules": ["16-threat-model-audit.md"]
 }
 ```
 
