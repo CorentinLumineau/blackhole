@@ -193,7 +193,7 @@ LLM aggregation hop.
    every `reviewer` dispatch does, with `findings: []` in the ordinary case (it is not
    running a full audit) and a `verification[]` array — one entry per stamped finding it
    was given — `{finding_id, verdict: "confirmed" | "refuted", evidence}`
-   (`worker-schemas.md` § Reviewer). This is a **sibling** field to `recheck[]`, not a
+   (`reviewer-schemas.md` § Reviewer). This is a **sibling** field to `recheck[]`, not a
    repurposing of it — `recheck[]` already has a fixed meaning tied to fix-verification
    (§ Recheck mode above) and stays untouched by this mechanism. In the rare case the
    verification spawn's own narrow scan surfaces a genuinely new finding of its own
@@ -256,7 +256,7 @@ already-named prior findings, not a fresh implementation.
 4. **Composition note**: any new regression `findings` entry produced during a recheck still
    passes through `## Confidence-based filtering & consolidation` (above) before being reported —
    recheck mode does not create a confidence-gate bypass.
-5. **Output**: the reviewer returns the `recheck` array (`worker-schemas.md` § Reviewer) instead
+5. **Output**: the reviewer returns the `recheck` array (`reviewer-schemas.md` § Reviewer) instead
    of a full re-audit of the whole diff; any newly discovered regression in the fix commits is
    still reported via the existing `findings` array with a normal V-code/severity, so the
    existing severity → action mapping and LGTM gate apply unchanged.
@@ -286,7 +286,7 @@ already-named prior findings, not a fresh implementation.
 ## Reviewer prompt requirements
 
 Every `reviewer` delegation MUST include a dispatch mode (`full` / `security-mode` /
-`recheck` / `verification`) and output format per `worker-schemas.md` reviewer contract. The
+`recheck` / `verification`) and output format per `reviewer-schemas.md` reviewer contract. The
 remaining inputs are dispatch-mode-dependent, not universal — `reviewer.md` § Recheck-Mode Compliance (Recheck) and
 § Independent Security Verification Mode (Verification) narrow the checklist and diff scope by design; this table is their
 citation target, not a restatement each mode must independently reconcile against.
