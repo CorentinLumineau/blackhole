@@ -118,7 +118,7 @@ Each module keeps the `###` heading shown here, so `§ <Section>` citations reso
 
 ## Output Format
 
-Return JSON matching `worker-schemas.md` reviewer contract:
+Return JSON matching `reviewer-schemas.md` reviewer contract:
 
 ```json
 {

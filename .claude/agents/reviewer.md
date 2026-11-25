@@ -264,7 +264,7 @@ Perform a systematic check on the PR diff and return findings mapped to V-codes:
     cited, not restated, `V-DRY`).
 *   **Cross-check**: for each such heading found in the PR body, confirm the worker JSON's
     `decision_records[]` array carries a row with the matching `kind` (`root-cause` \|
-    `refactor` \| `reuse` \| `improvement` respectively, per `worker-schemas.md` §
+    `refactor` \| `reuse` \| `improvement` respectively, per `implementer-schemas.md` §
     `decision_records[]`).
 *   **Root-cause escalation (`V-FIX-01`, `BLOCK`)**: when the plan frontmatter carries
     `task_type: bugfix`, the Cross-check above applies at `BLOCK` severity for the `root-cause`
@@ -388,7 +388,7 @@ below are the procedure only.
     primary reviewer's severity or reasoning is correct merely because it was reported;
     this mode exists for a second, unprejudiced look.
 *   **Verdict per finding**: for each stamped finding, emit one `verification[]` entry
-    (`worker-schemas.md` § Reviewer) — `finding_id` (echoed verbatim from the stamped
+    (`reviewer-schemas.md` § Reviewer) — `finding_id` (echoed verbatim from the stamped
     input), `verdict` (`confirmed` if the exploit path is reproducible or otherwise
     substantiated, `refuted` if it is not demonstrable), and `evidence` (a concrete
     pointer — what was checked and why it did or did not hold, not a restatement of the
@@ -465,7 +465,7 @@ below are the procedure only.
 
 ### Executed vs. Reasoned Verification Disclosure (ADR-036, issue #815)
 
-*   Set `verification_mode` (`executed`/`reasoned`) on findings; emit `verification_legs[]` for clean security-mode legs (`worker-schemas.md` § Reviewer) — never license to bypass `with-test-lock`. A `reasoned` leg surfaces, never blocks, at merge (`V-SEC-12`).
+*   Set `verification_mode` (`executed`/`reasoned`) on findings; emit `verification_legs[]` for clean security-mode legs (`reviewer-schemas.md` § Reviewer) — never license to bypass `with-test-lock`. A `reasoned` leg surfaces, never blocks, at merge (`V-SEC-12`).
 
 ### Runtime Proof Audit (`V-PROOF-01`)
 *   **Entry condition**: the PR diff is a user-visible change per
@@ -545,7 +545,7 @@ Each module keeps the `###` heading shown here, so `§ <Section>` citations reso
 
 ## Output Format
 
-Return JSON matching `worker-schemas.md` reviewer contract:
+Return JSON matching `reviewer-schemas.md` reviewer contract:
 
 ```json
 {

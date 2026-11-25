@@ -62,7 +62,7 @@ describe('sizeReport', () => {
     for (const f of MANDATORY_READS) expect(report.reads[f]).toEqual({ bytes: 8, tokens: 2 });
   });
 
-  test('live tree: all eight agents and the four mandatory reads are measured', () => {
+  test('live tree: all eight agents and the five mandatory reads are measured', () => {
     const report = sizeReport(root);
     expect(Object.keys(report.agents).sort()).toEqual([
       'coordinator', 'hunter', 'implementer', 'investigator', 'orchestrator', 'planner', 'reviewer', 'router',
@@ -72,6 +72,32 @@ describe('sizeReport', () => {
 
   test('live tree: the reviewer definition stays at or below the ceiling', () => {
     expect(sizeReport(root).agents.reviewer.tokens).toBeLessThanOrEqual(REVIEWER_TOKEN_CEILING);
+  });
+});
+
+describe('per-role schema split', () => {
+  const read = (rel: string): string => fs.readFileSync(path.join(root, rel), 'utf8');
+  const headings = (text: string): string[] => text.split('\n').filter((l) => /^#{1,3} /.test(l));
+
+  test('the reviewer contract lives in reviewer-schemas.md and no longer in worker-schemas.md', () => {
+    expect(headings(read('src/references/reviewer-schemas.md'))).toContain('## Reviewer (`reviewer`)');
+    expect(headings(read('src/references/worker-schemas.md'))).not.toContain('## Reviewer (`reviewer`)');
+  });
+
+  test('a reviewer reads under half of the bytes the pre-split worker-schemas.md cost it', () => {
+    const PRE_SPLIT_BYTES = 33_993;
+    const reviewerBytes = fs.statSync(path.join(root, 'src/references/reviewer-schemas.md')).size;
+    expect(reviewerBytes).toBeLessThan(PRE_SPLIT_BYTES / 2);
+  });
+
+  test('every reviewer-contract citation names the file that holds the section', () => {
+    const files = ['src/agents', 'src/references', 'scripts/lib'].flatMap((dir) =>
+      (fs.readdirSync(path.join(root, dir), { recursive: true }) as string[])
+        .filter((f) => /\.(md|ts)$/.test(f))
+        .map((f) => path.join(dir, f)),
+    );
+    const stale = files.filter((f) => /worker-schemas\.md`? (§ Reviewer|reviewer contract)/.test(read(f)));
+    expect(stale).toEqual([]);
   });
 });
 

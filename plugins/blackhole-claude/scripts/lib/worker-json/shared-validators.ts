@@ -190,7 +190,7 @@ export function validateVisualEvidenceArray(value: unknown, path: string): strin
 
 // ADR-036 (issue #815) — a clean/negative investigation leg (one that produces no `Finding`
 // object) gets a structural home to disclose its verification basis into, sibling to
-// `recheck[]`/`verification[]` (`worker-schemas.md` § Reviewer). Deliberately not named
+// `recheck[]`/`verification[]` (`reviewer-schemas.md` § Reviewer). Deliberately not named
 // `verification` — that name is already claimed twice in this codebase for different meanings
 // (the reviewer's own `verification[]` recheck array and `hunter`'s per-finding
 // `CONFIRMED`/`STALE` field).

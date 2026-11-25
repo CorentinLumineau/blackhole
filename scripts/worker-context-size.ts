@@ -18,6 +18,7 @@ export const MANDATORY_READS = [
   'src/references/worker-schemas.md',
   'src/references/review-core.md',
   'src/references/implementer-schemas.md',
+  'src/references/reviewer-schemas.md',
 ];
 
 type Size = { bytes: number; tokens: number };

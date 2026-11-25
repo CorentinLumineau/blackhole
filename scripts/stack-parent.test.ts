@@ -98,3 +98,68 @@ describe('stack-parent.ts --plan-touch-paths (#1458)', () => {
     expect(runPlan(state, '1376')).toBeNull();
   });
 });
+
+// The dispatch glue (targetBranch + pureAdditions) is exercised against a real temp git repo: a
+// parent PR ref under refs/blackhole/pr/ and the target branch under refs/remotes/origin/.
+describe('stack-parent.ts --issue pure-addition glue (#1555)', () => {
+  const INDEX = 'documentation/decisions/INDEX.md';
+  const git = (repo: string, ...args: string[]): string => {
+    const r = Bun.spawnSync(['git', '-C', repo, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args]);
+    expect(r.exitCode).toBe(0);
+    return r.stdout.toString().trim();
+  };
+
+  /** Repo whose `origin/<target>` holds a 2-row INDEX; PR 1385's ref carries `indexAtPr` as that file. */
+  const setupRepo = (indexAtPr: string, target = 'main'): string => {
+    const repo = path.join(tmp, 'repo');
+    fs.mkdirSync(path.join(repo, 'documentation', 'decisions'), { recursive: true });
+    git(repo, 'init', '-q');
+    const write = (content: string): void => fs.writeFileSync(path.join(repo, INDEX), content);
+    write('| ADR-1 |\n| ADR-2 |\n');
+    git(repo, 'add', '.');
+    git(repo, 'commit', '-q', '-m', 'base');
+    git(repo, 'update-ref', `refs/remotes/origin/${target}`, 'HEAD');
+    write(indexAtPr);
+    git(repo, 'commit', '-q', '-am', 'parent pr');
+    git(repo, 'update-ref', 'refs/blackhole/pr/1385', 'HEAD');
+    return repo;
+  };
+
+  const dispatchWith = (repo: string, config?: unknown): { parent: number } | null => {
+    const state = path.join(tmp, '.blackhole');
+    fs.mkdirSync(state, { recursive: true });
+    // Issue 1376 declares the index itself, so the only thing keeping it off 1381 is the pure-addition exemption.
+    fs.writeFileSync(
+      path.join(state, 'queue.json'),
+      JSON.stringify({
+        issues: {
+          '1381': { status: 'in-flight', pr: 1385, touch_paths: [INDEX] },
+          '1376': { status: 'ready', pr: null, touch_paths: [INDEX] },
+        },
+      }),
+    );
+    if (config !== undefined) fs.writeFileSync(path.join(state, 'config.json'), JSON.stringify(config));
+    const r = Bun.spawnSync(
+      ['bun', 'run', script, '--queue', path.join(state, 'queue.json'), '--issue', '1376', '--repo-root', repo, '--parent-files', JSON.stringify({ '1381': [INDEX] })],
+      { cwd: tmp },
+    );
+    expect(r.exitCode).toBe(0);
+    return JSON.parse(r.stdout.toString());
+  };
+
+  test('a parent PR that only appends rows to the decisions index does not parent the issue', () => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'stack-parent-glue-'));
+    expect(dispatchWith(setupRepo('| ADR-1 |\n| ADR-2 |\n| ADR-3 |\n'))).toBeNull();
+  });
+  test('a parent PR that edits an existing row still parents the issue', () => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'stack-parent-glue-'));
+    expect((dispatchWith(setupRepo('| ADR-1 |\n| ADR-2 edited |\n')) as { parent: number }).parent).toBe(1381);
+  });
+  test('target_branch from config.json selects the base the PR is measured against', () => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'stack-parent-glue-'));
+    // origin/develop exists, origin/main does not: with the default base the numstat finds no merge base and the file stays an overlap.
+    const repo = setupRepo('| ADR-1 |\n| ADR-2 |\n| ADR-3 |\n', 'develop');
+    expect((dispatchWith(repo) as { parent: number }).parent).toBe(1381);
+    expect(dispatchWith(repo, { target_branch: 'develop' })).toBeNull();
+  });
+});

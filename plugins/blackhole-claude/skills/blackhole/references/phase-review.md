@@ -1,6 +1,6 @@
 # Phase 4 — Review
 
-Binding: [review-core.md](review-core.md), [worker-schemas.md](worker-schemas.md).
+Binding: [review-core.md](review-core.md), [reviewer-schemas.md](reviewer-schemas.md), [worker-schemas.md](worker-schemas.md).
 
 ## Checklist
 
@@ -42,7 +42,7 @@ Binding: [review-core.md](review-core.md), [worker-schemas.md](worker-schemas.md
 - PR number + diff summary
 - Dispatch mode (`full` / `security-mode` / `recheck` / `verification`) plus that mode's inputs — V-code checklist scope, PR diff scope, Touch-Paths baseline, findings input, attack-signature scan — per `review-core.md` § Reviewer prompt requirements (per-mode table; not restated here)
 - Model: use the designated worker agent (`reviewer`)
-- Output format: `worker-schemas.md` reviewer contract
+- Output format: `reviewer-schemas.md` reviewer contract
 - Route check: when the recheck-mode trigger is satisfied, see `review-core.md` § Recheck mode for the exact trigger conditions and scoped-audit mechanism (not restated here)
 
 ## Audit Checklist Extensions
