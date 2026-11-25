@@ -126,7 +126,8 @@ describe('stack-parent.ts --issue pure-addition glue (#1555)', () => {
   };
 
   const dispatchWith = (repo: string, config?: unknown): { parent: number } | null => {
-    const state = setup();
+    const state = path.join(tmp, '.blackhole');
+    fs.mkdirSync(state, { recursive: true });
     // Issue 1376 declares the index itself, so the only thing keeping it off 1381 is the pure-addition exemption.
     fs.writeFileSync(
       path.join(state, 'queue.json'),
