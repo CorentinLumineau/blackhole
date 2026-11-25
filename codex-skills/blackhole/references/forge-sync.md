@@ -31,7 +31,7 @@ below as code: it reads the open issues (and the closed ones when a live queue e
 from the open list) and the open and merged PRs through the configured forge's adapter, then
 writes `queue.json` through the state write guard (`blackhole-state.md` § Write protocol). It:
 
-- ingests in-scope open issues and appends them to `user_queue_order`; refreshes title, labels,
+- ingests in-scope open issues (never touching `user_queue_order`, which holds only owner pins); refreshes title, labels,
   milestone, size and `depends_on` (body lines join the queue's own edges, never replace them); parses the body's `Pareto:` line into `pareto` (dropped when the line is gone or invalid);
 - blocks a `ready` entry held elsewhere (an `agent:*` / `in-progress:*` label naming a lane other
   than the own one, or an open PR closing it from another lane) with `another lane: <label|branch>`
@@ -130,8 +130,9 @@ required labels). Do not create new queue entries for out-of-scope issues.
 }
 ```
 
-Append issue number to `user_queue_order` if missing (end of list, or sort by
-number — match existing queue convention).
+Never touch `user_queue_order`: it holds only owner pins, and an ingested issue is ordered by its
+stored Pareto priority. Legacy ingest-appended entries are removed by `scripts/queue-migrate.ts`
+(`queue-dag.md` § Legacy values).
 
 Track `new_issue_numbers[]` for the sync summary line.
 

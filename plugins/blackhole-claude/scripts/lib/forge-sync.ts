@@ -224,8 +224,8 @@ export function syncQueue(input: SyncInput): SyncResult {
     issues[key] = next;
   }
 
+  // Owner pins only: ingest never writes `user_queue_order` (`queue-dag.md` § Per-issue fields).
   const order = [...(input.queue?.user_queue_order ?? [])];
-  for (const n of added) if (!order.includes(n)) order.push(n);
   return {
     queue: { ...(input.queue ?? {}), refreshed_at: input.now, campaign_started_at: input.queue?.campaign_started_at ?? input.now, user_queue_order: order, issues },
     added,
