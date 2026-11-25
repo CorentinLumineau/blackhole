@@ -68,9 +68,11 @@ by `compileFolder`, and independently checked absent from all 9 `src/references/
 compiled reference trees by `V-INCLUDE-01`
 (`scripts/checks/build-input-dirs.check.ts`) — while the composed shell still lands as exactly
 one file on each of the 6 agent output trees, at zero extra runtime context-fetch cost to the
-agent. `src/agents/implementer.md` is the first production consumer: its 16 gates live one per
-file under `src/references/gates/`, declared as `IMPLEMENTER_GATE_MODULE_COUNT` and checked
-against a directory scan by `V-GROUND-01`. See
+agent. `src/agents/implementer.md` is the first production consumer: its 11 unconditional gates live
+one per file under `src/references/gates/`, declared as `IMPLEMENTER_GATE_MODULE_COUNT` and
+checked against a directory scan by `V-GROUND-01`; its 6 conditional gates live under
+`src/references/gate-modules/` and are read on demand through a stub in the shell
+(`IMPLEMENTER_ONDEMAND_GATE_MODULE_COUNT`, stub drift by `V-GATE-01`). See
 [`documentation/decisions/ADR-034-audit-module-seam.md`](decisions/ADR-034-audit-module-seam.md)
 for the full decision record and its rejected alternatives.
 
