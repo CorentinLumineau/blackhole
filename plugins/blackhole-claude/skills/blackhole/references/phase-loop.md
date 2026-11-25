@@ -274,7 +274,7 @@ For issue N, PR P:
    building the ready set in step 2. Hunted issues never displace human-authored ones beyond
    their own computed Priority rank in step 2's descending sort — this step only decides
    *whether a wave fires this turn*, not queue ordering.
-1. Run forge sync
+1. Run forge sync, then score what it ingested unscored: `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/pareto-score.ts detect`; when it lists issues, score them and run `apply` per `forge-sync.md` § Score on ingest, so the batch below ranks them by their own priority
 2. Build ready set per `queue-dag.md` and take the next batch from `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/pareto-order.ts` (waves, stored priority, effort, oldest).
 3. For each selected issue, set `in-flight`, spawn worker at correct phase:
    - New issues start at **handle** or **plan** if handle complete
