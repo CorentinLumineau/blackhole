@@ -32,6 +32,19 @@ export type StatusDatasets = Record<StatusDatasetId, StatusDataRow[]>;
 
 const SCOPE_ORDER = Object.keys(SCOPE_LABELS) as ScopeKind[];
 
+/** Flat overview columns for the recorded worker-context report; none when nothing is recorded. */
+function workerContextColumns(w: StatusReport['worker_context']): StatusDataRow {
+  if (!w) return {};
+  return {
+    worker_median_first_turn_tokens: w.median_first_turn_tokens,
+    worker_spawns_per_merged_pr: w.spawns_per_merged_pr,
+    worker_respawns: w.respawns.total,
+    worker_respawns_warm: w.respawns.warm,
+    worker_respawns_cold: w.respawns.cold,
+    worker_context_recorded_at: w.recorded_at,
+  };
+}
+
 function overviewRow(r: StatusReport): StatusDataRow {
   return {
     title: campaignName(r),
@@ -43,6 +56,7 @@ function overviewRow(r: StatusReport): StatusDataRow {
     generated_at: r.generated_at,
     forge_checked: r.forge_checked,
     ...r.stage_counts,
+    ...workerContextColumns(r.worker_context),
   };
 }
 

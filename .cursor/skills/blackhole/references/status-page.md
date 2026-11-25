@@ -89,6 +89,10 @@ the plugin version).
 
 ## Refresh procedure
 
+0. Where Claude Code subagent transcripts are on disk, record the runtime worker cost first:
+   `bun run scripts/worker-context-report.ts --transcripts <the project's ~/.claude/projects directory> --record`
+   (median first-turn context, spawns per merged PR, fix-round respawns; the report reads
+   `worker-context.json`, which the status view reads). Skip it when no transcript directory is known: the view then shows no worker figures.
 1. Render the view for this harness. Claude Code publishes a live **Data dashboard** fed by
    `bun run scripts/campaign-status.ts --data .blackhole/.tmp/status-data` (one `<id>.json` row file per dataset,
    derived from the same `StatusReport` as `--json`, so the counts never diverge); every other
