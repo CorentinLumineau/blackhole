@@ -78,7 +78,7 @@ export const IMPLEMENTER_GATE_MODULE_COUNT = 16;
  * reviewer's growth unit is "one more module", not "N more lines in one section", so the fact
  * that has to be consciously bumped when an audit is added is a module count, not a LOC ceiling.
  */
-export const REVIEWER_AUDIT_MODULE_COUNT = 18;
+export const REVIEWER_AUDIT_MODULE_COUNT = 19;
 
 /**
  * Number of reviewer audit modules under `src/references/audit-modules/` (V-AUDIT-01 Legs C/D,
@@ -87,7 +87,7 @@ export const REVIEWER_AUDIT_MODULE_COUNT = 18;
  * trees like `hunt/`, not inlined, and `reviewer.md` carries one stub each. Independent scan side:
  * `scripts/checks/audit-modules.check.ts` listing the directory.
  */
-export const REVIEWER_ONDEMAND_AUDIT_MODULE_COUNT = 15;
+export const REVIEWER_ONDEMAND_AUDIT_MODULE_COUNT = 14;
 
 // § facts — ADR revisit watch items (issue #710). A declared-fact / independent-scan pair, the
 // same shape `VCODE_TABLE_ROW_COUNT`/`CONTENT_GATE_BUDGETS`/`DOC_HEALTH_THRESHOLDS` already use:

@@ -94,10 +94,6 @@ Each module keeps the `###` heading shown here, so `§ <Section>` citations reso
 *   **Load when**: `.blackhole/config.json` has a non-empty `display_targets` array and `route.ui` is `true` (or the diff is frontend-touching by `scripts/detect-frontend.sh`).
 *   **Read**: `{{AGENT_DIR}}/skills/blackhole/references/audit-modules/22-visual-evidence-audit.md` (codes: `V-VIS-01`, `V-VIS-02`)
 
-### Independent Security Verification Mode (`V-SEC-07`, issue #439)
-*   **Load when**: your prompt is an independent security verification dispatch: a stamped list of `V-SEC-*` findings from a different reviewer, with an instruction to disprove each.
-*   **Read**: `{{AGENT_DIR}}/skills/blackhole/references/audit-modules/24-independent-security-verification.md`
-
 ### Staged Artifact Carry Audit (`V-AUTO-02`)
 *   **Load when**: `.blackhole/config.json` resolves `docs_governance.enabled` to `true` and `docs_governance.write_governance` is not `false`.
 *   **Read**: `{{AGENT_DIR}}/skills/blackhole/references/audit-modules/25-staged-artifact-carry-audit.md` (codes: `V-AUTO-02`, `V-AUTO-03`)

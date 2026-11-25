@@ -17,9 +17,13 @@ const baseFinding = (overrides: Partial<Finding> = {}): Finding => ({
 });
 
 // The audit-context gate is fail-closed, so a CLI test about anything else declares itself a
-// direct review; the gate's own tests pass `strict` to see the real behaviour.
+// direct review of a docs-only diff (the only shape `--direct-review` accepts); the gate's own
+// tests pass `strict` to see the real behaviour.
+const docsOnlyContextFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'ra-docs-ctx-')), 'ctx.json');
+fs.writeFileSync(docsOnlyContextFile, JSON.stringify({ changedFiles: ['documentation/a.md'] }));
+
 async function runReviewAggregateCli(args: string[], { strict = false } = {}) {
-  const gate = strict || args.includes('--audit-context-file') ? [] : ['--direct-review'];
+  const gate = strict || args.includes('--audit-context-file') ? [] : ['--audit-context-file', docsOnlyContextFile, '--direct-review'];
   const proc = Bun.spawn({
     cmd: ['bun', 'run', scriptPath, ...args, ...gate],
     stdout: 'pipe',
@@ -1232,10 +1236,35 @@ describe('review-aggregate --audit-context-file (on-demand audit modules)', () =
     expect(r.stderr).toContain('--audit-context-file is required');
   });
 
-  test('--direct-review is the explicit opt-out for an orchestrator review that spawned no reviewer', async () => {
+  test('--direct-review is accepted for a docs-only diff with no other module trigger', async () => {
     const reviewer = write('r0b.json', { status: 'complete', findings: [] });
-    const r = await runReviewAggregateCli(args(reviewer, ['--direct-review']), { strict: true });
+    const docs = write('ctx-docs.json', { changedFiles: ['README.md', 'documentation/x.md'] });
+    const r = await runReviewAggregateCli(args(reviewer, ['--audit-context-file', docs, '--direct-review']), { strict: true });
     expect(r.exitCode).toBe(0);
+  });
+
+  test('--direct-review without an audit context is refused', async () => {
+    const reviewer = write('r0c.json', { status: 'complete', findings: [] });
+    const r = await runReviewAggregateCli(args(reviewer, ['--direct-review']), { strict: true });
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toContain('--audit-context-file is required');
+  });
+
+  test('--direct-review is refused when the diff touches a non-documentation path', async () => {
+    const reviewer = write('r0d.json', { status: 'complete', findings: [] });
+    const mixed = write('ctx-mixed.json', { changedFiles: ['README.md', 'src/a.ts'] });
+    const r = await runReviewAggregateCli(args(reviewer, ['--audit-context-file', mixed, '--direct-review']), { strict: true });
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toContain('--direct-review refused');
+    expect(r.stderr).toContain('src/a.ts');
+  });
+
+  test('--direct-review is refused for a docs-only diff when another module trigger holds', async () => {
+    const reviewer = write('r0e.json', { status: 'complete', findings: [] });
+    const gated = write('ctx-gated.json', { changedFiles: ['documentation/x.md'], config: { docs_governance: { enabled: true } } });
+    const r = await runReviewAggregateCli(args(reviewer, ['--audit-context-file', gated, '--direct-review']), { strict: true });
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toContain('10-companion-file-audit.md');
   });
 
   test('aggregates normally once the triggered module is listed', async () => {

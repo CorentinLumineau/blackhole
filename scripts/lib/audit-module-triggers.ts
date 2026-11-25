@@ -15,7 +15,7 @@ export type AuditContext = {
   /** Parsed `queue.json`. */
   queue?: { pipeline_detection?: { actionman_workclaude?: boolean } };
   /** Dispatch kind of this reviewer spawn. */
-  dispatch?: { recheck?: boolean; independentVerification?: boolean };
+  dispatch?: { recheck?: boolean };
   /** `documentation/reference/product-principles.md` exists in the reviewed repo. */
   productPrinciplesExists?: boolean;
   /** The diff is frontend-touching by the `scripts/detect-frontend.sh` keyword set. */
@@ -67,7 +67,6 @@ export const AUDIT_MODULE_TRIGGERS: Record<string, (c: AuditContext) => boolean>
   '21-ui-interpretation-gate-audit.md': (c) => c.route?.ui === true && c.route?.size !== 'size:xs',
   '22-visual-evidence-audit.md': (c) =>
     Array.isArray(c.config?.display_targets) && c.config.display_targets.length > 0 && (c.route?.ui === true || c.frontendDiff === true),
-  '24-independent-security-verification.md': (c) => c.dispatch?.independentVerification === true,
   '25-staged-artifact-carry-audit.md': writeGate,
   '27-doc-governance-judgment-audit.md': (c) => writeGate(c) && c.changedFiles.some((f) => f.startsWith('documentation/')),
   '28-actionman-workclaude-discipline-audit.md': (c) => c.queue?.pipeline_detection?.actionman_workclaude === true,
@@ -81,3 +80,21 @@ export const requiredAuditModules = (ctx: AuditContext): string[] =>
 /** Modules whose trigger holds for `ctx` but that the reviewer's `loaded_modules[]` omits. */
 export const findUnloadedAuditModules = (ctx: AuditContext, loaded: readonly string[] | undefined): string[] =>
   requiredAuditModules(ctx).filter((file) => !(loaded ?? []).includes(file));
+
+const DOCS_ONLY_MODULE = '08-docs-only-execution-mode.md';
+
+/**
+ * Why an orchestrator direct review (no reviewer spawned, so no `loaded_modules` to check) is not
+ * allowed for `ctx`; empty when it is. Allowed only for a docs-only diff (every changed path in the
+ * `DOC_GLOBS` set the docs-only module's own trigger uses) where no on-demand module other than the
+ * docs-only one has a trigger that holds, since the orchestrator reads none of them.
+ */
+export const directReviewBlockers = (ctx: AuditContext): string[] => {
+  const blockers: string[] = [];
+  if (ctx.changedFiles.length === 0) blockers.push('the diff is empty, so docs-only cannot be established');
+  const nonDoc = ctx.changedFiles.filter((f) => !isDocPath(f));
+  if (nonDoc.length > 0) blockers.push(`non-documentation path(s) changed: ${nonDoc.slice(0, 5).join(', ')}`);
+  const others = requiredAuditModules(ctx).filter((file) => file !== DOCS_ONLY_MODULE);
+  if (others.length > 0) blockers.push(`on-demand module trigger(s) hold that a direct review does not read: ${others.join(', ')}`);
+  return blockers;
+};

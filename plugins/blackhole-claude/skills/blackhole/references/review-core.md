@@ -308,9 +308,10 @@ After `reviewer` completes, the orchestrator first builds the audit context, the
 ```bash
 bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/audit-context.ts \
   --repo-dir <PR worktree> --base-ref <PR base branch> --head <PR head ref> \
-  --issue-ref <N> --dispatch <full|recheck|verification> \
-  --plan-file <PLAN_ABSOLUTE_PATH> --config-file <.blackhole/config.json> \
-  --queue-file <.blackhole/queue.json> --out <audit-context.json>
+  --issue-ref <N> --dispatch <full|recheck> \
+  (--plan-file <PLAN_ABSOLUTE_PATH> | --no-plan-reason <why>) \
+  --config-file <.blackhole/config.json> --queue-file <.blackhole/queue.json> \
+  --out <audit-context.json>
 bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/review-aggregate.ts \
   --reviewer-file <path> \
   --issue-ref <N> \
@@ -325,10 +326,16 @@ bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root un
 ```
 
 `--audit-context-file` is required (V-AUDIT-01): without it the aggregate exits non-zero, because a
-reviewer that skipped an on-demand audit module whose trigger holds would otherwise pass unseen. For
-a recheck dispatch pass the last reviewed head as `audit-context.ts --base-ref`, so the context
-covers the fix commits only. The one opt-out is `--direct-review`, for the orchestrator's own
-docs-only review (§ Docs-only PRs), which spawns no reviewer and so has no `loaded_modules` to check.
+reviewer that skipped an on-demand audit module whose trigger holds would otherwise pass unseen.
+`audit-context.ts` takes every input as required (plan, config, queue, issue) and exits non-zero
+naming a missing or unreadable file or an issue absent from the queue; a no-plan track declares the
+absence with `--no-plan-reason`. For a recheck dispatch pass the last reviewed head as
+`audit-context.ts --base-ref`, so the context covers the fix commits only. The verification spawn
+(§ Independent security verification) is not aggregated on its own, so it has no dispatch kind.
+`--direct-review` is not an opt-out: it is accepted only alongside `--audit-context-file` and only
+when that context shows a docs-only diff (every path in the docs-only module's doc-path set) with no
+other on-demand module trigger holding; otherwise the aggregate exits 1 and the orchestrator spawns
+a reviewer (§ Docs-only PRs).
 
 `--base-ref` (ADR-134) runs the slop citation check on every `V-UX-09`/`V-UX-10` `BLOCK`, using
 the vendored `scripts/lib/slop-citation/slop-citation-check.mjs` against the PR checkout named by

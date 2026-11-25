@@ -2,7 +2,7 @@ import { readJsonFile } from './lib/fs.ts';
 import { parseFlags } from './lib/argv-flags.ts';
 import { decide, gitIo } from './lib/slop-citation/slop-citation-check.mjs';
 import { severityRank } from './lib/worker-json/constants.ts';
-import { findUnloadedAuditModules, type AuditContext } from './lib/audit-module-triggers.ts';
+import { directReviewBlockers, findUnloadedAuditModules, type AuditContext } from './lib/audit-module-triggers.ts';
 
 export type Finding = {
   id?: string;
@@ -529,7 +529,7 @@ if (import.meta.main) {
 
   if (!reviewerFile || !issueRef) {
     console.error(
-      'Usage: bun run scripts/review-aggregate.ts --reviewer-file <path> --issue-ref <N> [--pr-ref <P>] [--prior-file <ledger-rows.json>] [--verification-file <verification-entries.json>] [--review-iteration <N>] [--base-ref <PR base ref>] [--repo-dir <PR checkout>] [--head <PR head ref>] (--audit-context-file <audit-context.json> | --direct-review)',
+      'Usage: bun run scripts/review-aggregate.ts --reviewer-file <path> --issue-ref <N> [--pr-ref <P>] [--prior-file <ledger-rows.json>] [--verification-file <verification-entries.json>] [--review-iteration <N>] [--base-ref <PR base ref>] [--repo-dir <PR checkout>] [--head <PR head ref>] --audit-context-file <audit-context.json> [--direct-review]',
     );
     process.exit(1);
   }
@@ -557,15 +557,23 @@ if (import.meta.main) {
 
     // Fail closed: a review whose diff matches an on-demand module's trigger but whose
     // `loaded_modules` omits that module skipped an audit (ADR-034 amendment, V-AUDIT-01). The
-    // context comes from `scripts/audit-context.ts`; the only caller with none is the orchestrator's
-    // own docs-only direct review, which spawns no reviewer and so has no `loaded_modules` to check.
-    if (auditContextFile) {
-      const unloaded = findUnloadedAuditModules(readJsonFile(auditContextFile, 'audit context file') as AuditContext, reviewerRaw.loaded_modules);
+    // context comes from `scripts/audit-context.ts`. `--direct-review` (the orchestrator's own
+    // review, no reviewer spawned) is not an opt-out: it is accepted only when that same context
+    // shows a docs-only diff with no other module trigger holding.
+    if (!auditContextFile) {
+      throw new Error('--audit-context-file is required (build it with scripts/audit-context.ts)');
+    }
+    const auditContext = readJsonFile(auditContextFile, 'audit context file') as AuditContext;
+    if (directReview) {
+      const blockers = directReviewBlockers(auditContext);
+      if (blockers.length > 0) {
+        throw new Error(`--direct-review refused: ${blockers.join('; ')} — spawn a reviewer instead`);
+      }
+    } else {
+      const unloaded = findUnloadedAuditModules(auditContext, reviewerRaw.loaded_modules);
       if (unloaded.length > 0) {
         throw new Error(`reviewer skipped on-demand audit module(s) whose trigger holds: ${unloaded.join(', ')} — re-spawn the reviewer`);
       }
-    } else if (!directReview) {
-      throw new Error('--audit-context-file is required (build it with scripts/audit-context.ts); pass --direct-review only for an orchestrator direct review that spawned no reviewer');
     }
 
     let priorFindings: Finding[] | undefined;

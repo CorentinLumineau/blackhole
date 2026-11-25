@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { AUDIT_MODULE_TRIGGERS, findUnloadedAuditModules, requiredAuditModules, type AuditContext } from './audit-module-triggers.ts';
+import { AUDIT_MODULE_TRIGGERS, directReviewBlockers, findUnloadedAuditModules, requiredAuditModules, type AuditContext } from './audit-module-triggers.ts';
 
 const base: AuditContext = { changedFiles: ['scripts/a.ts'] };
 const docsOn = { docs_governance: { enabled: true } };
@@ -85,15 +85,14 @@ describe('requiredAuditModules', () => {
     expect(requiredAuditModules({ changedFiles: ['README.md'], planText: 'plan' })).toEqual([]);
   });
 
-  test('recheck, verification, actionman and frontend signals each require their own module', () => {
+  test('recheck, actionman and frontend signals each require their own module', () => {
     expect(requiredAuditModules({ ...base, dispatch: { recheck: true } })).toEqual(['13-recheck-mode-compliance.md']);
-    expect(requiredAuditModules({ ...base, dispatch: { independentVerification: true } })).toEqual(['24-independent-security-verification.md']);
     expect(requiredAuditModules({ ...base, queue: { pipeline_detection: { actionman_workclaude: true } } })).toEqual(['28-actionman-workclaude-discipline-audit.md']);
     expect(requiredAuditModules({ ...base, frontendDiff: true })).toEqual(['14-information-hierarchy-audit.md']);
   });
 
-  test('the table covers all 15 on-demand modules', () => {
-    expect(Object.keys(AUDIT_MODULE_TRIGGERS)).toHaveLength(15);
+  test('the table covers all 14 on-demand modules', () => {
+    expect(Object.keys(AUDIT_MODULE_TRIGGERS)).toHaveLength(14);
   });
 });
 
@@ -110,5 +109,19 @@ describe('findUnloadedAuditModules', () => {
 
   test('loading a module whose trigger does not hold is not an error', () => {
     expect(findUnloadedAuditModules(base, ['16-threat-model-audit.md'])).toEqual([]);
+  });
+});
+
+describe('directReviewBlockers', () => {
+  test('a docs-only diff with no other trigger is allowed', () => {
+    expect(directReviewBlockers({ changedFiles: ['README.md', 'documentation/a.md', 'codex-agents/x.yaml'] })).toEqual([]);
+  });
+
+  test('an empty diff, a source path, or a holding module trigger each block', () => {
+    expect(directReviewBlockers({ changedFiles: [] })[0]).toContain('empty');
+    expect(directReviewBlockers({ changedFiles: ['README.md', 'scripts/a.ts'] })[0]).toContain('scripts/a.ts');
+    const gated = directReviewBlockers({ changedFiles: ['README.md'], config: docsOn });
+    expect(gated.join()).toContain('10-companion-file-audit.md');
+    expect(gated.join()).not.toContain('08-docs-only');
   });
 });

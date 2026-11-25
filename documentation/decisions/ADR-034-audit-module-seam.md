@@ -149,10 +149,10 @@ hand-arithmetic — see the implementation plan's T5 for the current baseline).
 - **2026-11-25, issue #1387 (on-demand modules for mechanically gated audits).** The seam above
   rejected runtime loading because it adds fetches to every turn. Measured at spawn, that cost is
   the smaller one: every reviewer spawn paid for all 33 modules (22,247 estimated tokens, bytes / 4)
-  although 15 of them open with a clause that says "skip this section" (a config key, plan
+  although 14 of them open with a clause that says "skip this section" (a config key, plan
   frontmatter or heading, a diff path, a queue field, or the spawn mode). This amendment allows a
   hybrid and reverses nothing: the build seam, `{{INCLUDE:<dir>/*}}`, `BUILD_INPUT_ONLY_DIRS` and
-  the 18 inlined modules are unchanged.
+  the 19 inlined modules are unchanged.
   - **Rule.** A module may be on-demand only if its first detection or gate clause is mechanical.
     Judgment-triggered modules (for example `V-DOCSYNC-01`'s public-API surface, `V-PROOF-01`'s
     user-visible change) stay inlined, as do modules that apply to every diff.
@@ -168,7 +168,7 @@ hand-arithmetic — see the implementation plan's T5 for the current baseline).
     claims. Leg E fails a module with no predicate in `AUDIT_MODULE_TRIGGERS`
     (`scripts/lib/audit-module-triggers.ts`) and a predicate with no module. The generated-stub
     alternative stays deferred until a second consumer exists.
-  - **Mechanical load check (V-PARETO-02).** Twelve of the 15 modules enforce `BLOCK` codes, so
+  - **Mechanical load check (V-PARETO-02).** Eleven of the 14 modules enforce `BLOCK` codes, so
     "keep every BLOCK module inlined" would have undone the split. Instead the reviewer return
     carries `loaded_modules[]` (module file names; `validateReviewer` rejects unknown names), and
     `review-aggregate.ts --audit-context-file <json>` re-evaluates each module's trigger from facts
@@ -176,12 +176,26 @@ hand-arithmetic — see the implementation plan's T5 for the current baseline).
     naming any module whose trigger holds but is absent from `loaded_modules` (an absent list fails
     every triggered module). The check is fail-closed and wired: the orchestrator builds the
     context with `scripts/audit-context.ts` before every aggregate (`review-core.md` § Aggregate
-    invocation), and the CLI exits non-zero when the flag is absent. The single opt-out is
-    `--direct-review`, for the orchestrator's own docs-only review, which spawns no reviewer. The
-    reviewer-facing `Load when` stubs stay the wording; the predicate table is the script-side copy.
-    Leg E keeps the directories aligned and fails a stub that does not spell every path glob its
-    predicate uses (`AUDIT_TRIGGER_GLOBS`). A stub and its predicate can still disagree in meaning
-    beyond those globs; that residual is a review concern, not a gate.
-  - **Measured.** Compiled `agents/reviewer.md` 22,247 to 12,927 estimated tokens (51,711 B), about 9,320
+    invocation), and the CLI exits non-zero when the flag is absent. The context builder takes the
+    plan, config, queue and issue as required inputs and fails with a named error on a missing or
+    unreadable file or an issue absent from the queue (a no-plan track declares the absence with
+    `--no-plan-reason`). `--direct-review` (the orchestrator's own review, no reviewer spawned) is
+    conditional, not an opt-out: it needs the same context and is accepted only when every changed
+    path is in the docs-only doc-path set and no module trigger other than the docs-only one holds.
+    The frontend-diff predicate for module 14 reads its path set from `scripts/detect-frontend.sh`
+    (`scripts/lib/frontend-paths.ts`), so the keyword set has one home. The reviewer-facing
+    `Load when` stubs stay the wording; the predicate table is the script-side copy. Leg E keeps the
+    directories aligned and fails a stub that does not spell every path glob its predicate uses
+    (`AUDIT_TRIGGER_GLOBS`). A stub and its predicate can still disagree in meaning beyond those
+    globs; that residual is a review concern, not a gate.
+  - **Module 24 stays inline.** The independent-security-verification procedure is read by a
+    verification spawn whose envelope is never aggregated on its own, so a load check for it had no
+    call site. Rather than add a second aggregate hop, it moved back to `src/references/audits/`
+    (19 inlined, 14 on-demand).
+  - **Residual risk.** `loaded_modules[]` is a declaration by the reviewer. The gate proves a module
+    was listed, not that it was read or applied: a reviewer can name a module without reading it. The
+    check closes the silent-skip case, not the dishonest one; the reviewer's own findings and the
+    recheck pass remain the only evidence the audit ran.
+  - **Measured.** Compiled `agents/reviewer.md` 22,247 to 13,538 estimated tokens (54,152 B), about 8,709
     saved per reviewer spawn (`bun run scripts/worker-context-size.ts`). The saving remains
-    because a normal backend diff in a repo without `docs_governance` triggers none of the 15.
+    because a normal backend diff in a repo without `docs_governance` triggers none of the 14.
