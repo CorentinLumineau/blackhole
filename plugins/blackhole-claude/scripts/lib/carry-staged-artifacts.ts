@@ -4,6 +4,7 @@ import { appendAdrIndexRowIfAbsent, appendIndexRowIfAbsent, assertIndexFragmentS
 import { parseFrontmatterFields, parseMdFrontmatter } from './build/content.ts';
 import { readJsonFile } from './fs.ts';
 import { fencedLineMask, markdownHeadings, openFenceAtEnd, sectionEnd, type MarkdownHeading } from './markdown-headings.ts';
+import { writeGovernanceActive, type DocsGovernanceConfig } from './merge-gate/review-artifact.ts';
 import { isCarryTargetAllowed } from './carry-target-allowlist.ts';
 import { ROOT_DOC_INDEX_PATH, isRegenerableRootIndex, renderRootIndexFile, rootIndexRowFor } from './doc-index-generate.ts';
 
@@ -331,11 +332,24 @@ const writeCarryTarget = (
  * applied on top of the previous one's result. A write failure in the second pass stays
  * entry-scoped, as below.
  */
+/**
+ * Resolves the `docs_governance` kill switch from the campaign config (`config-template.md`
+ * § `docs_governance.enabled` is the SSOT for the default). A missing config file is an absent
+ * block, hence inert; a malformed one throws via `readJsonFile`.
+ */
+export const resolveDocsGovernanceActive = (configPath: string): boolean => {
+  if (!fs.existsSync(configPath)) return false;
+  const config = readJsonFile(configPath, configPath) as { docs_governance?: DocsGovernanceConfig };
+  return writeGovernanceActive(config.docs_governance);
+};
+
 export const carryManifest = (
   manifest: Manifest,
   repoRoot: string,
-  opts: { today?: string; stagingRoot?: string } = {},
+  opts: { today?: string; stagingRoot?: string; docsGovernanceActive?: boolean } = {},
 ): CarryOutcome => {
+  // The CLI always passes the resolved flag; direct library callers default to active.
+  if (opts.docsGovernanceActive === false) return { carriedPaths: [], skippedEntries: [] };
   const today = opts.today ?? new Date().toISOString().slice(0, 10);
   const stagingRoot = opts.stagingRoot ?? repoRoot;
   const entries = manifest.entries ?? [];
