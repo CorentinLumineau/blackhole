@@ -434,14 +434,18 @@ $pareto_line" --label "$pareto_label" $scope_args
 Re-scoring an existing issue edits in place and leaves exactly one line and one label:
 
 ```bash
+pareto_label=$(bun scripts/pareto-file.ts label --gain G --effort E) || exit 1
+gh label create "$pareto_label" --color fbca04 2>/dev/null || true   # idempotent: a missing bucket label fails the edit
 edit_args=$(bun scripts/pareto-file.ts edit-args --gain G --effort E --labels "<current labels, csv>") || exit 1
 [ -n "$edit_args" ] && gh issue edit N $edit_args   # empty when the label is already right
 bun scripts/pareto-file.ts body --gain G --effort E --body-file <current-body-file> > body.new \
-  && gh issue edit N --body-file body.new
+  && ! cmp -s <current-body-file> body.new && gh issue edit N --body-file body.new   # skip when unchanged
 ```
 
-Adapter code calls `issueCreateWithPareto` / `rescoreIssue` (`scripts/lib/forge-adapter/pareto-filing.ts`)
-instead of shelling out. The `pareto:P4` label means backlog only; it does not change the
+`rescoreIssue` (`scripts/lib/forge-adapter/pareto-filing.ts`, called by `scripts/pareto-score.ts apply`)
+does the same through the adapter: GitHub and GitLab create a missing label on first use; on Gitea
+create the `pareto:P*` labels once per repo.
+The `pareto:P4` label means backlog only; it does not change the
 `V-PARETO-03` filing gate or the bug-severity-floor override.
 
 ### Score on ingest (V-PARETO-02)
