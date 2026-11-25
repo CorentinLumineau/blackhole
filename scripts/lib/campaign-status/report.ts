@@ -11,7 +11,7 @@ import { buildRunPanel, pendingRows, type DocCarryRead, type PendingRead } from 
 import { reconcileMerged } from './merged.ts';
 import { newestFirst, readScopeEntries } from './record.ts';
 import { computeStatusAlerts, isStateStale, newestStateWrite, stateAgeHours, statusPageEnabled } from './staleness.ts';
-import { computeStatusCounts, groupIssuesByPhase, QUEUE_STATUSES } from './queue.ts';
+import { computeStatusCounts, groupIssuesByPhase, isSameRepoKey, QUEUE_STATUSES } from './queue.ts';
 import type {
   BlockedClass,
   BudgetPanel,
@@ -166,7 +166,7 @@ function readyToMerge(
 ): ReadyToMergeItem[] {
   const items: ReadyToMergeItem[] = [];
   for (const [key, issue] of Object.entries(issues)) {
-    if (issue.status !== 'in-flight' || issue.pr == null) continue;
+    if (!isSameRepoKey(key) || issue.status !== 'in-flight' || issue.pr == null) continue;
     const notes = (issue.notes ?? '').trim();
     const held = heldFor(notes);
     if (held === null && !notes.startsWith(DELIVERED_PREFIX)) continue;

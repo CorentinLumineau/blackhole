@@ -20,6 +20,7 @@ import {
   renderRouteChain,
   type Route,
 } from './campaign-status';
+import { doneIssues } from './lib/campaign-status/decide-round.ts';
 import { SCAN_BOUNDARY_NOTE, type PluginDriftSignal, type PluginDriftSource } from './plugin-drift-signal';
 
 const fullRoute: Route = {
@@ -106,6 +107,14 @@ describe('renderRouteChain', () => {
 });
 
 describe('computeWaves', () => {
+  test('a cross-repo key is skipped, not turned into NaN (#1499)', () => {
+    const result = computeWaves({
+      '10': { status: 'ready' },
+      'blackhole#1168': { status: 'ready', depends_on: [10] },
+    });
+    expect(result).toEqual({ waves: [[10]], unresolved: [] });
+  });
+
   test('empty queue yields no waves and no unresolved', () => {
     const { waves, unresolved } = computeWaves({});
     expect(waves).toEqual([]);
@@ -205,6 +214,20 @@ last_completed_phase: review
 });
 
 describe('groupIssuesByPhase', () => {
+  test('a cross-repo key yields only integer rows and is listed in crossRepo (#1499)', () => {
+    const grouped = groupIssuesByPhase({
+      '10': { status: 'ready' },
+      'blackhole#1168': { status: 'ready' },
+    });
+    expect(grouped.active.map((r) => r.num)).toEqual([10]);
+    expect(grouped.active.every((r) => Number.isInteger(r.num))).toBe(true);
+    expect(grouped.crossRepo).toEqual(['blackhole#1168']);
+  });
+
+  test('doneIssues drops a done cross-repo key instead of emitting NaN (#1499)', () => {
+    expect(doneIssues({ '10': { status: 'merged' }, 'blackhole#1162': { status: 'merged' } })).toEqual([10]);
+  });
+
   test('splits active vs done and in-flight', () => {
     const grouped = groupIssuesByPhase({
       '22': { title: 'A', phase: 'review', status: 'in-flight', pr: 40 },

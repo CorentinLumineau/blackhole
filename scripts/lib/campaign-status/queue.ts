@@ -22,8 +22,17 @@ export const DONE_STATUSES = ['merged', 'closed'];
 const isDone = (issue: QueueIssue) => DONE_STATUSES.includes(issue.status ?? '');
 const SECTIONED_ACTIVE_STATUSES = ['in-flight', 'blocked', 'ready'];
 
+// The dashboard tracks same-repo issues, keyed by a bare issue number. A cross-repo key such as
+// `blackhole#1162` has no number, so `Number(key)` is NaN; every key-to-number conversion goes
+// through this guard and lists the skipped keys via `crossRepoKeys` instead of dropping them.
+export const isSameRepoKey = (key: string): boolean => /^\d+$/.test(key);
+
+export const crossRepoKeys = (issues: Record<string, QueueIssue>): string[] =>
+  Object.keys(issues).filter((key) => !isSameRepoKey(key));
+
 export function groupIssuesByPhase(issues: Record<string, QueueIssue>) {
   const rows: { num: number; issue: QueueIssue }[] = Object.entries(issues)
+    .filter(([key]) => isSameRepoKey(key))
     .map(([num, issue]) => ({ num: Number(num), issue }))
     .sort((a, b) => a.num - b.num);
 
@@ -35,7 +44,7 @@ export function groupIssuesByPhase(issues: Record<string, QueueIssue>) {
   // Active entries no section above claims: a missing or undocumented `status`.
   const unclassified = active.filter((r) => !SECTIONED_ACTIVE_STATUSES.includes(r.issue.status ?? ''));
 
-  return { active, done, inFlight, blocked, ready, unclassified };
+  return { active, done, inFlight, blocked, ready, unclassified, crossRepo: crossRepoKeys(issues) };
 }
 
 // The one count computation behind the dashboard's Queue/Ledger lines and the --json report,
@@ -43,7 +52,8 @@ export function groupIssuesByPhase(issues: Record<string, QueueIssue>) {
 export function computeStatusCounts(issues: Record<string, QueueIssue>, findings: LedgerFinding[]): StatusCounts {
   const { active, done, inFlight, blocked, ready, unclassified } = groupIssuesByPhase(issues);
   const by_status: Record<string, number> = {};
-  for (const issue of Object.values(issues)) {
+  for (const [issueKey, issue] of Object.entries(issues)) {
+    if (!isSameRepoKey(issueKey)) continue;
     const key = issue.status ?? 'unknown';
     by_status[key] = (by_status[key] ?? 0) + 1;
   }
@@ -118,6 +128,7 @@ export function computeWaves(issues: Record<string, QueueIssue>): {
   unresolved: number[];
 } {
   const active = Object.entries(issues)
+    .filter(([key]) => isSameRepoKey(key))
     .map(([num, issue]) => ({ num: Number(num), issue }))
     .filter((r) => !isDone(r.issue));
   const activeNums = new Set(active.map((r) => r.num));

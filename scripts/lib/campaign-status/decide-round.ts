@@ -1,6 +1,6 @@
 import { formatMergeNextItem, mergeNextOrder, trunkFixIssues } from '../merge-next.ts';
 import { when } from './budget.ts';
-import { DONE_STATUSES } from './queue.ts';
+import { DONE_STATUSES, isSameRepoKey } from './queue.ts';
 import type { BudgetPanel, QueueIssue } from './types.ts';
 
 // The decide round's report (`decision-parking.md` § Decide round): what ran since the last round,
@@ -41,7 +41,7 @@ export function legacySleepBaseline(config: unknown): DecideBaseline | null {
 /** Issue numbers whose queue status is done (`DONE_STATUSES`), ascending. */
 export const doneIssues = (issues: Record<string, QueueIssue>): number[] =>
   Object.entries(issues)
-    .filter(([, i]) => DONE_STATUSES.includes(i.status ?? ''))
+    .filter(([n, i]) => isSameRepoKey(n) && DONE_STATUSES.includes(i.status ?? ''))
     .map(([n]) => Number(n))
     .sort((a, b) => a - b);
 
@@ -63,7 +63,7 @@ export function planWakeUps(input: { budget: BudgetPanel; issues: Record<string,
   const now = Date.parse(input.nowIso);
   const raw: Array<{ ms: number; reason: WakeReason; refs: number[] }> = [];
   const ci = Object.entries(input.issues)
-    .filter(([, i]) => i.status === 'in-flight' && i.pr != null)
+    .filter(([n, i]) => isSameRepoKey(n) && i.status === 'in-flight' && i.pr != null)
     .map(([n]) => Number(n))
     .sort((a, b) => a - b);
   if (ci.length) raw.push({ ms: now + CI_CHECK_IN_MINUTES * 60_000, reason: 'ci-check-in', refs: ci });
