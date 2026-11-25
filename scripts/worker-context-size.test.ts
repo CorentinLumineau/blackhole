@@ -2,9 +2,10 @@ import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { root } from './checks/check-utils.ts';
 import { AGENT_NAMES } from './lib/build/facts.ts';
 import { computeAgentTokens, estimateTokens, MANDATORY_READS, sizeReport } from './worker-context-size.ts';
+
+const root = path.resolve(import.meta.dirname, '..');
 
 // Issue #1387 — the worker-context size report. Every figure is bytes / 4, an estimate and not
 // tokenizer output; the ceiling test below is what turns the saving into a regression guard.

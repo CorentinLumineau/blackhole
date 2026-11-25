@@ -1,8 +1,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { root } from './checks/check-utils.ts';
 import { AGENT_NAMES } from './lib/build/facts.ts';
 import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
+
+const root = path.resolve(import.meta.dirname, '..');
 
 // Usage: bun run scripts/worker-context-size.ts [--json]
 // Prints the plugin-controlled part of a worker spawn's first-turn context (issue #1387): the
