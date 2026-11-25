@@ -1,7 +1,7 @@
 import type { QueueJson } from './campaign-status/types.ts';
 import { rescoreIssue } from './forge-adapter/pareto-filing.ts';
 import type { ForgeAdapter, ForgeIssue } from './forge-adapter/types.ts';
-import { paretoPriority, parseParetoLine, type Pareto } from './pareto.ts';
+import { paretoLabel, paretoPriority, parseParetoLine, reconcileParetoLabels, type Pareto } from './pareto.ts';
 
 // Mechanical side of score-on-ingest (`forge-sync.md` § Score on ingest): finds the ready queue
 // entries whose issue has no valid `Pareto:` line, and applies the scores the orchestrator's LLM
@@ -23,6 +23,7 @@ export class DuplicateScoreError extends Error {
 }
 
 export const DEFAULT_MAX_AGE_DAYS = 7;
+export const ISSUE_LIMIT = 1000;
 const DAY_MS = 86_400_000;
 const BODY_EXCERPT = 4000;
 const RATIONALE_MAX = 200;
@@ -85,6 +86,22 @@ export function upsertRationaleLine(body: string, rationale: string): string {
 }
 
 /**
+ * Moves `scored_at` of every issue this run wrote to past that write: a forge write bumps the
+ * issue's `updatedAt`, which `staleness` would otherwise read as a later human edit. The stamp is the
+ * later of the run's clock and the `updatedAt` the forge reports after the last write.
+ */
+async function stampAfterWrites(adapter: ForgeAdapter, queue: QueueJson, written: Set<number>, now: Date): Promise<void> {
+  if (!written.size) return;
+  const after = new Map((await adapter.issueList({ state: 'open', limit: ISSUE_LIMIT })).map((i) => [i.number, Date.parse(i.updatedAt ?? '')] as const));
+  for (const n of written) {
+    const entry = queue.issues![String(n)]!;
+    if (!entry.pareto?.scored_at) continue;
+    const stamp = Math.max(now.getTime(), after.get(n) || 0);
+    queue.issues![String(n)] = { ...entry, pareto: { ...entry.pareto, scored_at: new Date(stamp).toISOString() } };
+  }
+}
+
+/**
  * Writes each score to the forge and the queue, stamped `scored_at`. An issue that already carries a
  * valid line is re-scored only when `opts.rescore` is given and its score is stale (`staleness`);
  * otherwise the forge line wins and only its label is reconciled, which heals a run that
@@ -100,6 +117,7 @@ export async function applyScores(adapter: ForgeAdapter, queue: QueueJson, issue
     next.issues![String(n)] = { ...next.issues![String(n)]!, pareto: { ...pareto, scored_at: now.toISOString(), ...(rationale ? { rationale } : {}) } };
   };
   const handled = new Set<number>();
+  const written = new Set<number>();
   for (const score of scores) {
     if (handled.has(score.number)) {
       outcomes.push({ number: score.number, result: 'skipped', reason: 'duplicate score entry for this issue' });
@@ -115,15 +133,30 @@ export async function applyScores(adapter: ForgeAdapter, queue: QueueJson, issue
     const existing = parseParetoLine(issue.body ?? '');
     const due = existing && opts.rescore && staleness(entry, issue, now, opts.rescore.maxAgeDays);
     if (existing && !due) {
-      await rescoreIssue(adapter, issue, existing);
+      if (await rescoreIssue(adapter, issue, existing)) written.add(score.number);
       const kept = entry.pareto?.priority === existing.priority ? entry.pareto : undefined;
       next.issues![String(score.number)] = { ...entry, pareto: { ...existing, ...(kept?.scored_at ? { scored_at: kept.scored_at } : {}), ...(kept?.rationale ? { rationale: kept.rationale } : {}) } };
       outcomes.push({ number: score.number, result: 'already-scored' });
       continue;
     }
-    await rescoreIssue(adapter, { ...issue, body: upsertRationaleLine(issue.body ?? '', score.rationale) }, score);
+    if (await rescoreIssue(adapter, { ...issue, body: upsertRationaleLine(issue.body ?? '', score.rationale) }, score)) written.add(score.number);
     store(score.number, { gain: score.gain, effort: score.effort, priority: paretoPriority(score.gain, score.effort) }, score.rationale);
     outcomes.push({ number: score.number, result: due ? 'rescored' : 'scored' });
   }
+  await stampAfterWrites(adapter, next, written, now);
   return { queue: next, outcomes };
 }
+
+/** A forge issue reduced to what the Pareto contract reads. */
+export type ForgeIssueView = { number: number; body: string; labels: string[] };
+export type ParetoViolation = { number: number; reason: string };
+
+/** Violations of the forge contract (V-PARETO-02): a valid `Pareto:` line plus exactly the one matching `pareto:P*` label. */
+export const findParetoLineViolations = (issues: ForgeIssueView[]): ParetoViolation[] =>
+  issues.flatMap(({ number, body, labels }) => {
+    const scored = parseParetoLine(body);
+    if (!scored) return [{ number, reason: 'missing or invalid `Pareto:` body line' }];
+    const { add, remove } = reconcileParetoLabels(labels, scored.priority);
+    if (add.length) return [{ number, reason: `missing bucket label ${add[0]} for priority ${scored.priority}` }];
+    return remove.length ? [{ number, reason: `stray bucket label(s) ${remove.join(', ')} beside ${paretoLabel(scored.priority)}` }] : [];
+  });

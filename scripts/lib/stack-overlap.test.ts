@@ -8,6 +8,7 @@ import {
   chainTip,
   mergeTreeVerdict,
   onlyAddsLines,
+  pureAdditionFiles,
   pickParent,
   reachesNode,
   effectiveParent,
@@ -536,5 +537,33 @@ describe('onlyAddsLines (stub git)', () => {
 
   test('a failing merge-base is false', () => {
     expect(onlyAddsLines(stub('2\t0\tf\n', { code: 1, stdout: '' }), 'a', 'b', 'f')).toBe(false);
+  });
+});
+
+describe('pureAdditionFiles (stub git)', () => {
+  const IDX = 'documentation/decisions/INDEX.md';
+  const stub =
+    (numstat: string, opts: { mergeBase?: number; atBase?: number } = {}) =>
+    (args: string[]) => {
+      if (args[0] === 'merge-base') return { code: opts.mergeBase ?? 0, stdout: 'base\n', stderr: '' };
+      if (args[0] === 'cat-file') return { code: opts.atBase ?? 0, stdout: '', stderr: '' };
+      return { code: 0, stdout: numstat, stderr: '' };
+    };
+
+  test('an append-only file the PR only adds rows to is returned', () => {
+    expect(pureAdditionFiles(stub(`2\t0\t${IDX}\n`), 'origin/main', 'pr', [IDX, 'src/a.ts'])).toEqual([IDX]);
+  });
+
+  test('an edited (deleted lines) append-only file is not returned', () => {
+    expect(pureAdditionFiles(stub(`2\t1\t${IDX}\n`), 'origin/main', 'pr', [IDX])).toEqual([]);
+  });
+
+  test('a file absent at the merge base, or a failing merge-base, is not returned', () => {
+    expect(pureAdditionFiles(stub(`2\t0\t${IDX}\n`, { atBase: 1 }), 'origin/main', 'pr', [IDX])).toEqual([]);
+    expect(pureAdditionFiles(stub(`2\t0\t${IDX}\n`, { mergeBase: 1 }), 'origin/main', 'pr', [IDX])).toEqual([]);
+  });
+
+  test('a file outside the append-only set is never returned', () => {
+    expect(pureAdditionFiles(stub('2\t0\tsrc/a.ts\n'), 'origin/main', 'pr', ['src/a.ts'])).toEqual([]);
   });
 });

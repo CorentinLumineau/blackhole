@@ -5,7 +5,7 @@ import { adapterForCampaign } from './lib/forge-adapter/for-campaign.ts';
 import type { ForgeAdapter } from './lib/forge-adapter/types.ts';
 import type { QueueJson } from './lib/campaign-status/types.ts';
 import { readJsonFile } from './lib/fs.ts';
-import { applyScores, DEFAULT_MAX_AGE_DAYS, DuplicateScoreError, parseScores, scoreRequests, type ApplyOutcome, type ScoreRequest } from './lib/pareto-score.ts';
+import { applyScores, DEFAULT_MAX_AGE_DAYS, DuplicateScoreError, findParetoLineViolations, ISSUE_LIMIT, parseScores, scoreRequests, type ApplyOutcome, type ParetoViolation, type ScoreRequest } from './lib/pareto-score.ts';
 import { installStateFile } from './lib/state-write-guard.ts';
 
 // Score-on-ingest, mechanical side (`forge-sync.md` § Score on ingest). `detect` prints the ready
@@ -16,8 +16,8 @@ import { installStateFile } from './lib/state-write-guard.ts';
 const USAGE = [
   'Usage: bun run scripts/pareto-score.ts detect [--campaign-dir <dir>] [--max-age-days <n>]',
   '       bun run scripts/pareto-score.ts apply --scores-file <json> [--campaign-dir <dir>] [--max-age-days <n>]',
+  '       bun run scripts/pareto-score.ts verify [--campaign-dir <dir>]',
 ].join('\n');
-const ISSUE_LIMIT = 1000;
 
 type Config = { repo?: string; forge?: string; pareto_max_age_days?: number };
 
@@ -41,6 +41,13 @@ export async function runDetect(campaignDir: string, opts: RunOptions = {}): Pro
   return scoreRequests(queue, await adapter.issueList({ state: 'open', limit: ISSUE_LIMIT }), { now: opts.now ?? new Date(), maxAgeDays: opts.maxAgeDays ?? maxAgeDays });
 }
 
+/** Open `ready` issues whose `Pareto:` line or bucket label is missing or wrong (V-PARETO-02); empty means the forge agrees with the scale. */
+export async function runVerify(campaignDir: string, opts: { adapter?: ForgeAdapter } = {}): Promise<ParetoViolation[]> {
+  const { adapter } = load(campaignDir, opts.adapter);
+  const ready = (await adapter.issueList({ state: 'open', limit: ISSUE_LIMIT })).filter((i) => i.state === 'OPEN' && i.labels.some((l) => l.name === 'ready'));
+  return findParetoLineViolations(ready.map((i) => ({ number: i.number, body: i.body ?? '', labels: i.labels.map((l) => l.name) })));
+}
+
 export async function runApply(campaignDir: string, scoresFile: string, opts: RunOptions = {}): Promise<ApplyOutcome[]> {
   const scores = parseScores(readJsonFile(scoresFile, scoresFile));
   const { queue, adapter, maxAgeDays } = load(campaignDir, opts.adapter);
@@ -57,14 +64,20 @@ async function main(): Promise<void> {
   const flags = parseFlags(rest);
   const unknown = unknownFlagKeys(flags, ['campaign-dir', 'scores-file', 'max-age-days']);
   const scoresFile = flags['scores-file'];
-  const maxAge = flags['max-age-days'] === undefined ? undefined : Number(flags['max-age-days']);
-  if (maxAge !== undefined && !(maxAge >= 0)) unknown.push(`--max-age-days ${String(flags['max-age-days'])}`);
-  if (unknown.length || !['detect', 'apply'].includes(command ?? '') || (command === 'apply' && typeof scoresFile !== 'string')) {
+  const maxAgeFlag = flags['max-age-days'];
+  const maxAge = typeof maxAgeFlag === 'string' ? Number(maxAgeFlag) : undefined;
+  if (maxAgeFlag !== undefined && !(maxAge !== undefined && maxAge >= 0)) unknown.push(`--max-age-days ${String(maxAgeFlag)}`);
+  if (unknown.length || !['detect', 'apply', 'verify'].includes(command ?? '') || (command === 'apply' && typeof scoresFile !== 'string')) {
     console.error(`${unknown.length ? `Unknown flag(s): ${unknown.join(', ')}\n` : ''}${USAGE}`);
     process.exit(2);
   }
   const dir = path.resolve(process.cwd(), typeof flags['campaign-dir'] === 'string' ? flags['campaign-dir'] : '.blackhole');
   try {
+    if (command === 'verify') {
+      const violations = await runVerify(dir);
+      console.log(JSON.stringify(violations, null, 2));
+      process.exit(violations.length ? 1 : 0);
+    }
     console.log(JSON.stringify(command === 'detect' ? await runDetect(dir, { maxAgeDays: maxAge }) : await runApply(dir, scoresFile as string, { maxAgeDays: maxAge }), null, 2));
   } catch (error) {
     console.error(`pareto-score: ${error instanceof Error ? error.message : String(error)}`);

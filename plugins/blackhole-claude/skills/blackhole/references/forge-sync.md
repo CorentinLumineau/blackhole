@@ -424,14 +424,14 @@ Re-scoring an existing issue edits in place and leaves exactly one line and one 
 pareto_label=$(bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/pareto-file.ts label --gain G --effort E) || exit 1
 gh label create "$pareto_label" --color fbca04 2>/dev/null || true   # idempotent: a missing bucket label fails the edit
 edit_args=$(bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/pareto-file.ts edit-args --gain G --effort E --labels "<current labels, csv>") || exit 1
-[ -n "$edit_args" ] && gh issue edit N $edit_args   # empty when the label is already right
-bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/pareto-file.ts body --gain G --effort E --body-file <current-body-file> > body.new \
-  && ! cmp -s <current-body-file> body.new && gh issue edit N --body-file body.new   # skip when unchanged
+if [ -n "$edit_args" ]; then gh issue edit N $edit_args; fi   # empty when the label is already right
+bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/pareto-file.ts body --gain G --effort E --body-file <current-body-file> > body.new || exit 1
+if ! cmp -s <current-body-file> body.new; then gh issue edit N --body-file body.new; fi   # skip when unchanged; exits 0 either way
 ```
 
 `rescoreIssue` (`scripts/lib/forge-adapter/pareto-filing.ts`, called by `scripts/pareto-score.ts apply`)
-does the same through the adapter: GitHub and GitLab create a missing label on first use; on Gitea
-create the `pareto:P*` labels once per repo.
+does the same through the adapter: GitHub and GitLab create a missing label on first use, and the
+Gitea adapter's `labelAdd` runs `tea labels create` before each add (an existing label is not an error).
 The `pareto:P4` label means backlog only; it does not change the
 `V-PARETO-03` filing gate or the bug-severity-floor override.
 
@@ -440,11 +440,11 @@ The `pareto:P4` label means backlog only; it does not change the
 A ready issue with no valid `Pareto:` line is scored before batch selection, in the same turn, and
 a scored one is re-scored when its score is stale: the queue's `pareto` is what
 `scripts/pareto-order.ts` ranks by, and an unscored issue ranks last. The scoring is the
-orchestrator's own judgement; the script only finds and writes. The same three steps run at Phase 0
+orchestrator's own judgement; the script only finds and writes. The same four steps run at Phase 0
 bootstrap (after the sync, before the launch summary) and in every Phase 5 loop turn (after the
 sync, before the ready set), so the order is current when the first worker spawns and stays current
-during the run. A turn re-scores only what is due: the issues the sync reported new, or edited after
-their score.
+during the run. A turn scores and re-scores only what `detect` lists: an issue with no valid line,
+or a scored one that is stale for a reason named in step 1.
 
 1. After the sync, `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/pareto-score.ts detect` prints a JSON array of
    `{number, title, labels, body}`: the `ready` queue entries whose open issue has no valid line
@@ -469,7 +469,12 @@ their score.
    only its label is reconciled, which also heals an interrupted earlier run) or `skipped` with a
    reason (not in the queue, not open). Re-running it with the same file changes nothing.
 4. `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/pareto-order.ts --require-scored` takes the batch and exits 1 naming any
-   unscored issue in it: a batch is never spawned from an unscored ready issue.
+   unscored issue in it: a batch is never spawned from an unscored ready issue. On exit 1 the
+   orchestrator runs steps 1-3 for the issues it names, then takes the batch again.
+
+`bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/pareto-score.ts verify` is the read-only audit: it lists open `ready` issues whose
+`Pareto:` line is missing or invalid, or whose labels are not exactly the one matching `pareto:P*`
+bucket, and exits 1 when the list is non-empty. Run it after `apply` when a batch looks mis-ranked.
 
 ## Campaign Comment Identity Marker (issue #685)
 

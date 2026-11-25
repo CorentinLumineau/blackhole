@@ -13,7 +13,7 @@ const SCORED = 'x\n\nPareto: gain=8 effort=4 priority=56';
 function fake() {
   const calls: Array<[string, ...unknown[]]> = [];
   const rec = (name: string) => async (...args: unknown[]) => void calls.push([name, ...args]);
-  return { adapter: { issueEdit: rec('issueEdit'), labelAdd: rec('labelAdd'), labelRemove: rec('labelRemove') } as unknown as ForgeAdapter, calls };
+  return { adapter: { issueList: async () => [], issueEdit: rec('issueEdit'), labelAdd: rec('labelAdd'), labelRemove: rec('labelRemove') } as unknown as ForgeAdapter, calls };
 }
 
 describe('scoreRequests', () => {
@@ -188,5 +188,57 @@ describe('applyScores re-scoring', () => {
     const again = fake();
     await applyScores(again.adapter, r.queue, [issue(3, body, ['pareto:P4'], { updatedAt: NOW.toISOString() })], [score], { now: NOW, rescore: {} });
     expect(again.calls).toEqual([]);
+  });
+});
+
+describe('apply then detect round trip', () => {
+  // A forge whose every write bumps the issue's `updatedAt` one second past the previous write, as GitHub does.
+  function bumpingForge(issues: ForgeIssue[]) {
+    let tick = NOW.getTime();
+    const store = new Map(issues.map((i) => [i.number, { ...i }] as const));
+    const bump = (n: number): ForgeIssue => {
+      const cur = store.get(n)!;
+      tick += 1000;
+      cur.updatedAt = new Date(tick).toISOString();
+      return cur;
+    };
+    const adapter = {
+      issueList: async () => [...store.values()].map((i) => ({ ...i })),
+      issueEdit: async (n: number, p: { body: string }) => void (bump(n).body = p.body),
+      labelAdd: async (e: { number: number }, names: string[]) => void (bump(e.number).labels.push(...names.map((name) => ({ name })))),
+      labelRemove: async (e: { number: number }, names: string[]) => {
+        const cur = bump(e.number);
+        cur.labels = cur.labels.filter((l) => !names.includes(l.name));
+      },
+    } as unknown as ForgeAdapter;
+    return { adapter, forgeIssues: () => [...store.values()] };
+  }
+  const later = new Date(NOW.getTime() + 60_000);
+  const score = { number: 3, gain: 7, effort: 5, rationale: 'cheap and broad' };
+
+  test('a fresh score is not edited on the next detect: scored_at follows the last forge write', async () => {
+    const { adapter, forgeIssues } = bumpingForge([issue(3, 'x', ['ready'])]);
+    const r = await applyScores(adapter, queue({ '3': { status: 'ready' } }), forgeIssues(), [score], { now: NOW, rescore: {} });
+    expect(scoreRequests(r.queue, forgeIssues(), { now: later })).toEqual([]);
+  });
+  test('a rescore of a stale score is not edited on the next detect', async () => {
+    const { adapter, forgeIssues } = bumpingForge([issue(3, SCORED, ['ready', 'pareto:P2'])]);
+    const stale = queue({ '3': { status: 'ready', pareto: { gain: 8, effort: 4, priority: 56, scored_at: ago(9) } } });
+    const r = await applyScores(adapter, stale, forgeIssues(), [{ ...score, gain: 3, effort: 2 }], { now: NOW, rescore: {} });
+    expect(r.outcomes).toEqual([{ number: 3, result: 'rescored' }]);
+    expect(scoreRequests(r.queue, forgeIssues(), { now: later })).toEqual([]);
+  });
+  test('a label heal on an already-scored issue is not edited on the next detect', async () => {
+    const { adapter, forgeIssues } = bumpingForge([issue(3, SCORED, ['ready', 'pareto:P3'], { updatedAt: ago(1) })]);
+    const q = queue({ '3': { status: 'ready', pareto: { gain: 8, effort: 4, priority: 56, scored_at: ago(0.5) } } });
+    const r = await applyScores(adapter, q, forgeIssues(), [score], { now: NOW, rescore: {} });
+    expect(r.outcomes).toEqual([{ number: 3, result: 'already-scored' }]);
+    expect(scoreRequests(r.queue, forgeIssues(), { now: later })).toEqual([]);
+  });
+  test('an edit made by someone else after the apply is still detected as edited', async () => {
+    const { adapter, forgeIssues } = bumpingForge([issue(3, 'x', ['ready'])]);
+    const r = await applyScores(adapter, queue({ '3': { status: 'ready' } }), forgeIssues(), [score], { now: NOW, rescore: {} });
+    await adapter.issueEdit(3, { body: `${forgeIssues()[0]!.body}\n\nmore` });
+    expect(scoreRequests(r.queue, forgeIssues(), { now: later }).map((x) => x.rescore?.reason)).toEqual(['edited']);
   });
 });

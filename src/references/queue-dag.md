@@ -285,9 +285,9 @@ branch.
 
 For each pair in ready set, first remove `REGENERATED_PATHS` members (`scripts/lib/stack-overlap.ts`,
 ADR-055) from each issue's `touch_paths`; an issue whose list holds only such files has no
-overlap. `APPEND_ONLY_PATHS` members are not filtered here: dispatch has no merge-tree, so it cannot
-tell a pure row addition from an edit, and it deliberately still stacks on them (ADR-055
-amendment); the PR-time `V-STACK-02` check applies the exemption. Then, if the remaining `touch_paths` globs overlap on likely files,
+overlap. `APPEND_ONLY_PATHS` members are not filtered from `touch_paths` either, but Step 3b drops one from
+the overlap when the parent PR's diff against its merge base only adds lines to it
+(`pureAdditionFiles`, ADR-055 amendment); an edit keeps it an overlap. Then, if the remaining `touch_paths` globs overlap on likely files,
 keep the issue earlier in `user_queue_order`. Defer the other (set `blocked`
 with note `overlap with #N`) only while the blocker has no PR yet; once the blocker has an open PR, Step 3b stacks the issue on
 it instead. The stack depth cap is not applied at dispatch (`pickStackParent` has none): it is

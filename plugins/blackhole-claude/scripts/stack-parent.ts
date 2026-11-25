@@ -7,7 +7,7 @@ import { readJsonFile } from './lib/fs.ts';
 import { adapterSnapshotIo, buildOpenPrSnapshot, PR_REF_PREFIX, type OpenPrSnapshot } from './lib/open-pr-snapshot.ts';
 import { recheckStack, snapshotParentFiles } from './lib/stack-lifecycle.ts';
 import { childBranchFor } from './lib/stack-merge.ts';
-import { verifiedPrMergeTree } from './lib/stack-overlap.ts';
+import { pureAdditionFiles, verifiedPrMergeTree } from './lib/stack-overlap.ts';
 import { pickStackParent, planTouchPaths, withPlanTouchPaths, type StackCandidate } from './lib/stack-parent.ts';
 
 // CLI for queue-dag.md Step 3b and Step 0.4. Both modes read the same bounded open-PR snapshot
@@ -62,18 +62,33 @@ const recheck = async (pr: number): Promise<number> => {
   const decision = recheckStack(pr, snapshot, {
     isOwned: (branch) => owned.has(branch),
     conflicts: (me, other) =>
-      verifiedPrMergeTree(
-        (args) => {
-          const r = Bun.spawnSync(['git', ...args], { cwd: repoRoot });
-          return { code: r.exitCode ?? 1, stdout: r.stdout.toString(), stderr: r.stderr.toString() };
-        },
-        PR_REF_PREFIX,
-        me,
-        other,
-      ),
+      verifiedPrMergeTree(git, PR_REF_PREFIX, me, other),
   });
   console.log(JSON.stringify(decision));
   return decision.action === 'unknown' ? 3 : 0;
+};
+
+const git = (args: string[]) => {
+  const r = Bun.spawnSync(['git', ...args], { cwd: repoRoot });
+  return { code: r.exitCode ?? 1, stdout: r.stdout.toString(), stderr: r.stderr.toString() };
+};
+
+const targetBranch = (): string => {
+  const configPath = path.join(path.dirname(queuePath), 'config.json');
+  const value = existsSync(configPath) ? (readJsonFile(configPath, configPath) as { target_branch?: unknown }).target_branch : undefined;
+  return typeof value === 'string' && value !== '' ? value : 'main';
+};
+
+/** Per parent issue, the append-only files its PR only adds rows to; read from the PR ref in the repo-root checkout. */
+const pureAdditions = (parentFiles: Record<string, string[]>): Record<string, string[]> => {
+  const base = `origin/${targetBranch()}`;
+  const out: Record<string, string[]> = {};
+  for (const [id, files] of Object.entries(parentFiles)) {
+    const pr = issues[id]?.pr;
+    const pure = pr == null ? [] : pureAdditionFiles(git, base, `${PR_REF_PREFIX}${pr}`, files);
+    if (pure.length) out[id] = pure;
+  }
+  return out;
 };
 
 const dispatch = async (issue: number): Promise<number> => {
@@ -84,7 +99,7 @@ const dispatch = async (issue: number): Promise<number> => {
   const planned = withPlanTouchPaths(issues, readPlan);
   // No snapshot and no --parent-files: every open PR's files are unknown, so declared touch_paths decide.
   console.log(
-    JSON.stringify(pickStackParent(planned, issue, { parentFiles: parentFiles ?? {}, defaultTouchPaths: defaultTouchPaths() })),
+    JSON.stringify(pickStackParent(planned, issue, { parentFiles: parentFiles ?? {}, pureAdditions: pureAdditions(parentFiles ?? {}), defaultTouchPaths: defaultTouchPaths() })),
   );
   return 0;
 };
