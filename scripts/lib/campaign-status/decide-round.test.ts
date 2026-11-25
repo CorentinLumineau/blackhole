@@ -254,6 +254,13 @@ describe('planWakeUps', () => {
     expect(plan.map((w) => w.wake_peers)).toEqual([false, true, true]);
   });
 
+  test('a cross-repo in-flight key never reaches the CI check-in refs as NaN (#1499)', () => {
+    const issues: Record<string, QueueIssue> = { ...QUEUE, 'blackhole#7': { status: 'in-flight', phase: 'review', pr: 77 } };
+    const plan = planWakeUps({ budget: NOT_PROBED, issues, role: 'solo', nowIso: NOW_ISO });
+    expect(plan).toHaveLength(1);
+    expect(plan[0].refs).toEqual([3, 4]);
+  });
+
   test('an in-flight issue with no PR yet gets no CI check-in', () => {
     const issues: Record<string, QueueIssue> = { '7': { status: 'in-flight', phase: 'implement', pr: null }, '8': { status: 'in-flight', phase: 'implement' } };
     expect(planWakeUps({ budget: NOT_PROBED, issues, role: 'solo', nowIso: NOW_ISO })).toEqual([]);
