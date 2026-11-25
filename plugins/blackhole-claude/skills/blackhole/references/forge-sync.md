@@ -424,14 +424,14 @@ Re-scoring an existing issue edits in place and leaves exactly one line and one 
 pareto_label=$(bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/pareto-file.ts label --gain G --effort E) || exit 1
 gh label create "$pareto_label" --color fbca04 2>/dev/null || true   # idempotent: a missing bucket label fails the edit
 edit_args=$(bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/pareto-file.ts edit-args --gain G --effort E --labels "<current labels, csv>") || exit 1
-[ -n "$edit_args" ] && gh issue edit N $edit_args   # empty when the label is already right
-bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/pareto-file.ts body --gain G --effort E --body-file <current-body-file> > body.new \
-  && ! cmp -s <current-body-file> body.new && gh issue edit N --body-file body.new   # skip when unchanged
+if [ -n "$edit_args" ]; then gh issue edit N $edit_args; fi   # empty when the label is already right
+bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/pareto-file.ts body --gain G --effort E --body-file <current-body-file> > body.new || exit 1
+if ! cmp -s <current-body-file> body.new; then gh issue edit N --body-file body.new; fi   # skip when unchanged; exits 0 either way
 ```
 
 `rescoreIssue` (`scripts/lib/forge-adapter/pareto-filing.ts`, called by `scripts/pareto-score.ts apply`)
-does the same through the adapter: GitHub and GitLab create a missing label on first use; on Gitea
-create the `pareto:P*` labels once per repo.
+does the same through the adapter: GitHub and GitLab create a missing label on first use, and the
+Gitea adapter's `labelAdd` runs `tea labels create` before each add (an existing label is not an error).
 The `pareto:P4` label means backlog only; it does not change the
 `V-PARETO-03` filing gate or the bug-severity-floor override.
 
