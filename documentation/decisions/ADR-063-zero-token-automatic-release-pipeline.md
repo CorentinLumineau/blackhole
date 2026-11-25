@@ -249,8 +249,8 @@ then 3 and 4 in any order.
 
 ## Open questions for the owner
 
-1. **ADR number.** PR #1514 holds `ADR-062-multi-repo-campaign-model.md` (its title says
-   ADR-061). This ADR takes 063 so `V-ADR-05` sees no duplicate; renumber if you prefer 061.
+1. **ADR number.** Open PRs #1508 and #1514 hold decision files numbered 061 and 062 (the
+   title of #1514 says 061). This ADR takes 063 so `V-ADR-05` sees no duplicate.
 2. **Policy numbers and shipped set.** Keep 10 PRs, 24 h age flush, 6 h cooldown? Is the
    `SHIPPED_PATHS` starting list in D2 right?
 3. **Pre-1.0 breaking change.** Bump minor (proposed) or jump to 1.0.0 as the code does today?
