@@ -1,7 +1,7 @@
 import type { QueueJson } from './campaign-status/types.ts';
 import { rescoreIssue } from './forge-adapter/pareto-filing.ts';
 import type { ForgeAdapter, ForgeIssue } from './forge-adapter/types.ts';
-import { paretoPriority, parseParetoLine, type Pareto } from './pareto.ts';
+import { paretoLabel, paretoPriority, parseParetoLine, reconcileParetoLabels, type Pareto } from './pareto.ts';
 
 // Mechanical side of score-on-ingest (`forge-sync.md` § Score on ingest): finds the ready queue
 // entries whose issue has no valid `Pareto:` line, and applies the scores the orchestrator's LLM
@@ -93,3 +93,17 @@ export async function applyScores(adapter: ForgeAdapter, queue: QueueJson, issue
   }
   return { queue: next, outcomes };
 }
+
+/** A forge issue reduced to what the Pareto contract reads. */
+export type ForgeIssueView = { number: number; body: string; labels: string[] };
+export type ParetoViolation = { number: number; reason: string };
+
+/** Violations of the forge contract (V-PARETO-02): a valid `Pareto:` line plus exactly the one matching `pareto:P*` label. */
+export const findParetoLineViolations = (issues: ForgeIssueView[]): ParetoViolation[] =>
+  issues.flatMap(({ number, body, labels }) => {
+    const scored = parseParetoLine(body);
+    if (!scored) return [{ number, reason: 'missing or invalid `Pareto:` body line' }];
+    const { add, remove } = reconcileParetoLabels(labels, scored.priority);
+    if (add.length) return [{ number, reason: `missing bucket label ${add[0]} for priority ${scored.priority}` }];
+    return remove.length ? [{ number, reason: `stray bucket label(s) ${remove.join(', ')} beside ${paretoLabel(scored.priority)}` }] : [];
+  });
