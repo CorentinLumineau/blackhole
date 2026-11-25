@@ -26,9 +26,30 @@ const forge = (issues: ForgeIssue[]) => {
 const queueOnDisk = () => JSON.parse(fs.readFileSync(path.join(dir, 'queue.json'), 'utf8'));
 
 describe('pareto-score', () => {
-  test('detect lists the unscored ready issues', async () => {
+  test('detect lists the unscored ready issues, and a scored one whose time was never recorded', async () => {
     const r = await runDetect(dir, { adapter: forge([issue(3), issue(4, 'Pareto: gain=8 effort=4 priority=56')]).adapter });
-    expect(r.map((x) => x.number)).toEqual([3]);
+    expect(r.map((x) => [x.number, x.rescore?.reason])).toEqual([[3, undefined], [4, 'unrecorded']]);
+  });
+
+  test('detect lists a scored issue edited after scored_at or older than the configured max age', async () => {
+    const line = 'x\n\nPareto: gain=8 effort=4 priority=56';
+    const p = { gain: 8, effort: 4, priority: 56, scored_at: '2026-11-20T00:00:00.000Z' };
+    fs.writeFileSync(path.join(dir, 'queue.json'), JSON.stringify({ issues: { '3': { status: 'ready', pareto: p }, '4': { status: 'ready', pareto: p } } }));
+    const issues = [{ ...issue(3, line), updatedAt: '2026-11-21T00:00:00Z' }, issue(4, line)];
+    const now = new Date('2026-11-22T00:00:00Z');
+    expect((await runDetect(dir, { adapter: forge(issues).adapter, now })).map((x) => [x.number, x.rescore?.reason])).toEqual([[3, 'edited']]);
+    expect((await runDetect(dir, { adapter: forge(issues).adapter, now, maxAgeDays: 1 })).map((x) => [x.number, x.rescore?.reason])).toEqual([[3, 'edited'], [4, 'aged']]);
+    fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ pareto_max_age_days: 1 }));
+    expect((await runDetect(dir, { adapter: forge(issues).adapter, now })).map((x) => x.number)).toEqual([3, 4]);
+  });
+
+  test('apply re-scores a stale issue and stores scored_at and rationale in the queue', async () => {
+    const scores = path.join(dir, 'scores.json');
+    fs.writeFileSync(scores, JSON.stringify([{ number: 4, gain: 3, effort: 2, rationale: 'cheaper now' }]));
+    fs.writeFileSync(path.join(dir, 'queue.json'), JSON.stringify({ issues: { '4': { status: 'ready', pareto: { gain: 8, effort: 4, priority: 56 } } } }));
+    const f = forge([issue(4, 'x\n\nPareto: gain=8 effort=4 priority=56')]);
+    expect(await runApply(dir, scores, { adapter: f.adapter, now: new Date('2026-11-26T12:00:00Z') })).toEqual([{ number: 4, result: 'rescored' }]);
+    expect(queueOnDisk().issues['4'].pareto).toEqual({ gain: 3, effort: 2, priority: 27, scored_at: '2026-11-26T12:00:00.000Z', rationale: 'cheaper now' });
   });
 
   test('apply writes the forge and the queue, and a re-run changes nothing further', async () => {
@@ -37,7 +58,7 @@ describe('pareto-score', () => {
     const first = forge([issue(3)]);
     expect(await runApply(dir, scores, { adapter: first.adapter })).toEqual([{ number: 3, result: 'scored' }]);
     expect(first.edits).toHaveLength(1);
-    expect(queueOnDisk().issues['3'].pareto).toEqual({ gain: 7, effort: 5, priority: 42 });
+    expect(queueOnDisk().issues['3'].pareto).toMatchObject({ gain: 7, effort: 5, priority: 42, rationale: 'r' });
     const again = forge([issue(3, (first.edits[0]![1] as { body: string }).body)]);
     expect(await runApply(dir, scores, { adapter: again.adapter })).toEqual([{ number: 3, result: 'already-scored' }]);
     expect(again.edits).toEqual([]);

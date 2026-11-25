@@ -19,6 +19,20 @@ const run = (...args: string[]) => {
   return { code: r.exitCode, out: r.stdout.toString().trim(), err: r.stderr.toString() };
 };
 
+describe('pareto-order --require-scored', () => {
+  const mixed = { issues: { '1': { status: 'ready', pareto: p(8, 5) }, '2': { status: 'ready' } } };
+  test('exits 1 naming the unscored issue in the batch, printing no batch', () => {
+    const r = run('--campaign-dir', campaign(mixed), '--require-scored');
+    expect(r.code).toBe(1);
+    expect(r.out).toBe('');
+    expect(r.err).toContain('#2');
+  });
+  test('passes when the batch is fully scored, and is off by default', () => {
+    expect(run('--campaign-dir', campaign(mixed), '--limit', '1', '--require-scored').out).toBe('[1]');
+    expect(run('--campaign-dir', campaign(mixed)).out).toBe('[1,2]');
+  });
+});
+
 describe('pareto-order CLI', () => {
   const queue = {
     issues: {
