@@ -98,6 +98,35 @@ describe('pareto-score', () => {
   });
 });
 
+describe('pareto-score detect --max-age-days', () => {
+  // A campaign dir with a queue and a repo, and a `gh` stub on PATH answering every call with an empty list.
+  const detect = (...a: string[]) => {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'pareto-score-age-'));
+    try {
+      fs.writeFileSync(path.join(d, 'queue.json'), JSON.stringify({ issues: {} }));
+      fs.writeFileSync(path.join(d, 'config.json'), JSON.stringify({ repo: 'o/r', forge: 'github' }));
+      const bin = path.join(d, 'bin');
+      fs.mkdirSync(bin);
+      fs.writeFileSync(path.join(bin, 'gh'), '#!/bin/sh\necho "[]"\n', { mode: 0o755 });
+      return Bun.spawnSync(['bun', path.join(import.meta.dir, 'pareto-score.ts'), 'detect', '--campaign-dir', d, ...a], { stderr: 'pipe', stdout: 'pipe', env: { ...process.env, PATH: `${bin}:${process.env.PATH ?? ''}` } });
+    } finally {
+      fs.rmSync(d, { recursive: true, force: true });
+    }
+  };
+
+  test.each([[[]], [['abc']], [['-1']]] as [string[]][])('exits 2 with usage for a missing or invalid value %j', (value) => {
+    const r = detect('--max-age-days', ...value);
+    expect(r.exitCode).toBe(2);
+    expect(r.stderr.toString()).toContain('Usage:');
+  });
+
+  test('accepts a non-negative number and exits 0', () => {
+    const r = detect('--max-age-days', '3');
+    expect(r.stderr.toString()).not.toContain('Usage:');
+    expect(r.exitCode).toBe(0);
+  });
+});
+
 describe('pareto-score duplicate scores', () => {
   test('apply exits 2 naming the duplicate issue, before any forge call', () => {
     const d = fs.mkdtempSync(path.join(os.tmpdir(), 'pareto-score-dup-'));

@@ -8,7 +8,7 @@ import { paretoLabel, paretoPriority, parseParetoLine, reconcileParetoLabels, ty
 // judgement returns. The judgement itself is not here. No process or filesystem access.
 
 export type StaleReason = 'unrecorded' | 'edited' | 'aged';
-/** A scored issue due a new score: `current` is the score it carries, `reason` why it is due. */
+/** A scored issue due a new score: gain/effort/priority are the score it carries, `reason` why it is due. */
 export type Rescore = { gain: number; effort: number; priority: number; reason: StaleReason };
 export type ScoreRequest = { number: number; title: string; labels: string[]; body: string; rescore?: Rescore };
 export type Score = { number: number; gain: number; effort: number; rationale: string };
