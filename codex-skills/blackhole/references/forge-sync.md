@@ -402,6 +402,35 @@ gh issue create --title "..." --body "..." \
 It also adds `issue_labels.campaign` when present and not already listed in `scope_labels`
 (so new issues remain discoverable without duplicating labels).
 
+### Pareto line and label (V-PARETO-02)
+
+Every filing site that scored Gain and Effort writes the same two artifacts, built by the one
+formatter in `scripts/lib/pareto.ts` and never hand-typed: the body line `Pareto: gain=G effort=E
+priority=N` and the matching `pareto:P1`..`pareto:P4` label (bucket bounds live in
+`PARETO_BUCKETS`, not here). The label replaces any other `pareto:*` label.
+
+```bash
+pareto_line=$(bun scripts/pareto-file.ts line --gain G --effort E) || exit 1
+pareto_label=$(bun scripts/pareto-file.ts label --gain G --effort E) || exit 1
+gh label create "$pareto_label" --color fbca04 2>/dev/null || true   # idempotent: --label fails on a missing label
+gh issue create --title "..." --body "...
+
+$pareto_line" --label "$pareto_label" $scope_args
+```
+
+Re-scoring an existing issue edits in place and leaves exactly one line and one label:
+
+```bash
+edit_args=$(bun scripts/pareto-file.ts edit-args --gain G --effort E --labels "<current labels, csv>") || exit 1
+[ -n "$edit_args" ] && gh issue edit N $edit_args   # empty when the label is already right
+bun scripts/pareto-file.ts body --gain G --effort E --body-file <current-body-file> > body.new \
+  && gh issue edit N --body-file body.new
+```
+
+Adapter code calls `issueCreateWithPareto` / `rescoreIssue` (`scripts/lib/forge-adapter/pareto-filing.ts`)
+instead of shelling out. The `pareto:P4` label means backlog only; it does not change the
+`V-PARETO-03` filing gate or the bug-severity-floor override.
+
 ## Campaign Comment Identity Marker (issue #685)
 
 Every forge comment the campaign posts — issue or PR thread, `gh issue comment` or

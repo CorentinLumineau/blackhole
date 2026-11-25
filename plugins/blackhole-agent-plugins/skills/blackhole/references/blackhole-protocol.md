@@ -88,7 +88,8 @@ section only applies when a campaign has explicitly opted in.
 - **Pareto + bug-severity-floor gate**: Filing follows the same `V-PARETO-03` gate
   (`Priority = Gain * (11 - Effort) >= min_priority`) as every other discovery, plus a
   floor override — a `kind: bug` finding with `severity: BLOCK` or `HIGH` always files
-  regardless of computed Priority.
+  regardless of computed Priority. A filed issue carries the `Pareto:` body line and the
+  `pareto:P*` label from `scripts/pareto-file.ts` (`forge-sync.md` § Pareto line and label).
 - **Caps, dedup, never-drop**: Each wave files at most `kaizen.max_issues_per_wave`
   issues; findings already matching an open `[Kaizen]` issue or ledger row are
   deduplicated, never re-filed. Exceeding the per-wave cap, or filing below

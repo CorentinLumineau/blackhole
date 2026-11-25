@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
-import { formatParetoLine, paretoBucket, paretoLabel, paretoPriority, parseParetoLine } from './pareto.ts';
+import { formatParetoLine, paretoBucket, paretoLabel, paretoPriority, parseParetoLine, reconcileParetoLabels, upsertParetoLine } from './pareto.ts';
 
 describe('paretoPriority', () => {
   test('is gain * (11 - effort)', () => {
@@ -68,4 +68,51 @@ describe('formatParetoLine', () => {
 test('the module is pure: no fs or child_process import', () => {
   const src = fs.readFileSync(new URL('./pareto.ts', import.meta.url), 'utf8');
   expect(src).not.toMatch(/^\s*import .*['"](?:node:)?(?:fs|child_process)['"]/m);
+});
+
+describe('upsertParetoLine', () => {
+  const s = { gain: 7, effort: 5 };
+  test('appends the line to a body lacking one', () => {
+    expect(upsertParetoLine('text', s)).toBe('text\n\nPareto: gain=7 effort=5 priority=42');
+  });
+  test('replaces a stale line in place', () => {
+    expect(upsertParetoLine('a\nPareto: gain=7 effort=5 priority=47\nb', s)).toBe('a\nPareto: gain=7 effort=5 priority=42\nb');
+  });
+  test('collapses duplicate lines to one', () => {
+    const out = upsertParetoLine('a\nPareto: gain=1 effort=1 priority=10\nb\nPareto: gain=2 effort=2 priority=18\n', s);
+    expect(out.match(/^Pareto:/gm)).toHaveLength(1);
+    expect(out).toContain('Pareto: gain=7 effort=5 priority=42');
+  });
+  test('is idempotent', () => {
+    const once = upsertParetoLine('x', s);
+    expect(upsertParetoLine(once, s)).toBe(once);
+  });
+  test('preserves CRLF endings', () => {
+    expect(upsertParetoLine('a\r\nPareto: gain=1 effort=1 priority=10\r\nb', s)).toBe('a\r\nPareto: gain=7 effort=5 priority=42\r\nb');
+  });
+  test('round-trips through parseParetoLine for every in-scale pair', () => {
+    for (let gain = 1; gain <= 10; gain++) {
+      for (let effort = 1; effort <= 10; effort++) {
+        expect(parseParetoLine(upsertParetoLine('body', { gain, effort }))).toEqual({ gain, effort, priority: gain * (11 - effort) });
+      }
+    }
+  });
+  test('throws RangeError out of scale', () => {
+    expect(() => upsertParetoLine('x', { gain: 0, effort: 5 })).toThrow(RangeError);
+  });
+});
+
+describe('reconcileParetoLabels', () => {
+  test('swaps a stale bucket label', () => {
+    expect(reconcileParetoLabels(['kind/feature', 'pareto:P3', 'ready'], 55)).toEqual({ add: ['pareto:P2'], remove: ['pareto:P3'] });
+  });
+  test('already correct is a no-op', () => {
+    expect(reconcileParetoLabels(['pareto:P2'], 55)).toEqual({ add: [], remove: [] });
+  });
+  test('removes every stale pareto label, including unknown ones', () => {
+    expect(reconcileParetoLabels(['pareto:P1', 'pareto:P4', 'pareto:xyz'], 55)).toEqual({ add: ['pareto:P2'], remove: ['pareto:P1', 'pareto:P4', 'pareto:xyz'] });
+  });
+  test('never removes a non-pareto label', () => {
+    expect(reconcileParetoLabels(['ready', 'kind/bug'], 10).remove).toEqual([]);
+  });
 });
