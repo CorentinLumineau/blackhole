@@ -198,21 +198,41 @@ const harnessProjectClone = (cwd = process.cwd()) =>
     return clone ? resolveExistingAncestor(clone) : null;
   });
 
+/** One stderr line per process when no anchor can be established, so a fallback never goes unseen. */
+let anchorWarned = false;
+const warnAnchorUnavailable = () => {
+  if (anchorWarned) return;
+  anchorWarned = true;
+  const project = process.env.CLAUDE_PROJECT_DIR;
+  const why = typeof project === 'string' && project.length > 0 ? 'CLAUDE_PROJECT_DIR is not a usable main clone' : 'CLAUDE_PROJECT_DIR is unset';
+  console.error(
+    `[blackhole-hook] main-clone-anchor-unavailable: ${why}; reading the campaign config from the git metadata in cwd, so a forged clone is not contained`,
+  );
+};
+
 /** The campaign main clone, anchored to a source the worker cannot write: the harness project dir
  * (`CLAUDE_PROJECT_DIR`, set by the harness for every hook call). `mainCloneRoot(cwd)` derives the
  * clone from git metadata inside a tree the worker writes (its worktree's `.git` pointer, a planted
- * `.git`, a nested repository), so the clone it names is only a claim: it is trusted when it is the
- * clone the project dir belongs to, and never alone. Returns the clone's realpath or `null`, and
- * `null` means no trusted campaign context: the campaign config, the state dir, the configured
- * scratchpad and the sibling-plugin defer then grant nothing, and the payload `scratchpad_dir`,
- * `BLACKHOLE_SCRATCHPAD_DIR` and the user settings keep working. It never throws (a throw reaching
- * `recordEvent` would turn a refusal into an allow). A project dir that is itself a linked worktree,
- * lies inside the worker's worktree or scratchpad, or is not absolute is rejected by
- * `isHarnessProjectDir`. Memoised per `(cwd, CLAUDE_PROJECT_DIR, BLACKHOLE_SCRATCHPAD_DIR)`. */
+ * `.git`, a nested repository), so the clone it names is only a claim. Two cases:
+ * - the project dir is accepted by `isHarnessProjectDir` and names a main clone (the anchor is
+ *   established): the clone `cwd` names is trusted only when it is that same clone. A disagreement is
+ *   a forged clone, and the result is `null`: the campaign config, the state dir, the configured
+ *   scratchpad and the sibling-plugin defer then grant nothing, and the payload `scratchpad_dir`,
+ *   `BLACKHOLE_SCRATCHPAD_DIR` and the user settings keep working.
+ * - no anchor can be established (unset, relative, missing, a linked worktree, inside the worker's
+ *   worktree or scratchpad, not a git clone): the pre-anchor decision holds, `mainCloneRoot(cwd)`,
+ *   plus one stderr warning per process. A harness that does not hand a natively dispatched worker's
+ *   hook a main-clone project dir must not lose every worker write, so this never adds a deny.
+ * It never throws (a throw reaching `recordEvent` would turn a refusal into an allow). Memoised per
+ * `(cwd, CLAUDE_PROJECT_DIR, BLACKHOLE_SCRATCHPAD_DIR)`. */
 const anchoredMainClone = (cwd = process.cwd()) =>
   memoByEnvironment('anchored', cwd, () => {
     const fromProject = harnessProjectClone(cwd);
-    const fromCwd = fromProject && mainCloneRoot(cwd);
+    if (!fromProject) {
+      warnAnchorUnavailable();
+      return mainCloneRoot(cwd);
+    }
+    const fromCwd = mainCloneRoot(cwd);
     return fromCwd && resolveExistingAncestor(fromCwd) === fromProject ? fromProject : null;
   });
 
@@ -338,8 +358,8 @@ const isExistingDirectory = (value) => {
 };
 
 /** Reads and validates `scratchpad_dir` from `<mainClone>/.blackhole/config.json`. Callers pass
- * `anchoredMainClone(cwd)`, never `mainCloneRoot(cwd)`: a config in a clone derived from git
- * metadata the worker can write is not a trust source. Returns null —
+ * `anchoredMainClone(cwd)`, never `mainCloneRoot(cwd)`: with an established anchor, a config in a
+ * clone that disagrees with it is not a trust source. Returns null —
  * never throws, never falls back to an unvalidated value — on every degradation: file absent,
  * unreadable, malformed JSON, key absent, or a value `isAcceptableScratchpadDir` rejects. Callers
  * treat null exactly like "no configured scratchpad" and narrow to main-clone-only containment;
@@ -606,8 +626,9 @@ const readAssignedWorktreeRoot = (cwd = process.cwd()) => {
  * worktree or is the campaign's own main clone (the orchestrator's, `planner`'s, `investigator`'s
  * and `hunter`'s case). That is a linked worktree, and also a repository other than the harness
  * project's clone (a nested or foreign repo): a worker there is never the orchestrator, and
- * without this a nested repo would switch the Bash write guard off. With no harness project dir
- * the main-clone case stays null: there is nothing to tell a nested repo from the campaign clone.
+ * without this a nested repo would switch the Bash write guard off. With no usable harness project
+ * dir the main-clone case stays null: there is nothing to tell a nested repo from the campaign
+ * clone (the residual the sandbox direction closes).
  * Shared by `readCwdDerivedAssignedRoot` and the Bash write guard's deferral fallback, so both
  * agree on what counts as a worker worktree. */
 const readLinkedWorktreeRoot = (cwd) => {

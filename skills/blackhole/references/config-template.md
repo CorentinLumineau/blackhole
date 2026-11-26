@@ -37,7 +37,7 @@ Committed template: `.blackhole/config.json`
 | `forge` | yes | `github` \| `gitea` \| `gitlab` (v2 — see ADR-027). Default `github`. When unset at bootstrap, infer from `git remote get-url origin`; explicit value always wins. Mismatch between configured `forge` and detected origin host **must** fail bootstrap loudly (never silently fall back to `github` on a non-GitHub origin). Backend CLIs: `gh` (GitHub), `tea` (Gitea), `glab` (GitLab). Detection/validation implementation: #682 |
 | `parallel_max` | no | Max parallel workers (default 4) |
 | `pareto_max_age_days` | no | Days after which a stored Pareto score is stale and re-scored (default `7`; `forge-sync.md` § Score on ingest) |
-| `scratchpad_dir` | no | Parent dir for git worktrees; the PreToolUse hooks read it only from the main clone the harness project dir names |
+| `scratchpad_dir` | no | Parent dir for git worktrees; the PreToolUse hooks read it from the main clone the harness project dir names (git metadata in cwd when none is usable) |
 | `size_label_prefix` | no | Label prefix for size tags (default `size:`) |
 | `default_touch_paths` | no | Glob patterns for default scope boundary |
 | `issue_labels.campaign` | no | Label applied on runtime `gh issue create` (see `forge-sync.md`) |

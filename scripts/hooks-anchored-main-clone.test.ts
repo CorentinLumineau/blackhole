@@ -4,16 +4,23 @@ import * as os from 'os';
 import * as path from 'path';
 import { PRETOOLUSE_HOOKS_DIR, readHookEvents, runGit, writeInstalledPlugins } from './lib/test-fixtures.ts';
 
-// The campaign config, state dir and scratchpad config are read only from a main clone anchored to
-// the harness project dir (`CLAUDE_PROJECT_DIR`); git metadata in cwd is only confirmed against it.
-// A worker that forges that metadata (a worktree whose admin dir sits in a clone it controls, a
-// planted nested `.git`, a real nested repo) must not turn a forged `config.json` into a write root.
+// The campaign config, state dir and scratchpad config are read from a main clone anchored to the
+// harness project dir (`CLAUDE_PROJECT_DIR`); git metadata in cwd is only confirmed against it.
+// With an established anchor, a worker that forges that metadata (a worktree whose admin dir sits in
+// a clone it controls, a planted nested `.git`, a real nested repo) must not turn a forged
+// `config.json` into a write root. When no anchor can be established the pre-anchor decision holds
+// (git metadata in cwd) plus one stderr warning, and never a new deny.
 // `HOOKS_DIR` points the spec at another copy of the hooks, for a head-versus-main differential.
 
 const HOOKS_DIR = process.env.HOOKS_DIR || PRETOOLUSE_HOOKS_DIR;
 const FILE_HOOK = 'validate-file-changes.js';
 const BASH_HOOK = 'validate-bash-command.js';
 const NO_CLAUDE_HOME = path.join(os.tmpdir(), 'blackhole-hook-fixtures-no-claude-home');
+const ANCHOR_WARNING = 'main-clone-anchor-unavailable';
+// Variant A is refused earlier, where `mainCloneRoot` throws on a `.git` pointer into the worktree:
+// the Write hook reports it as a resolution failure, the Bash guard through its fail-closed catch-all.
+const FORGED_POINTER_IDS = ['worktree-root-resolution-failure', 'uncaught-validator-error'];
+const CONTAINMENT_IDS = ['outside-worktree', 'outside-assigned-worktree', 'bash-outside-worktree', 'bash-outside-assigned-worktree'];
 const SCOPED_ENV = ['BLACKHOLE_ASSIGNED_WORKTREE', 'BLACKHOLE_SCRATCHPAD_DIR', 'CLAUDE_PROJECT_DIR', 'BLACKHOLE_HOOK_SCOPE', 'BLACKHOLE_HOOK_EVENT_DIR'];
 
 type Verdict = 'allow' | 'deny';
@@ -54,15 +61,32 @@ const spawnHook = async (script: string, payload: unknown, cwd: string, env: Rec
     cwd,
     env: { ...base, HOME: home, BLACKHOLE_CLAUDE_HOME: NO_CLAUDE_HOME, ...env } as Record<string, string>,
   });
-  const [exitCode, stdout] = await Promise.all([proc.exited, new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
-  return { verdict: (exitCode === 0 ? 'allow' : 'deny') as Verdict, patternId: stdout.match(/\[([a-z-]+)\]/)?.[1] };
+  const [exitCode, stdout, stderr] = await Promise.all([proc.exited, new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
+  return { exitCode, stderr, verdict: (exitCode === 0 ? 'allow' : 'deny') as Verdict, patternId: stdout.match(/\[([a-z-]+)\]/)?.[1] };
 };
+
+type HookResult = Awaited<ReturnType<typeof spawnHook>>;
+
+/** A refusal is the hook's own containment deny: exit 2 and a containment pattern id, not a crash. */
+const expectContainmentDeny = (result: HookResult, extraIds: string[] = []) => {
+  expect(result.exitCode).toBe(2);
+  expect([...CONTAINMENT_IDS, ...extraIds]).toContain(result.patternId as string);
+};
+const warningCount = (result: HookResult) => result.stderr.split(ANCHOR_WARNING).length - 1;
+
+const runBoth = async (target: string, cwd: string, env: Record<string, string>) => ({
+  write: await spawnHook(FILE_HOOK, { tool_name: 'Write', tool_input: { file_path: target, content: 'x' } }, cwd, env),
+  bash: await spawnHook(BASH_HOOK, { tool_name: 'Bash', tool_input: { command: `echo x > ${target}` } }, cwd, env),
+});
 
 /** One verdict for a target, asserted equal across the Write hook and the Bash write guard. */
 const verdict = async (target: string, cwd: string, env: Record<string, string> = {}): Promise<Verdict> => {
-  const write = await spawnHook(FILE_HOOK, { tool_name: 'Write', tool_input: { file_path: target, content: 'x' } }, cwd, env);
-  const bash = await spawnHook(BASH_HOOK, { tool_name: 'Bash', tool_input: { command: `echo x > ${target}` } }, cwd, env);
+  const { write, bash } = await runBoth(target, cwd, env);
   expect(`${target} bash:${bash.verdict}`).toBe(`${target} bash:${write.verdict}`);
+  if (write.verdict === 'deny') {
+    expectContainmentDeny(write);
+    expectContainmentDeny(bash);
+  }
   return write.verdict;
 };
 
@@ -142,35 +166,78 @@ const variants: Variant[] = [
   },
 ];
 
-const projectEnvs: [string, () => Record<string, string>][] = [
-  ['CLAUDE_PROJECT_DIR is the real main clone', () => ({ CLAUDE_PROJECT_DIR: main })],
-  ['CLAUDE_PROJECT_DIR is unset', () => ({})],
-];
+const forgedTargets = () => [path.join(main, 'pwn.txt'), path.join(sibling, 'pwn.txt'), path.join(main, '.blackhole', 'plans', 'pwn.md')];
 
-describe('forged main clone variants A-D never mint a write root', () => {
+describe('with an established anchor, forged main clone variants A-D never mint a write root', () => {
   for (const variant of variants) {
-    for (const [label, env] of projectEnvs) {
-      test(`${variant.name}, ${label}: the real main clone and a sibling worktree stay denied`, async () => {
-        const { cwd } = variant.build();
-        const targets = [path.join(main, 'pwn.txt'), path.join(sibling, 'pwn.txt'), path.join(main, '.blackhole', 'plans', 'pwn.md')];
-        for (const target of targets) {
-          // Without a project dir the Bash guard cannot tell a nested repository from the campaign
-          // clone (the orchestrator's case), so for D alone only the Write hook is asserted.
-          const writeOnly = variant.name.startsWith('D') && env().CLAUDE_PROJECT_DIR === undefined;
-          if (writeOnly) {
-            const write = await spawnHook(FILE_HOOK, { tool_name: 'Write', tool_input: { file_path: target, content: 'x' } }, cwd, env());
-            expect(write.verdict).toBe('deny');
-          } else {
-            expect(await verdict(target, cwd, env())).toBe('deny');
-          }
-        }
-      });
-    }
+    test(`${variant.name}: the real main clone and a sibling worktree stay denied, with no anchor warning`, async () => {
+      const { cwd } = variant.build();
+      for (const target of forgedTargets()) {
+        const { write, bash } = await runBoth(target, cwd, { CLAUDE_PROJECT_DIR: main });
+        const extra = variant.name.startsWith('A') ? FORGED_POINTER_IDS : [];
+        expectContainmentDeny(write, extra);
+        expectContainmentDeny(bash, extra);
+        expect(warningCount(write)).toBe(0);
+        expect(warningCount(bash)).toBe(0);
+      }
+    });
   }
 
   test('the legitimate worktree denies the same targets (baseline)', async () => {
     expect(await verdict(path.join(main, 'pwn.txt'), legit, { CLAUDE_PROJECT_DIR: main })).toBe('deny');
     expect(await verdict(path.join(sibling, 'pwn.txt'), legit, { CLAUDE_PROJECT_DIR: main })).toBe('deny');
+  });
+});
+
+describe('with no anchor, the pre-anchor decision holds, warns once and never adds a deny', () => {
+  test('A (a clone inside the worker worktree) is still denied: that check does not need the anchor', async () => {
+    const { cwd } = variants[0].build();
+    for (const target of forgedTargets()) {
+      const { write, bash } = await runBoth(target, cwd, {});
+      expectContainmentDeny(write, FORGED_POINTER_IDS);
+      expectContainmentDeny(bash, FORGED_POINTER_IDS);
+    }
+  });
+
+  // Residual risk, pinned on purpose (nested repository D for Bash tracked in #1609, sandbox in #1357):
+  // without an anchor the config a forged clone carries is read as the campaign's, as before the anchor.
+  for (const variant of variants.slice(1)) {
+    test(`${variant.name}: CLAUDE_PROJECT_DIR unset keeps the pre-anchor verdict and emits one warning per tool`, async () => {
+      const { cwd } = variant.build();
+      const target = path.join(main, 'pwn.txt');
+      const { write, bash } = await runBoth(target, cwd, {});
+      expect(write.exitCode).toBe(0);
+      expect(warningCount(write)).toBe(1);
+      if (!variant.name.startsWith('D')) {
+        expect(bash.exitCode).toBe(0);
+        expect(warningCount(bash)).toBe(1);
+      }
+    });
+  }
+
+  test('a legitimate worktree keeps reaching the configured scratchpad and state dir, with one warning per tool', async () => {
+    const pad = fresh('pad');
+    fs.mkdirSync(pad);
+    writeConfig(main, { forge: 'github', scratchpad_dir: pad });
+    try {
+      for (const target of [path.join(pad, 'x.txt'), path.join(main, '.blackhole', 'plans', 'x.md')]) {
+        const { write, bash } = await runBoth(target, legit, {});
+        expect(write.exitCode).toBe(0);
+        expect(bash.exitCode).toBe(0);
+        expect(warningCount(write)).toBe(1);
+        expect(warningCount(bash)).toBe(1);
+      }
+    } finally {
+      writeConfig(main, { forge: 'github' });
+    }
+  });
+
+  test('an established anchor emits no warning on the same layout', async () => {
+    const { write, bash } = await runBoth(path.join(legit, 'f.txt'), legit, { CLAUDE_PROJECT_DIR: main });
+    expect(write.exitCode).toBe(0);
+    expect(bash.exitCode).toBe(0);
+    expect(warningCount(write)).toBe(0);
+    expect(warningCount(bash)).toBe(0);
   });
 });
 
@@ -183,36 +250,39 @@ describe('the project dir is the anchor, and only a trustworthy one', () => {
   };
   const resetConfig = () => writeConfig(main, { forge: 'github' });
 
-  test('a project dir naming a linked worktree closes the config route', async () => {
+  test('a project dir naming a linked worktree does not anchor: the pre-anchor decision holds and warns', async () => {
     const pad = scratchpadConfigured();
     try {
-      expect(await verdict(path.join(pad, 'x.txt'), legit, { CLAUDE_PROJECT_DIR: main })).toBe('allow');
-      expect(await verdict(path.join(pad, 'x.txt'), legit, { CLAUDE_PROJECT_DIR: legit })).toBe('deny');
-      expect(await verdict(path.join(pad, 'x.txt'), legit, { CLAUDE_PROJECT_DIR: sibling })).toBe('deny');
+      for (const project of [legit, sibling]) {
+        const { write, bash } = await runBoth(path.join(pad, 'x.txt'), legit, { CLAUDE_PROJECT_DIR: project });
+        expect(write.exitCode).toBe(0);
+        expect(bash.exitCode).toBe(0);
+        expect(warningCount(write)).toBe(1);
+        expect(warningCount(bash)).toBe(1);
+      }
     } finally {
       resetConfig();
     }
   });
 
-  test('a relative, missing or nested-forged project dir closes the config route', async () => {
+  test('a relative, missing, nested-forged or inside-scratchpad project dir does not anchor either', async () => {
     const pad = scratchpadConfigured();
     const nested = path.join(legit, `forged-project-${(seq += 1)}`);
     initRepo(nested);
     try {
-      expect(await verdict(path.join(pad, 'x.txt'), legit, { CLAUDE_PROJECT_DIR: path.relative(process.cwd(), main) })).toBe('deny');
-      expect(await verdict(path.join(pad, 'x.txt'), legit, { CLAUDE_PROJECT_DIR: path.join(top, 'missing') })).toBe('deny');
-      expect(await verdict(path.join(pad, 'x.txt'), legit, { CLAUDE_PROJECT_DIR: nested })).toBe('deny');
-      expect(await verdict(path.join(pad, 'x.txt'), legit, {})).toBe('deny');
-    } finally {
-      resetConfig();
-    }
-  });
-
-  test('a project dir inside the worker scratchpad closes the config route', async () => {
-    const pad = scratchpadConfigured();
-    try {
-      const env = { CLAUDE_PROJECT_DIR: main, BLACKHOLE_SCRATCHPAD_DIR: main };
-      expect(await verdict(path.join(pad, 'x.txt'), legit, env)).toBe('deny');
+      const projects: Record<string, string>[] = [
+        { CLAUDE_PROJECT_DIR: path.relative(process.cwd(), main) },
+        { CLAUDE_PROJECT_DIR: path.join(top, 'missing') },
+        { CLAUDE_PROJECT_DIR: nested },
+        { CLAUDE_PROJECT_DIR: main, BLACKHOLE_SCRATCHPAD_DIR: main },
+      ];
+      for (const env of projects) {
+        const { write, bash } = await runBoth(path.join(pad, 'x.txt'), legit, env);
+        expect(write.exitCode).toBe(0);
+        expect(bash.exitCode).toBe(0);
+        expect(warningCount(write)).toBe(1);
+        expect(warningCount(bash)).toBe(1);
+      }
     } finally {
       resetConfig();
     }
@@ -238,6 +308,8 @@ describe('the project dir is the anchor, and only a trustworthy one', () => {
     const real = fs.realpathSync(otherWt);
     expect(await verdict(path.join(otherPad, 'x.txt'), real, { CLAUDE_PROJECT_DIR: other })).toBe('allow');
     expect(await verdict(path.join(otherPad, 'x.txt'), real, { CLAUDE_PROJECT_DIR: main })).toBe('deny');
+    const { write } = await runBoth(path.join(otherPad, 'x.txt'), real, { CLAUDE_PROJECT_DIR: main });
+    expect(warningCount(write)).toBe(0);
   });
 });
 
@@ -294,7 +366,7 @@ describe('the audit trail follows the anchor', () => {
     const result = await spawnHook(FILE_HOOK, { tool_name: 'Write', tool_input: { file_path: path.join(main, 'pwn.txt'), content: 'x' } }, cwd, {
       CLAUDE_PROJECT_DIR: main,
     });
-    expect(result.verdict).toBe('deny');
+    expectContainmentDeny(result);
     expect(readHookEvents(main).length).toBe(realBefore + 1);
     expect(readHookEvents(clone)).toEqual([]);
   });
@@ -316,7 +388,7 @@ describe('the sibling-plugin defer reads the anchored clone', () => {
       CLAUDE_PROJECT_DIR: main,
       BLACKHOLE_CLAUDE_HOME: claudeHome(),
     });
-    expect(result.verdict).toBe('deny');
+    expectContainmentDeny(result);
   });
 
   test('the real main clone without a config still defers under its own project dir', async () => {
