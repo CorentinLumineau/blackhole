@@ -118,6 +118,10 @@ mutation happened not to run in the same incident.
      for a legitimate reduction (an issue removed, a ledger rotated to `archive/`) — even with
      `--allow-shrink`, a collapse to exactly zero is always refused; a declared shrink is not a
      declared wipe
+   - the entity container type differs from the live file's (`array` vs `object`) — a same-count
+     `jq '.issues |= map(...)'` rewrite turns the keyed queue object into an array and passes a
+     count check; the reason names both types
+   - (`issues` only) an object key that is not a positive issue number
    - (`issues` only) a queue entry carries a `status` or `phase` outside the documented values
      (`queue-dag.md` § Per-issue fields, `QUEUE_STATUSES` / `QUEUE_PHASES` in
      `scripts/lib/campaign-status/queue.ts`); the reason names the entry and the valid values.
