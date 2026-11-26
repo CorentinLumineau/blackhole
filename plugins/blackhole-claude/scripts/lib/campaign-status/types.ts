@@ -19,6 +19,9 @@ export type Route = {
   revision?: number;
 };
 
+/** Queue state a score was made against: each dependency's status and the linked PR (`pareto-score.ts` `staleness`). */
+export type ScoreBasis = { deps: Record<string, string>; pr: number | null };
+
 // Narrow view of `queue.json`'s per-issue entry — field names and semantics are frozen in
 // `queue-dag.md` § Field rules; this type reads a subset and never renames or redefines one.
 export type QueueIssue = {
@@ -45,8 +48,8 @@ export type QueueIssue = {
   /** Parent epic issue; a workstream source (`status_page.streams.from: epic`). */
   epic_parent?: number | null;
   route?: Route;
-  /** Parsed from the forge body's `Pareto:` line by the forge sync (`scripts/lib/pareto.ts`); absent when unscored. `scored_at`/`rationale` are written by `scripts/pareto-score.ts apply` and kept by the sync while the forge line is unchanged. */
-  pareto?: { gain: number; effort: number; priority: number; scored_at?: string; rationale?: string };
+  /** Parsed from the forge body's `Pareto:` line by the forge sync (`scripts/lib/pareto.ts`); absent when unscored. `scored_at`/`rationale`/`basis` are written by `scripts/pareto-score.ts apply` and kept by the sync while the forge line is unchanged. */
+  pareto?: { gain: number; effort: number; priority: number; scored_at?: string; rationale?: string; basis?: ScoreBasis };
 };
 
 export type QueueJson = {
