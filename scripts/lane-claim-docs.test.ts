@@ -33,3 +33,17 @@ describe('lane claim wiring in src/references', () => {
     expect(ref('phase-catchup.md')).toContain('Set `catchup.lane` per account');
   });
 });
+
+describe('contract claim label release wiring', () => {
+  test('the dispatch section names the script, the key and the kept rule', () => {
+    const doc = ref('orchestrator-dispatch.md');
+    const section = doc.slice(doc.indexOf('## Contract claim labels'));
+    expect(section.length).toBeGreaterThan(0);
+    for (const word of ['scripts/release-claims.ts', 'claim_labels', 'released', 'kept', 'open PR']) expect(section).toContain(word);
+  });
+
+  test('the stop tiers, the campaign-complete step and the config template point at it', () => {
+    for (const file of ['phase-stop.md', 'phase-loop.md']) expect(ref(file)).toContain('release-claims.ts');
+    expect(ref('config-template.md')).toContain('`claim_labels`');
+  });
+});

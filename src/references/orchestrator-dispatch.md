@@ -386,3 +386,19 @@ lane, user, held_by}`.
 `phase-loop.md` § Merge protocol step 5), when a worker returns failed, on `stop --abandon` and on a
 `stop --now` worker that falls back to abandon, and on a stop for a claim with no open own PR. A claim
 with an open PR stays until merge: the lease covers an abandoned one. `NOT-HELD` touches nothing.
+
+## Contract claim labels
+
+Applies when `claim_labels` is set in `config.json` (for example `["in-progress:claude"]`), lane or no
+lane: a consumer contract labels the issues the campaign works, and the campaign removes the label
+itself. The lane claim above answers `SKIP` with no lane, so it never releases these.
+
+`bun run scripts/release-claims.ts --campaign-dir .blackhole` reads the forge: for every `queue.json`
+issue that still carries a `claim_labels` entry it removes the label and posts one comment ("released
+by blackhole stop: no work in flight; claim again to continue"), unless an open PR links the issue
+(`Closes`/`Fixes`/`Resolves`/`Part of`/`Refs #N` in its body, or the number as a whole token of its head
+branch): that PR is the work in flight and the claim is kept. It prints one JSON line `{released,
+kept}` and writes nothing when `claim_labels` is unset. Run it on every `stop` tier
+(`phase-stop.md`) and when the queue drains at the turn-end gate, so a finished campaign leaves no
+claim label on an issue it is not working.
+
