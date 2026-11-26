@@ -2,11 +2,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { loadManifest, validateEntries, type Manifest } from './carry-staged-artifacts.ts';
 
-// The one writer of `.blackhole/staged/<issue>/manifest.json` (blackhole-state.md § Staging).
-// Producers (planner, investigator) call this instead of shelling out a redirect, because a
-// redirect truncates the target before the new content exists and leaves a zero-byte manifest
-// that the carry step then refuses. The candidate is validated before it replaces the live file.
-
+/**
+ * Append one validated entry to `.blackhole/staged/<issue>/manifest.json` via `.tmp` + rename,
+ * creating the manifest when absent. Rationale: blackhole-state.md § Staging.
+ *
+ * @throws when the entry fails validation, when an existing manifest is zero-byte or
+ * unparseable, or when the existing manifest belongs to a different issue. The live file is
+ * left untouched in every throwing case.
+ */
 export const appendManifestEntry = (manifestPath: string, issue: number, entry: unknown): Manifest => {
   const { valid, skipped } = validateEntries([entry]);
   if (skipped.length > 0) throw new Error(`${manifestPath}: refused entry: ${skipped[0].reason}`);
@@ -24,7 +27,6 @@ export const appendManifestEntry = (manifestPath: string, issue: number, entry: 
     entries: [...(existing?.entries ?? []), valid[0]],
   };
   const serialized = JSON.stringify(next, null, 2) + '\n';
-  JSON.parse(serialized);
 
   const tmpPath = `${manifestPath}.tmp`;
   fs.mkdirSync(path.dirname(manifestPath), { recursive: true });

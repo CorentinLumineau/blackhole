@@ -69,7 +69,7 @@ a copy at `.blackhole/staged/<issue>/{concern-slug}.md` via the same Bash heredo
 pattern (full-destination-path `.tmp` naming — `blackhole-state.md` § Staging, issue #911)
 used for the note file itself (see § Tool policy above), at the absolute repo-root
 staging directory the orchestrator passes at spawn time (`blackhole-state.md` § Staging (ADR-021
-D1)). Append the entry via `bun run --cwd <abs repo-root> scripts/stage-manifest.ts append --manifest <abs repo-root>/.blackhole/staged/<issue>/manifest.json --issue <N> --entry-json '<entry json>'` (atomic `.tmp` + rename, never a shell redirect; exit 1 means refused, fix and re-run).
+D1)). Append the entry via `bun run --cwd <abs repo-root> scripts/stage-manifest.ts append --manifest <abs repo-root>/.blackhole/staged/<issue>/manifest.json --issue <N> --entry-json '<entry json>'` (atomic `.tmp` + rename, never a shell redirect; exit 1 means refused, fix and re-run; an entry containing an apostrophe goes in a file in the worktree passed as `--entry-file <path>` instead of `--entry-json`).
 When `docs_governance.enabled` or `docs_governance.write_governance` resolves absent or `false`,
 skip staging entirely — write nothing, append no manifest entry. This is staging, not a
 promotion commit — no branch exists at Phase 2 (ADR-021 D1); the implementer's carry-step

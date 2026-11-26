@@ -61,4 +61,21 @@ describe('stage-manifest CLI append', () => {
     expect(stderr).toContain(manifest);
     expect(fs.statSync(manifest).size).toBe(0);
   });
+
+  test('--entry-file reads the entry from a file, including one with an apostrophe', async () => {
+    const file = path.join(dir, 'entry.json');
+    fs.writeFileSync(file, entryJson({ summary: "it's a plan" }));
+    const [code] = await out(run(['append', '--manifest', manifest, '--issue', '7', '--entry-file', file]));
+    expect(code).toBe(0);
+    expect(JSON.parse(fs.readFileSync(manifest, 'utf-8')).entries[0].summary).toBe("it's a plan");
+  });
+
+  test('both --entry-json and --entry-file, or neither, exits 2', async () => {
+    const file = path.join(dir, 'entry.json');
+    fs.writeFileSync(file, entryJson());
+    const [both] = await out(run(['append', '--manifest', manifest, '--issue', '7', '--entry-json', entryJson(), '--entry-file', file]));
+    const [none] = await out(run(['append', '--manifest', manifest, '--issue', '7']));
+    expect([both, none]).toEqual([2, 2]);
+    expect(fs.existsSync(manifest)).toBe(false);
+  });
 });

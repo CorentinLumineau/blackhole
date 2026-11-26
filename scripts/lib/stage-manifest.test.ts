@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, spyOn, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
 import { withTempDir } from './test-fixtures.ts';
@@ -88,6 +88,26 @@ describe('appendManifestEntry', () => {
       const p = path.join(dir, 'manifest.json');
       fs.writeFileSync(p, JSON.stringify({ issue: 8, updated_at: 'x', entries: [] }));
       expect(() => appendManifestEntry(p, 7, entry())).toThrow(/issue/);
+    });
+  });
+
+  test('write failure after validation leaves live manifest bytes unchanged and no .tmp behind', () => {
+    withTempDir('stage-manifest', (dir) => {
+      const p = path.join(dir, 'manifest.json');
+      const live = JSON.stringify({ issue: 7, updated_at: 'x', entries: [entry()] });
+      fs.writeFileSync(p, live);
+      // The rename step fails after the candidate was validated and written to .tmp; a direct
+      // writeFileSync onto the manifest would have already replaced the live bytes.
+      const rename = spyOn(fs, 'renameSync').mockImplementation(() => {
+        throw new Error('rename failed');
+      });
+      try {
+        expect(() => appendManifestEntry(p, 7, entry({ staged_path: 'b', target_path: 'documentation/b.md' }))).toThrow('rename failed');
+      } finally {
+        rename.mockRestore();
+      }
+      expect(fs.readFileSync(p, 'utf-8')).toBe(live);
+      expect(fs.existsSync(`${p}.tmp`)).toBe(false);
     });
   });
 });

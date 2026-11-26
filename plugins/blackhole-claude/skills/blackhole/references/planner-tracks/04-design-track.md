@@ -106,7 +106,7 @@ The artifact consolidates 8 ordered subsections:
       `.blackhole/staged/<issue>/decisions-index-row.md`, via Bash heredoc + atomic `mv` (full-destination-path `.tmp` naming — `blackhole-state.md` § Staging, issue #911), at the
       absolute repo-root staging directory the orchestrator passes at spawn time
       (`blackhole-state.md` § Staging (ADR-021 D1)). Append both entries (one call each) via
-      `bun run --cwd <abs repo-root> "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/stage-manifest.ts append --manifest <abs repo-root>/.blackhole/staged/<issue>/manifest.json --issue <N> --entry-json '<entry json>'` (atomic `.tmp` + rename, never a shell redirect; exit 1 means refused, fix and re-run). **Manifest write is
+      `bun run --cwd <abs repo-root> "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/stage-manifest.ts append --manifest <abs repo-root>/.blackhole/staged/<issue>/manifest.json --issue <N> --entry-json '<entry json>'` (atomic `.tmp` + rename, never a shell redirect; exit 1 means refused, fix and re-run; an entry containing an apostrophe goes in a file in the worktree passed as `--entry-file <path>` instead of `--entry-json`). **Manifest write is
       mandatory, not narration** (issue #782): rendering the artifacts without this append — or
       narrating the staging without executing it — does not satisfy ADR-021 D3 and leaves
       `V-AUTO-02` unable to detect the gap; confirm both entries exist on disk before returning
