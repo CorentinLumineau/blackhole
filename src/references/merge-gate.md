@@ -344,7 +344,7 @@ parent merges, which is why this section owns an obligation at stack-creation ti
 merge time. A child with no recorded tip (an owner or cross-session PR, an external `stacked_on_pr`
 parent, a parent squashed by someone else) is not stuck: `repair` derives the base from the parent
 PR's `head.sha`, which `refs/pull/<N>/head` still resolves after the branch is deleted, as the
-merge base of the child and that head. A recorded tip always wins.
+merge base of the child and that head, and refuses a base already on the target under a head that is not. A recorded tip always wins, and is refused when the readable head does not descend from it.
 
 Both obligations are mechanized by `scripts/stack-repair.ts`; only the judgment lives here.
 
