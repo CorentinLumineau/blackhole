@@ -985,12 +985,30 @@ const trustedWriteRoots = (cwd = process.cwd(), input = {}, { mainClone = mainCl
   return [...roots];
 };
 
-/** True when `candidate` may be written under one of the `roots` `trustedWriteRoots` returned: no
+/** True when `candidate` is a markdown file directly inside Claude Code's own auto-memory directory,
+ * `~/.claude/projects/<project>/memory/<name>.md`: harness state, not repository content, so a
+ * campaign session may record a memory there. Narrow by construction: exactly three segments below
+ * `~/.claude/projects` once every symlink is resolved (`realpathWithTail`), a `.md` leaf, and a plain
+ * file (`isPlainLeaf`). Everything else under `~/.claude` (settings, plugins, rules, `CLAUDE.md`)
+ * stays outside the guard's allowance. */
+const isHarnessMemoryPath = (candidate) => {
+  const projects = realpathWithTail(path.join(os.homedir(), '.claude', 'projects'));
+  const real = realpathWithTail(candidate);
+  if (!real.startsWith(projects + path.sep)) return false;
+  const [project, dir, name, ...rest] = real.slice(projects.length + 1).split(path.sep);
+  if (!project || dir !== 'memory' || !name || rest.length > 0 || !/^[^/]+\.md$/i.test(name)) return false;
+  return isPlainLeaf(path.resolve(candidate));
+};
+
+/** True when `candidate` may be written under one of the `roots` `trustedWriteRoots` returned, or is
+ * a harness auto-memory file (`isHarnessMemoryPath`, which needs no root): no
  * `..` segment, inside a root once resolved (`realpathWithTail`, so an alias through any symlink is
  * judged where it lands), and a plain leaf (`isPlainLeaf`: a link or an existing directory is not a
  * file target). */
 const isTrustedExtraPath = (candidate, roots) => {
-  if (roots.length === 0 || candidate.split(path.sep).includes('..')) return false;
+  if (candidate.split(path.sep).includes('..')) return false;
+  if (isHarnessMemoryPath(candidate)) return true;
+  if (roots.length === 0) return false;
   const real = realpathWithTail(candidate);
   return roots.some((root) => real.startsWith(root + path.sep)) && isPlainLeaf(path.resolve(candidate));
 };
