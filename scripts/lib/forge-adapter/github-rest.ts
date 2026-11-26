@@ -1,6 +1,6 @@
 import { isNotFound, runGhApi, runGhApiRestJson } from './cli.ts';
 import { repoPathFromOrigin } from '../forge-detection.ts';
-import type { ForgeCheck, ForgeIssue, ForgePr, IssueListFilter, PrChangeBaseResult } from './types.ts';
+import type { ForgeCheck, ForgeIssue, ForgePr, IssueListFilter, PrChangeBaseResult, PrUpdateBranchResult } from './types.ts';
 
 // GitHub REST rows and their mapping to the forge types (ADR-048). Pure mappers are exported so
 // any channel that already holds REST-shaped JSON (an MCP tool result saved to a file, a fixture)
@@ -221,6 +221,22 @@ export const changePrBase = (repo: string, number: number, base: string): PrChan
   return actual === base
     ? { ok: true, base: actual }
     : { ok: false, base: actual, detail: `base is ${actual ?? 'unreadable'} after the change, expected ${base}` };
+};
+
+/** Reads the HTTP 422 reason of an update-branch refusal; any other status, or an unrecognised reason, is `FAILED`. */
+export const classifyUpdateBranchFailure = (stderr: string): 'CONFLICT' | 'STALE-HEAD' | 'FAILED' => {
+  if (!/HTTP 422/.test(stderr)) return 'FAILED';
+  if (/merge conflict/i.test(stderr)) return 'CONFLICT';
+  if (/head sha|head branch was modified/i.test(stderr)) return 'STALE-HEAD';
+  return 'FAILED';
+};
+
+/** One `PUT .../update-branch` carrying `expected_head_sha`; HTTP 202 means accepted, the merge itself lands asynchronously. */
+export const updatePrBranch = (repo: string, number: number, expectedHeadSha: string): PrUpdateBranchResult => {
+  const result = runGhApi('PUT', `repos/${repo}/pulls/${number}/update-branch`, { expected_head_sha: expectedHeadSha });
+  if (result.status === 0) return { verdict: 'UPDATED' };
+  const detail = result.stderr.trim() || result.stdout.trim() || result.error?.message || 'update-branch failed';
+  return { verdict: classifyUpdateBranchFailure(result.stderr), detail };
 };
 
 /** At most 1000 rows (10 pages of 100) are read per list; a read still short of its total at the cap is refused, never returned partial. */

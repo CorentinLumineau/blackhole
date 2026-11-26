@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import * as childProcess from 'child_process';
 import { GitHubForgeAdapter } from './github.ts';
-import { mapRestCheckRun, mapRestStatus, repoSlugFromOrigin, suiteProducers } from './github-rest.ts';
+import { classifyUpdateBranchFailure, mapRestCheckRun, mapRestStatus, repoSlugFromOrigin, suiteProducers } from './github-rest.ts';
 
 // Every adapter call is `gh api -X <method> <endpoint> [--input -]` (ADR-048). The mock answers by
 // method + endpoint and records each call, so a test asserts both the REST request and the mapping.
@@ -356,6 +356,49 @@ describe('GitHubForgeAdapter (REST)', () => {
     });
   });
 
+  test('prUpdateBranch sends one PUT with expected_head_sha and maps 202 to UPDATED', async () => {
+    mockApi(() => ({ stdout: { message: 'Updating pull request branch.' } }));
+    expect(await adapter.prUpdateBranch(4, 'abc123')).toEqual({ verdict: 'UPDATED' });
+    expect(calls.map((c) => [c.method, c.endpoint, c.body])).toEqual([
+      ['PUT', 'repos/owner/repo/pulls/4/update-branch', { expected_head_sha: 'abc123' }],
+    ]);
+  });
+
+  test('prUpdateBranch maps a 422 merge conflict to CONFLICT', async () => {
+    mockApi(() => ({ status: 1, stderr: 'gh: merge conflict between base and head (HTTP 422)' }));
+    expect(await adapter.prUpdateBranch(4, 'abc123')).toEqual({
+      verdict: 'CONFLICT',
+      detail: 'gh: merge conflict between base and head (HTTP 422)',
+    });
+  });
+
+  test('prUpdateBranch maps a 422 head-sha mismatch to STALE-HEAD', async () => {
+    mockApi(() => ({ status: 1, stderr: "gh: expected head sha didn't match current head ref. (HTTP 422)" }));
+    expect(await adapter.prUpdateBranch(4, 'abc123')).toMatchObject({ verdict: 'STALE-HEAD' });
+    mockApi(() => ({ status: 1, stderr: 'gh: Head branch was modified. Review and try the merge again. (HTTP 422)' }));
+    expect(await adapter.prUpdateBranch(4, 'abc123')).toMatchObject({ verdict: 'STALE-HEAD' });
+  });
+
+  test('prUpdateBranch maps a 403 and an unrecognised 422 to FAILED with stderr in detail, never throwing', async () => {
+    mockApi(() => ({ status: 1, stderr: 'gh: Resource not accessible by integration (HTTP 403)' }));
+    expect(await adapter.prUpdateBranch(4, 'abc123')).toEqual({
+      verdict: 'FAILED',
+      detail: 'gh: Resource not accessible by integration (HTTP 403)',
+    });
+    mockApi(() => ({ status: 1, stderr: 'gh: Validation Failed (HTTP 422)' }));
+    expect(await adapter.prUpdateBranch(4, 'abc123')).toEqual({ verdict: 'FAILED', detail: 'gh: Validation Failed (HTTP 422)' });
+  });
+
+  test('prUpdateBranch reports FAILED when the gh binary cannot run', async () => {
+    spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockReturnValue({
+      status: null,
+      stdout: '',
+      stderr: '',
+      error: Object.assign(new Error('ENOENT'), { code: 'ENOENT' }),
+    } as never);
+    expect(await adapter.prUpdateBranch(4, 'abc123')).toMatchObject({ verdict: 'FAILED' });
+  });
+
   test('authStatus is ok when the repo is readable over REST', async () => {
     mockApi(() => ({ stdout: { full_name: 'owner/repo' } }));
     expect(await adapter.authStatus()).toEqual({ ok: true, forge: 'github', host: 'github.com' });
@@ -526,5 +569,14 @@ describe('check producer fields', () => {
     expect(mapRestStatus({ context: 'ci/legacy', state: 'success' })).toEqual({ name: 'ci/legacy', status: 'COMPLETED', conclusion: 'SUCCESS' });
     expect(mapRestStatus({ context: 'ci/legacy', state: 'error' })).toEqual({ name: 'ci/legacy', status: 'COMPLETED', conclusion: 'FAILURE' });
     expect(mapRestStatus({ context: 'ci/legacy', state: 'pending' })).toEqual({ name: 'ci/legacy', status: 'QUEUED', conclusion: null });
+  });
+});
+
+describe('classifyUpdateBranchFailure', () => {
+  test('reads the HTTP 422 reason from stderr; anything unrecognised stays FAILED', () => {
+    expect(classifyUpdateBranchFailure('merge conflict between base and head (HTTP 422)')).toBe('CONFLICT');
+    expect(classifyUpdateBranchFailure("expected head sha didn't match current head ref. (HTTP 422)")).toBe('STALE-HEAD');
+    expect(classifyUpdateBranchFailure('merge conflict (HTTP 500)')).toBe('FAILED');
+    expect(classifyUpdateBranchFailure('')).toBe('FAILED');
   });
 });

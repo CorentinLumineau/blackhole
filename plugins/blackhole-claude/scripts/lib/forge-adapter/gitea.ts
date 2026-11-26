@@ -17,6 +17,7 @@ import type {
   IssueEditParams,
   IssueListFilter,
   PrChangeBaseResult,
+  PrUpdateBranchResult,
   PrCreateParams,
 } from './types.ts';
 
@@ -349,6 +350,10 @@ export class GiteaForgeAdapter implements ForgeAdapter {
 
   async prChangeBase(number: number, base: string): Promise<PrChangeBaseResult> {
     return changeGiteaPrBase(this.repo, number, base);
+  }
+
+  async prUpdateBranch(_number: number, _expectedHeadSha: string): Promise<PrUpdateBranchResult> {
+    return { verdict: 'UNSUPPORTED', detail: 'gitea pulls/{n}/update has no expected-head guard, so a stale-head race cannot be excluded' };
   }
 
   async getDependencies(target: DependencyTarget): Promise<ForgeDependencies> {

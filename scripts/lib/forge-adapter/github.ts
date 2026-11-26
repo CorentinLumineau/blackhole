@@ -2,6 +2,7 @@ import { readOriginUrl } from '../forge-detection.ts';
 import { runGhApi, runGhApiJson, runGhApiRestJson, runGhApiText } from './cli.ts';
 import {
   changePrBase,
+  updatePrBranch,
   listChecks,
   listPrFiles,
   listIssues,
@@ -33,6 +34,7 @@ import type {
   IssueEditParams,
   IssueListFilter,
   PrChangeBaseResult,
+  PrUpdateBranchResult,
   PrCreateParams,
 } from './types.ts';
 
@@ -162,6 +164,10 @@ export class GitHubForgeAdapter implements ForgeAdapter {
 
   async prChangeBase(number: number, base: string): Promise<PrChangeBaseResult> {
     return changePrBase(this.repo, number, base);
+  }
+
+  async prUpdateBranch(number: number, expectedHeadSha: string): Promise<PrUpdateBranchResult> {
+    return updatePrBranch(this.repo, number, expectedHeadSha);
   }
 
   async getDependencies(target: DependencyTarget): Promise<ForgeDependencies> {
