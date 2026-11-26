@@ -479,7 +479,7 @@ export type IssueRow = { num: number; issue: QueueIssue };
 
 /** The launch summary's rows, in display order, for a run and for a catchup alike (`launch-summary.ts`). */
 export const LAUNCH_ROW_KEYS = [
-  'scope', 'order', 'roadmap', 'merge', 'pacing', 'budget', 'status_page', 'kaizen_staging',
+  'scope', 'order', 'roadmap', 'merge', 'pacing', 'ci_capacity', 'budget', 'status_page', 'kaizen_staging',
   'autonomy', 'resource_policy', 'wave_scheduling', 'peers', 'decisions', 'other_config',
 ] as const;
 export type LaunchRowKey = (typeof LAUNCH_ROW_KEYS)[number];

@@ -5,7 +5,7 @@ import { WEEK_HOURS } from '../pace-floor.ts';
 import { DEFAULT_USAGE_BUDGET, type UsageBudgetConfig } from '../usage-budget.ts';
 import { parallelMaxOf, resolveBudgetSettings, when } from './budget.ts';
 import { formatScopeLabel } from './dashboard.ts';
-import { autonomyRow, otherConfigRow, plural, resourcePolicyRow, runPacingRow, waveSchedulingRow } from './launch-config-rows.ts';
+import { autonomyRow, ciCapacityRow, otherConfigRow, plural, resourcePolicyRow, runPacingRow, waveSchedulingRow } from './launch-config-rows.ts';
 import { decisionsMode, QUESTIONS_PER_CARD, rawDecisionsMode, retiredSleepModeWarning } from './pending-decisions.ts';
 import { roadmapRow } from './roadmap-row.ts';
 import { statusPageRow, type StatusPageInput } from './status-page-row.ts';
@@ -333,12 +333,13 @@ export function decisionsRow(config: Record<string, unknown>, waiting: number | 
   return { ...base, value: parts.join(' · '), consequence };
 }
 
-/** The 14 rows in `LAUNCH_ROW_KEYS` order, for a run and for a catchup; a catchup swaps in its own Pacing row. */
+/** The 15 rows in `LAUNCH_ROW_KEYS` order, for a run and for a catchup; a catchup swaps in its own Pacing row. */
 export function buildLaunchSummary({ report, config, budget, statusPage, catchup, peers, queue }: LaunchSummaryInput): LaunchRow[] {
   const floorBudget = catchup && !('invalid' in catchup) ? catchup.budget : undefined;
   return [
     scopeRow(report, config), orderRow(), roadmapRow(queue), mergeRow(config.merge_mode),
     catchup ? pacingRow(catchup) : runPacingRow(config, budget),
+    ciCapacityRow(config),
     budgetRow(budget, config, floorBudget), statusPageRow(statusPage), kaizenRow(config),
     autonomyRow(config), resourcePolicyRow(config), waveSchedulingRow(config),
     peersRow(config, peers), decisionsRow(config, report.run ? report.run.parked : 0), otherConfigRow(config),

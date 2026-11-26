@@ -43,23 +43,35 @@ export const countRunners = (payload: unknown, lanes: string[]): { idle: number;
 /** Queued jobs in the lanes out of one run's job list. */
 export const countQueuedJobs = (payload: unknown, lanes: string[]): number => listOf(payload, 'jobs').filter((j) => j.status === 'queued' && inLanes(j, lanes)).length;
 
-/** Queued runs whose jobs are looked at one by one; a run past the cap counts as one queued job. */
+/**
+ * Runs whose jobs are looked at one by one, queued and in-progress together. A queued run past the cap
+ * counts as one queued job; an in-progress run past it counts none, as its queued jobs are unknown.
+ */
 export const MAX_RUNS_INSPECTED = 10;
+
+const RUN_STATUSES = ['queued', 'in_progress'] as const;
 
 export type ForgeGet = (endpoint: string) => unknown;
 
 /**
  * Reads `{idle_runners, busy_runners, queued_jobs, queue_allowance}` for the lanes from GitHub's REST
- * API: one call for the runners, one for the queued runs, one per queued run (capped) for its jobs.
+ * API: one call for the runners, one per run status (queued, then in progress: a running run can still
+ * hold queued jobs), one per run (capped, queued runs first) for its jobs.
  * Returns the reading, or null and a warning on any error or when no lane is configured.
  */
 export const readCiCapacity = (repo: string, config: CiCapacityConfig, get: ForgeGet): { capacity: CiCapacity | null; warning: string | null } => {
   if (config.lanes.length === 0) return { capacity: null, warning: 'ci capacity unread, workers unchanged: ci_capacity.lanes is empty' };
   try {
     const { idle, busy } = countRunners(get(`repos/${repo}/actions/runners?per_page=100`), config.lanes);
-    const runs = listOf(get(`repos/${repo}/actions/runs?status=queued&per_page=100`), 'workflow_runs');
-    let queued = Math.max(0, runs.length - MAX_RUNS_INSPECTED);
-    for (const run of runs.slice(0, MAX_RUNS_INSPECTED)) {
+    const runs = new Map<string, { id: unknown; queued: boolean }>();
+    for (const status of RUN_STATUSES) {
+      for (const run of listOf(get(`repos/${repo}/actions/runs?status=${status}&per_page=100`), 'workflow_runs')) {
+        if (!runs.has(String(run.id))) runs.set(String(run.id), { id: run.id, queued: status === 'queued' });
+      }
+    }
+    const all = [...runs.values()];
+    let queued = all.slice(MAX_RUNS_INSPECTED).filter((run) => run.queued).length;
+    for (const run of all.slice(0, MAX_RUNS_INSPECTED)) {
       queued += countQueuedJobs(get(`repos/${repo}/actions/runs/${String(run.id)}/jobs?per_page=100`), config.lanes);
     }
     return { capacity: { idle_runners: idle, busy_runners: busy, queued_jobs: queued, queue_allowance: config.queue_allowance }, warning: null };

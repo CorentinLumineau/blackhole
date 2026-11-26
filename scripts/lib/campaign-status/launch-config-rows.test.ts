@@ -4,6 +4,7 @@ import * as path from 'path';
 import { NOT_PROBED } from './budget.ts';
 import {
   autonomyRow,
+  ciCapacityRow,
   LAUNCH_ROW_CLAIMS,
   LAUNCH_ROW_LABELS,
   otherConfigRow,
@@ -64,6 +65,7 @@ const LIVE: Record<string, unknown> = {
     coordination: { role: 'peer', manager_session: 'mgr-1', peer_floor: 2 },
   },
   usage_budget_note: 'note',
+  ci_capacity: { enabled: true, lanes: ['ci', 'light'], queue_allowance: 2 },
   catchup: { weekly_target_pct: 80 },
   sleep_mode: { enabled: false },
   decisions: { mode: 'ask' },
@@ -136,7 +138,8 @@ describe('LAUNCH_ROW_CLAIMS', () => {
     expect(checked).toContain('pacing:catchup');
     expect(checked).toContain('peers:usage_budget.coordination');
     expect(checked).toContain('decisions:decisions');
-    expect(checked).toHaveLength(31);
+    expect(checked).toContain('ci_capacity:ci_capacity');
+    expect(checked).toHaveLength(32);
   });
 
   test('every built row carries the label LAUNCH_ROW_LABELS names for its key', () => {
@@ -178,6 +181,35 @@ describe('the run Pacing row', () => {
   });
 });
 
+describe('the CI capacity row', () => {
+  test('absent, disabled and enabled read differently', () => {
+    const absent = ciCapacityRow({});
+    const disabled = ciCapacityRow({ ci_capacity: { enabled: false } });
+    expect(absent.value).toBe('ci_capacity absent');
+    expect(disabled.value).toBe('ci_capacity disabled');
+    expect(absent.consequence).toContain('token budget alone');
+  });
+
+  test('an enabled block names its lanes, the allowance and the repo-level admin-token scope', () => {
+    const row = ciCapacityRow({ ci_capacity: { enabled: true, lanes: ['ci', 'light'], queue_allowance: 2 } });
+    expect(row.value).toBe('ci_capacity enabled · lanes ci+light · queue allowance 2 · repo-level runners, admin token');
+    expect(row.consequence).toContain('plus 2');
+    expect(row.consequence).toContain('never raised');
+  });
+
+  test('enabled with no lane says nothing is read', () => {
+    const row = ciCapacityRow({ ci_capacity: { enabled: true } });
+    expect(row.value).toContain('no lanes');
+    expect(row.consequence).toContain('nothing is read');
+  });
+
+  test('an invalid block is named with its key path, not thrown', () => {
+    const row = ciCapacityRow({ ci_capacity: { lanes: 'ci' } });
+    expect(row.value).toBe('ci_capacity invalid');
+    expect(row.consequence).toContain('ci_capacity.lanes');
+  });
+});
+
 describe('the Autonomy, Resource policy and Wave scheduling rows', () => {
   test('Autonomy names the mode and what it decides without asking', () => {
     const row = autonomyRow({ autonomy: { mode: 'full' } });
@@ -215,7 +247,7 @@ describe('the Autonomy, Resource policy and Wave scheduling rows', () => {
   test('every new row is display-only, has a header of 12 characters at most and a consequence within the limit', () => {
     const configs = [LIVE, {}, { autonomy: {}, resource_policy: {}, wave_scheduling: {}, usage_budget: {} }];
     for (const config of configs) {
-      for (const r of [runPacingRow(config, probed()), autonomyRow(config), resourcePolicyRow(config), waveSchedulingRow(config), otherConfigRow(config)]) {
+      for (const r of [runPacingRow(config, probed()), ciCapacityRow(config), autonomyRow(config), resourcePolicyRow(config), waveSchedulingRow(config), otherConfigRow(config)]) {
         expect(r.adjustable).toBe(false);
         expect(r.header.length).toBeLessThanOrEqual(12);
         expect(r.consequence.length).toBeGreaterThan(0);
