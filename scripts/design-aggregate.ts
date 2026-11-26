@@ -7,7 +7,7 @@ import { parseFlags } from './lib/argv-flags.ts';
 
 // ADR-010 D4 — deterministic Design Track verdict script. Same shape as review-aggregate.ts
 // (ADR-003): pure aggregateDesign(input) core, typed I/O, CLI entrypoint reading via the shared
-// readJsonFile helper, no side effects beyond stdout. The planner (`planner.md` §4.8) reads only
+// readJsonFile helper, no side effects beyond stdout. The planner (`planner-tracks/04-design-track.md` §4.8) reads only
 // this script's `status` field — it never self-certifies.
 
 /** One score per rubric column (`design-rubric.md`), on the fixed 1-5 scale. */
@@ -51,7 +51,7 @@ export type DesignFinding = {
   note: string;
 };
 
-/** Returned by the two blind critique-only sub-invocations (`planner.md` §4.3,
+/** Returned by the two blind critique-only sub-invocations (`planner-tracks/04-design-track.md` §4.3,
  *  `worker-schemas.md` § Design Track Critic). */
 export type CriticScore = {
   per_option_scores: Record<string, ColumnScore>;

@@ -1,10 +1,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { root, read, type CheckResult } from './check-utils.ts';
-import { expandVcodeTableKey, parseVcodeTableRows } from '../lib/check-common.ts';
+import { expandVcodeTableKey, parseVcodeTableRows, PLANNER_TRACK_MODULE_DIR } from '../lib/check-common.ts';
 import { parseFrontmatterFields, parseMdFrontmatter } from '../lib/build/content.ts';
-import { REVIEWER_AUDIT_MODULE_COUNT, REVIEWER_ONDEMAND_AUDIT_MODULE_COUNT } from '../lib/build/facts.ts';
-import { markdownHeadings, sectionEnd } from '../lib/markdown-headings.ts';
+import { PLANNER_TRACK_MODULE_COUNT, REVIEWER_AUDIT_MODULE_COUNT, REVIEWER_ONDEMAND_AUDIT_MODULE_COUNT } from '../lib/build/facts.ts';
+import { markdownHeadings } from '../lib/markdown-headings.ts';
+import { findOnDemandStubDrift, findPlannerTrackDrift, findStalePlannerSectionCitations, stubBody, stubMatchesSection, type StubModule } from '../lib/on-demand-stubs.ts';
 import { AUDIT_MODULE_TRIGGERS, AUDIT_TRIGGER_GLOBS } from '../lib/audit-module-triggers.ts';
 
 // ADR-034 — audit-modules.check.ts: V-AUDIT-01 keeps the reviewer's audit-module registry and
@@ -37,7 +38,7 @@ export const AUDIT_MODULE_DIR = 'src/references/audits';
 export const ONDEMAND_AUDIT_MODULE_DIR = 'src/references/audit-modules';
 
 // `section` is the module's `section:` frontmatter, the key Leg D matches a stub heading on.
-export type AuditModule = { file: string; vcodes: string[]; section?: string };
+export type AuditModule = StubModule;
 
 // `vcodes: [V-A-01, V-B-02]` — a YAML flow sequence, parsed with the same trim-and-split idiom
 // the rest of the check layer uses for inline lists rather than pulling in a YAML dependency for
@@ -107,56 +108,10 @@ export const loadAuditModules = (absDir: string): AuditModule[] =>
             file: f,
             vcodes: parseAuditModuleVcodes(content),
             section: parseFrontmatterFields(parseMdFrontmatter(content).frontmatter)['section'],
+            track: parseFrontmatterFields(parseMdFrontmatter(content).frontmatter)['track'],
           };
         })
     : [];
-
-// A stub heading carries the module's `section:` text, optionally followed by a ` (`V-...`)` code
-// suffix, so `§ <Section>` citations resolve against it exactly as they did against the inlined body.
-const stubMatchesSection = (headingText: string, section: string): boolean =>
-  headingText === section || headingText.startsWith(`${section} (`);
-
-// Every V-code a stub names, compact slash forms (`V-BETA-01/02`) expanded like the table keys.
-const codesNamedIn = (text: string): Set<string> =>
-  new Set([...text.matchAll(/V-[A-Z0-9-]*[A-Z]-\d+(?:\/\d+)*/g)].flatMap((m) => expandVcodeTableKey(m[0])));
-
-const stubBody = (lines: string[], stub: ReturnType<typeof markdownHeadings>[number]): string =>
-  lines.slice(stub.line, sectionEnd(markdownHeadings(lines), stub, lines.length)).join('\n');
-
-// Leg D — one stub in the agent shell per on-demand module. Pure over the source text so the
-// fixture tests can break each property on its own. `modules` come from `loadAuditModules`. The
-// defaults describe the reviewer's `###` stubs; the implementer's on-demand gates reuse this with
-// their own shell name, module directory and `##` heading level.
-export type StubShape = { shell: string; modulesDir: string; level: number };
-export const REVIEWER_STUB_SHAPE: StubShape = { shell: 'reviewer.md', modulesDir: 'audit-modules', level: 3 };
-// The implementer's on-demand gates: bodies under `references/gate-modules/`, one `##` stub each in
-// `src/agents/implementer.md`. `agents.check.ts` (V-GATE-01) runs the drift rule over them.
-export const IMPLEMENTER_GATE_STUB_SHAPE: StubShape = { shell: 'implementer.md', modulesDir: 'gate-modules', level: 2 };
-export const ONDEMAND_GATE_MODULE_DIR = 'src/references/gate-modules';
-
-export const findOnDemandStubDrift = (shellSrc: string, modules: AuditModule[], shape: StubShape = REVIEWER_STUB_SHAPE): string[] => {
-  const lines = shellSrc.split('\n');
-  const headings = markdownHeadings(lines).filter((h) => h.level === shape.level);
-  const errors: string[] = [];
-  for (const m of modules) {
-    if (!m.section) {
-      errors.push(`${m.file}: no \`section:\` frontmatter, so its stub cannot be matched`);
-      continue;
-    }
-    const stubs = headings.filter((h) => stubMatchesSection(h.text.replace(/`/g, ''), m.section!));
-    if (stubs.length !== 1) {
-      errors.push(stubs.length === 0 ? `${m.file}: no stub heading for section "${m.section}" in ${shape.shell}` : `${m.file}: ${stubs.length} stubs for section "${m.section}" in ${shape.shell}`);
-      continue;
-    }
-    const body = stubBody(lines, stubs[0]);
-    const readPath = `references/${shape.modulesDir}/${m.file}`;
-    if (!/\*\*Load when\*\*:/.test(body)) errors.push(`${m.file}: stub has no \`Load when\` trigger line`);
-    if (!body.includes(readPath)) errors.push(`${m.file}: stub has no \`Read\` path to ${readPath}`);
-    const named = codesNamedIn(body);
-    for (const code of m.vcodes) if (!named.has(code)) errors.push(`${m.file}: stub does not name ${code}`);
-  }
-  return errors;
-};
 
 export const findTriggerTableDrift = (modules: AuditModule[], triggers: Record<string, unknown> = AUDIT_MODULE_TRIGGERS): string[] => {
   const files = new Set(modules.map((m) => m.file));
@@ -200,6 +155,19 @@ const checkAuditModules = (): CheckResult => {
   return errors.length ? { id: 'V-AUDIT-01', ok: false, detail: errors.join('; ') } : { id: 'V-AUDIT-01', ok: true };
 };
 
+// V-AUDIT-02 — planner track modules, stub drift in `lib/on-demand-stubs.ts`.
+const checkPlannerTracks = (): CheckResult => {
+  const modules = loadAuditModules(path.join(root, PLANNER_TRACK_MODULE_DIR));
+  const errors = [
+    ...findAuditModuleCountDrift(PLANNER_TRACK_MODULE_COUNT, modules.length, 'PLANNER_TRACK_MODULE_COUNT', PLANNER_TRACK_MODULE_DIR),
+    ...findPlannerTrackDrift(fs.readFileSync(path.join(root, 'src/agents/planner.md'), 'utf-8'), modules),
+    ...findStalePlannerSectionCitations(
+      Object.fromEntries(['src/agents', 'src/references'].flatMap((d) => fs.readdirSync(path.join(root, d)).filter((f) => f.endsWith('.md')).map((f) => [`${d}/${f}`, read(`${d}/${f}`)]))),
+    ),
+  ];
+  return errors.length ? { id: 'V-AUDIT-02', ok: false, detail: errors.join('; ') } : { id: 'V-AUDIT-02', ok: true };
+};
+
 // ADR-007 T5/R2': domain entrypoint — see agents.check.ts's runChecks doc comment for the shared
 // contract (pure, no side effects, glob-discovered by scripts/verify.ts).
-export const runChecks = (): CheckResult[] => [checkAuditModules()];
+export const runChecks = (): CheckResult[] => [checkAuditModules(), checkPlannerTracks()];

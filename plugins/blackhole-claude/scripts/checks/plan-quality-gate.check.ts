@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { root, read, type CheckResult } from './check-utils.ts';
-import { findMissingGateMarkers } from '../lib/check-common.ts';
+import { findMissingGateMarkers, PLANNER_TRACK_MODULE_DIR, readPlannerWithTracks } from '../lib/check-common.ts';
 import {
   extractBacktickPaths as extractBacktickPathsFromLib,
 } from '../lib/plan-touch-path-ssot-pairs.ts';
@@ -152,7 +152,7 @@ export const STANDARD_TRACK_BUGFIX_REQUIRED_MARKERS = [
 // `failing_checks` values are contracted). Same shape as design-track.check.ts's V-DESIGN-02:
 // one concern, grounded across two files that must agree — not split further (V-KISS-01).
 export const checkPlanQualityGateGrounding = (): CheckResult => {
-  const plannerContent = read('src/agents/planner.md');
+  const plannerContent = readPlannerWithTracks();
   const schemaContent = read('src/references/worker-schemas.md');
 
   const errors = [
@@ -173,7 +173,7 @@ export const checkPlanQualityGateGrounding = (): CheckResult => {
 // above for why this is a distinct regression class from V-PLANGATE-01's marker presence check
 // (a spelling drift, not a missing marker).
 export const checkExecutionStrategyHeadingGrounding = (): CheckResult => {
-  const plannerContent = read('src/agents/planner.md');
+  const plannerContent = readPlannerWithTracks();
   const drift = findExecutionStrategyHeadingDrift(plannerContent);
 
   if (drift.length) {
@@ -193,8 +193,8 @@ export const checkExecutionStrategyHeadingGrounding = (): CheckResult => {
 // is a distinct regression class from V-PLANGATE-01/02 (a track-symmetry gap, not a marker
 // presence or spelling concern).
 export const checkStandardTrackBugfixGrounding = (): CheckResult => {
-  const plannerContent = read('src/agents/planner.md');
-  const standardTrackSection = extractStandardTrackSection(plannerContent);
+  // The module ends its file, so close it with the Skip Track stub heading that follows in planner.md.
+  const standardTrackSection = extractStandardTrackSection(`${read(`${PLANNER_TRACK_MODULE_DIR}/02-standard-track.md`)}\n${STANDARD_TRACK_END_MARKER}`);
   const missing = findMissingGateMarkers(standardTrackSection, STANDARD_TRACK_BUGFIX_REQUIRED_MARKERS);
 
   if (missing.length) {

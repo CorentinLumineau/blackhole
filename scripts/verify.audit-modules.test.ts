@@ -6,7 +6,6 @@ import {
   AUDIT_MODULE_DIR,
   ONDEMAND_AUDIT_MODULE_DIR,
   documentedCodes,
-  findOnDemandStubDrift,
   findTriggerGlobDrift,
   findTriggerTableDrift,
   findAuditModuleCountDrift,
@@ -16,7 +15,9 @@ import {
   reviewerSitedCodes,
   runChecks,
 } from './checks/audit-modules.check.ts';
-import { REVIEWER_AUDIT_MODULE_COUNT, REVIEWER_ONDEMAND_AUDIT_MODULE_COUNT } from './lib/build/facts.ts';
+import { PLANNER_TRACK_MODULE_COUNT, REVIEWER_AUDIT_MODULE_COUNT, REVIEWER_ONDEMAND_AUDIT_MODULE_COUNT } from './lib/build/facts.ts';
+import { PLANNER_TRACK_MODULE_DIR } from './lib/check-common.ts';
+import { findOnDemandStubDrift, findPlannerTrackDrift, findStalePlannerSectionCitations } from './lib/on-demand-stubs.ts';
 
 // ADR-034 / V-AUDIT-01. Every leg below is driven first with a registry that is deliberately
 // broken (red) and then with the corresponding healthy shape (green), so the check demonstrates
@@ -124,9 +125,14 @@ describe('runChecks live tree (V-AUDIT-01)', () => {
 
   test('passes against the live reviewer audit-module registry', () => {
     const results = runChecks();
-    expect(results.length).toBe(1);
-    expect(results[0].id).toBe('V-AUDIT-01');
+    expect(results.map((r) => r.id)).toEqual(['V-AUDIT-01', 'V-AUDIT-02']);
     expect(results[0].ok, results[0].detail).toBe(true);
+  });
+
+  test('passes against the live planner track-module registry (V-AUDIT-02)', () => {
+    const planner = runChecks().find((r) => r.id === 'V-AUDIT-02');
+    expect(planner?.ok, planner?.detail).toBe(true);
+    expect(fs.readdirSync(path.join(root, PLANNER_TRACK_MODULE_DIR)).filter((f) => f.endsWith('.md')).length).toBe(PLANNER_TRACK_MODULE_COUNT);
   });
 });
 
@@ -403,5 +409,56 @@ describe('findTriggerTableDrift', () => {
 
   test('green: matching sets report nothing', () => {
     expect(findTriggerTableDrift([mod('a.md', [])], { 'a.md': () => true })).toEqual([]);
+  });
+});
+
+// Planner track modules. A directive-only track's stub is the one place the
+// planner learns which spawn directive loads the module, so it must name that exact directive.
+const track = (file: string, section: string, trackName: string) => ({ file, section, vcodes: [], track: trackName });
+const PLANNER_STUBS = [
+  '### 3. Skip Track',
+  '*   **Load when**: the spawn prompt carries an explicit `track: skip` directive.',
+  '*   **Read**: `{{AGENT_DIR}}/skills/blackhole/references/planner-tracks/03-skip-track.md`',
+  '### 2. Standard Track',
+  '*   **Load when**: Step 2 assessed Standard.',
+  '*   **Read**: `{{AGENT_DIR}}/skills/blackhole/references/planner-tracks/02-standard-track.md`',
+  '',
+].join('\n');
+const PLANNER_MODULES = [track('03-skip-track.md', '3. Skip Track', 'skip'), track('02-standard-track.md', '2. Standard Track', 'standard')];
+
+describe('findPlannerTrackDrift (V-AUDIT-02)', () => {
+  test('green — stubs with a Load when line, a Read path and the track directive report nothing', () => {
+    expect(findPlannerTrackDrift(PLANNER_STUBS, PLANNER_MODULES)).toEqual([]);
+  });
+
+  test('red — a directive-only stub that drops its `track: skip` directive is reported', () => {
+    const broken = PLANNER_STUBS.replace('an explicit `track: skip` directive', 'a skip request');
+    expect(findPlannerTrackDrift(broken, PLANNER_MODULES)).toEqual(['03-skip-track.md: stub `Load when` does not name the `track: skip` directive']);
+  });
+
+  test('red — a stub pointing at the wrong directory is reported against planner-tracks', () => {
+    const broken = PLANNER_STUBS.replace('planner-tracks/02-standard-track.md', 'audit-modules/02-standard-track.md');
+    const errors = findPlannerTrackDrift(broken, PLANNER_MODULES);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('references/planner-tracks/02-standard-track.md');
+  });
+
+  test('red — a module with no stub names planner.md in the error', () => {
+    const errors = findPlannerTrackDrift(PLANNER_STUBS, [...PLANNER_MODULES, track('04-design-track.md', '4. Design Track', 'design')]);
+    expect(errors).toEqual(['04-design-track.md: no stub heading for section "4. Design Track" in planner.md']);
+  });
+});
+
+describe('findStalePlannerSectionCitations (V-AUDIT-02)', () => {
+  test('red — a `planner.md` §4.x citation points at a section that now lives in the Design module', () => {
+    const errors = findStalePlannerSectionCitations({ 'a.md': 'see `planner.md` §4.8 for gating', 'b.md': 'per planner.md § 4.3 cites it' });
+    expect(errors).toEqual([
+      'a.md: `planner.md` §4.8 no longer resolves, cite `planner-tracks/04-design-track.md` §4.8',
+      'b.md: `planner.md` §4.3 no longer resolves, cite `planner-tracks/04-design-track.md` §4.3',
+    ]);
+  });
+
+  test('green — the module path citation and a planner.md step citation report nothing', () => {
+    expect(findStalePlannerSectionCitations({ 'a.md': '`planner-tracks/04-design-track.md` §4.8 and `planner.md` Step 4 Trigger B' })).toEqual([]);
   });
 });

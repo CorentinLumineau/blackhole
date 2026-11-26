@@ -76,7 +76,7 @@ When `status: blocked`, `failing_checks` lists failed items:
   audit) per `planner.md`'s Design Track template — content only, no JSON field change.
   **ADR-010 D4 amendment**: when `autonomy.design_autonomy` is `true`, this
   check is replaced by `scripts/design-aggregate.ts`'s deterministic verdict — see
-  `planner.md` §4.8 and the `design-aggregate` schema below. `design_pending_approval` remains
+  `planner-tracks/04-design-track.md` §4.8 and the `design-aggregate` schema below. `design_pending_approval` remains
   the unconditional outcome whenever that sub-flag is off.
 - `brainstorm_confidence_below_threshold` — brainstorm track composite confidence
   (`confidence-gates.md`) fell below `autonomy.confidence_threshold`; `blocking_question` names
@@ -195,7 +195,7 @@ all-clear that authorizes the orchestrator to stamp `queue.json`'s `rulings_chec
 
 ## Design Track Critic (blind sub-invocation)
 
-Returned by the Design Track's two critique-only sub-invocations described in `planner.md` §4.3
+Returned by the Design Track's two critique-only sub-invocations described in `planner-tracks/04-design-track.md` §4.3
 (Adversarial Evaluation) — **not** a new agent identity: still `subagent_type: planner`, no
 `disallowedTools`/matcher change to the SubagentStop hook. Extracted from the sub-invocation's
 final plain-text response using the same fenced-block-first / brace-balanced-fallback order
@@ -225,7 +225,7 @@ documented in `hook-schemas.md` (SubagentStop hook § Extraction order, `hook-sc
 |-------|--------|----------|
 | `per_option_scores` | `{ [option]: { [column]: number } }` — one entry per option in the primary's provisional trade-off matrix (stripped of the primary's Chosen field before spawn), scored 1-5 against `design-rubric.md`'s fixed columns/weights for this decision's type | yes |
 | `findings` | `{ option, tag, severity, note }[]` | yes (empty array = no findings) |
-| `adr_citations` | `{ adr, option, amendment_acknowledged }[]` — one entry per ADR a `findings[].note` cites as evidence (`planner.md` §4.3's ADR citation check, issue #775); critics score independently and cannot rely on the primary planner having done this check | no (omit when no finding cites an ADR) |
+| `adr_citations` | `{ adr, option, amendment_acknowledged }[]` — one entry per ADR a `findings[].note` cites as evidence (`planner-tracks/04-design-track.md` §4.3's ADR citation check, issue #775); critics score independently and cannot rely on the primary planner having done this check | no (omit when no finding cites an ADR) |
 
 ### Finding shape (Design Track Critic)
 
@@ -497,7 +497,7 @@ change to `AggregateOutput`'s shape either way.
 ## Design aggregate (`scripts/design-aggregate.ts`)
 
 Orchestrator/planner invokes when `autonomy.design_autonomy` is `true`
-(`planner.md` §4.8, ADR-010 D4). Not a worker agent — deterministic script output the planner
+(`planner-tracks/04-design-track.md` §4.8, ADR-010 D4). Not a worker agent — deterministic script output the planner
 reads but never overrides:
 
 ```json

@@ -3,12 +3,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { parseFrontmatterFields } from './lib/build/content.ts';
-import {
-  findOnDemandStubDrift,
-  IMPLEMENTER_GATE_STUB_SHAPE,
-  loadAuditModules,
-  ONDEMAND_GATE_MODULE_DIR,
-} from './checks/audit-modules.check.ts';
+import { loadAuditModules } from './checks/audit-modules.check.ts';
+import { findOnDemandStubDrift, IMPLEMENTER_GATE_STUB_SHAPE, ONDEMAND_GATE_MODULE_DIR } from './lib/on-demand-stubs.ts';
 import {
   AGENT_FRONTMATTER_POLICY,
   AGENT_TOOL_POLICY_DENY_MATRIX,
