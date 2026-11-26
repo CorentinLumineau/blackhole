@@ -335,14 +335,22 @@ describe('gateCards', () => {
     }
   });
 
-  test('every option previews the full summary, so a covering dialog hides nothing', () => {
+  test('the first option of each question previews the full summary, the others carry none', () => {
     const table = renderLaunchSummary(rows);
     for (const q of cards.flatMap((c) => c.questions)) {
-      for (const o of q.options) {
-        expect(o.preview).toBe(table);
-        for (const r of rows) expect(o.preview).toContain(`| ${r.label} |`);
-      }
+      expect(q.options[0].preview).toBe(table);
+      for (const r of rows) expect(q.options[0].preview).toContain(`| ${r.label} |`);
+      for (const o of q.options.slice(1)) expect(o.preview).toBeUndefined();
     }
+  });
+
+  test('the preview carries the warnings and the target the CLI prints', () => {
+    const target = { repo: 'acme/widgets', campaignDir: '/work/acme/.blackhole', source: 'config' } as const;
+    const warnings = ['plugin 0.1.0 is older than 0.2.0'];
+    const withContext = gateCards(rows, { printOnly: false, warnings, target });
+    const expected = renderLaunchSummary(rows, warnings, target);
+    expect(expected).toContain('> plugin 0.1.0 is older than 0.2.0');
+    for (const q of withContext.flatMap((c) => c.questions)) expect(q.options[0].preview).toBe(expected);
   });
 
   test('merge_mode unset drops the Accept option (R-002)', () => {
