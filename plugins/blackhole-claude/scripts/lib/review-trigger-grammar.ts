@@ -22,3 +22,9 @@ export const parseReviewTrigger = (raw: string): ReviewTrigger => {
 
 export const findMalformedIssueTriggers = (docs: { relPath: string; reviewTrigger: string }[]): string[] =>
   docs.filter((d) => parseReviewTrigger(d.reviewTrigger).kind === 'malformed').map((d) => d.relPath);
+
+// Detail string for the doc-health advisory, or undefined when every doc is clean.
+export const malformedTriggerDetail = (docs: { relPath: string; fm: Record<string, string | undefined> }[]): string | undefined => {
+  const bad = findMalformedIssueTriggers(docs.map((d) => ({ relPath: d.relPath, reviewTrigger: d.fm.review_trigger ?? '' })));
+  return bad.length ? `review_trigger not in grammar (use "on issue-close #N"): ${bad.join(', ')}` : undefined;
+};
