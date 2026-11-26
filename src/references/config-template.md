@@ -277,6 +277,12 @@ rename, remove or retype one. The executive-summary launch gate's Budget row may
 the verdict `PACE-WAIT` (drain, wake at `wake_at`, resume) is part of the gate's output contract. The gate is
 `scripts/usage-budget.ts`; it sits beside the pace gate (`resource_policy.pace`), which is unchanged.
 
+`usage-budget.ts` also takes an optional CI-capacity reading, `--ci-capacity '{"idle_runners":n,"queued_jobs":n}'`
+or `--ci-capacity-file <path>` (no config key). Queued jobs beyond idle runners plus `queue_allowance` (default 1)
+lower `workers` one for one, never below one and never above the token-budget count; no reading, or an
+unreadable file, leaves the count unchanged. The caller supplies counts already restricted to the runner labels
+its PR gate needs.
+
 ## catchup
 
 The `catchup` block is read only by `catchup` mode, `scripts/usage-budget.ts --floor`,
