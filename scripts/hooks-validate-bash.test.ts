@@ -1620,6 +1620,29 @@ describe('validate-bash-command.js — main-clone git working-tree-mutation guar
     });
   });
 
+  test('F6d: a path-qualified or quoted `git` word retargeted into the main clone is still denied as `main-clone-clean`', async () => {
+    await withLinkedWorktree('blackhole-hook-897-', async (mainRepo, worktree) => {
+      const denied = [
+        `/usr/bin/git -C ${mainRepo} clean -fd`,
+        `'git' -C ${mainRepo} clean -fd`,
+        `"git" -C ${mainRepo} clean -fd`,
+      ];
+      for (const command of denied) {
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(command), worktree);
+        expect({ command, exitCode: result.exitCode }).toEqual({ command, exitCode: 2 });
+        expect(readHookEvents(mainRepo).at(-1)).toMatchObject({ decision: 'deny', pattern_id: 'main-clone-clean' });
+      }
+    });
+  });
+
+  test('F6e: a path-qualified `git` that targets the worktree itself is allowed — negative control', async () => {
+    await withLinkedWorktree('blackhole-hook-897-', async (_mainRepo, worktree) => {
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(`/usr/bin/git -C ${worktree} clean -fd`), worktree);
+
+      expect(result.exitCode).toBe(0);
+    });
+  });
+
   test('F7: a PR-comment string quoting `git checkout -- .` is allowed — negative control for UNCERTAIN-position over-tightening', async () => {
     await withLinkedWorktree('blackhole-hook-897-', async (mainRepo) => {
       const result = await runPreToolUseHook(

@@ -749,7 +749,6 @@ module.exports = {
   extractCdTargetText,
   skipGitGlobalOptions,
   extractGitRepoOverride,
-  isCommandWordStart,
   findClauseStartIndices,
   normalizeShellWord,
 };
