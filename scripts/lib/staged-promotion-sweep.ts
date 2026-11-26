@@ -1,6 +1,11 @@
 import { isCarryTargetAllowed } from './carry-target-allowlist.ts';
 import { DONE_STATUSES } from './campaign-status/queue.ts';
 
+/**
+ * Classification of one staged manifest entry. Ledger-worthy: `unpromoted_merged`,
+ * `target_outside_allowlist`. Reported only: `legacy_manifest_shape`, `manifest_unreadable`,
+ * `staged_path_missing`, `pending_open_issue`, `carried`.
+ */
 export type SweepState =
   | 'carried'
   | 'pending_open_issue'
@@ -10,6 +15,7 @@ export type SweepState =
   | 'manifest_unreadable'
   | 'staged_path_missing';
 
+/** One sweep result row; `entry_index` is -1 for a whole-manifest state. */
 export type SweepRow = {
   issue: number;
   issue_status: string | null;
@@ -18,6 +24,7 @@ export type SweepRow = {
   state: SweepState;
 };
 
+/** Inputs injected into `sweepStaged` so it stays pure. */
 export type SweepInput = {
   /** `manifest` is the parsed JSON, or null when the file would not parse. */
   manifests: { issue: number; manifest: unknown }[];

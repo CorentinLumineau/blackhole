@@ -2,17 +2,18 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
+import { readJsonFile } from './lib/fs.ts';
 import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
 import { sweepStaged } from './lib/staged-promotion-sweep.ts';
 
 // Read-only, advisory post-merge sweep of `.blackhole/staged/*` (V-AUTO-02, post-merge leg). It
 // never writes queue.json or the ledger (single-writer invariant); the orchestrator applies rows.
-// Invoke with Bun's own `--cwd <abs repo-root>` as for every script (#798).
-const KNOWN_KEYS = ['campaign-dir', 'repo-root', 'ref', 'package-root'];
+// Invoke with Bun's own `--cwd <abs repo-root>`, which pins module resolution to the worktree.
+const KNOWN_KEYS = ['campaign-dir', 'repo-root', 'ref', 'package-root', 'issue'];
 
 function usage(): never {
   console.error(
-    'Usage: bun run --cwd <abs repo-root> scripts/staged-promotion-sweep.ts --campaign-dir <abs .blackhole> --repo-root <abs> [--ref origin/main] [--package-root <dir>]',
+    'Usage: bun run --cwd <abs repo-root> scripts/staged-promotion-sweep.ts --campaign-dir <abs .blackhole> --repo-root <abs> [--ref origin/main] [--package-root <dir>] [--issue <N>]',
   );
   process.exit(2);
 }
@@ -26,13 +27,14 @@ function main(): void {
   const ref = typeof flags.ref === 'string' ? flags.ref : 'origin/main';
   const packageRoot = typeof flags['package-root'] === 'string' ? flags['package-root'] : undefined;
 
+  const issueFilter = typeof flags.issue === 'string' ? flags.issue : undefined;
   const stagedRoot = path.join(campaignDir, 'staged');
-  const dirs = fs.existsSync(stagedRoot) ? fs.readdirSync(stagedRoot).filter((d) => /^\d+$/.test(d)) : [];
+  const dirs = fs.existsSync(stagedRoot) ? fs.readdirSync(stagedRoot).filter((d) => /^\d+$/.test(d) && (issueFilter === undefined || d === issueFilter)) : [];
   const manifests = dirs.map((d) => {
     const file = path.join(stagedRoot, d, 'manifest.json');
     let manifest: unknown = null;
     try {
-      manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+      manifest = readJsonFile(file, 'staged manifest');
     } catch {
       /* absent or unparseable: classified as manifest_unreadable */
     }
@@ -41,7 +43,7 @@ function main(): void {
 
   let queue: Record<string, { status?: string }> = {};
   try {
-    queue = JSON.parse(fs.readFileSync(path.join(campaignDir, 'queue.json'), 'utf8')).issues ?? {};
+    queue = ((readJsonFile(path.join(campaignDir, 'queue.json'), 'queue.json') as { issues?: typeof queue }).issues ?? {});
   } catch {
     /* no queue: every issue is treated as open */
   }
