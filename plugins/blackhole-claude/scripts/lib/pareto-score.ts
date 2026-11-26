@@ -1,7 +1,7 @@
 import type { QueueJson } from './campaign-status/types.ts';
 import { rescoreIssue } from './forge-adapter/pareto-filing.ts';
 import type { ForgeAdapter, ForgeIssue } from './forge-adapter/types.ts';
-import { paretoLabel, paretoPriority, parseParetoLine, reconcileParetoLabels, type Pareto } from './pareto.ts';
+import { paretoLabel, paretoPriority, parseParetoLine, reconcileParetoLabels, upsertRationaleLine, type Pareto } from './pareto.ts';
 
 // Mechanical side of score-on-ingest (`forge-sync.md` § Score on ingest): finds the ready queue
 // entries whose issue has no valid `Pareto:` line, and applies the scores the orchestrator's LLM
@@ -26,8 +26,6 @@ export const DEFAULT_MAX_AGE_DAYS = 7;
 export const ISSUE_LIMIT = 1000;
 const DAY_MS = 86_400_000;
 const BODY_EXCERPT = 4000;
-const RATIONALE_MAX = 200;
-const RATIONALE_LINE = /^[ \t]*Pareto rationale:[^\r\n]*$/im;
 
 /**
  * Why a stored score is due a new one, or null when it is current: it has no `scored_at` (scored by
@@ -78,12 +76,7 @@ export function parseScores(raw: unknown): Score[] {
   });
 }
 
-/** Writes the one `Pareto rationale:` line: replaces an existing one in place, else appends. Single line, capped. */
-export function upsertRationaleLine(body: string, rationale: string): string {
-  const flat = rationale.replace(/\s+/g, ' ').trim();
-  const line = `Pareto rationale: ${flat.length > RATIONALE_MAX ? `${flat.slice(0, RATIONALE_MAX - 1)}…` : flat}`;
-  return RATIONALE_LINE.test(body) ? body.replace(RATIONALE_LINE, line) : `${body}\n\n${line}`;
-}
+export { upsertRationaleLine };
 
 /**
  * Moves `scored_at` of every issue this run wrote to past that write: a forge write bumps the
@@ -139,7 +132,7 @@ export async function applyScores(adapter: ForgeAdapter, queue: QueueJson, issue
       outcomes.push({ number: score.number, result: 'already-scored' });
       continue;
     }
-    if (await rescoreIssue(adapter, { ...issue, body: upsertRationaleLine(issue.body ?? '', score.rationale) }, score)) written.add(score.number);
+    if (await rescoreIssue(adapter, { ...issue, body: issue.body ?? '' }, score)) written.add(score.number);
     store(score.number, { gain: score.gain, effort: score.effort, priority: paretoPriority(score.gain, score.effort) }, score.rationale);
     outcomes.push({ number: score.number, result: due ? 'rescored' : 'scored' });
   }

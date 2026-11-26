@@ -46,6 +46,16 @@ export function parseParetoLine(body: string): Pareto | null {
  * stale) in place, drops any further `Pareto:` lines, appends when none exists. Idempotent, and
  * leaves the surrounding line endings untouched.
  */
+const RATIONALE_MAX = 200;
+const RATIONALE_LINE = /^[ \t]*Pareto rationale:[^\r\n]*$/im;
+
+/** Writes the one `Pareto rationale:` line: replaces an existing one in place, else appends. Single line, capped. */
+export function upsertRationaleLine(body: string, rationale: string): string {
+  const flat = rationale.replace(/\s+/g, ' ').trim();
+  const line = `Pareto rationale: ${flat.length > RATIONALE_MAX ? `${flat.slice(0, RATIONALE_MAX - 1)}…` : flat}`;
+  return RATIONALE_LINE.test(body) ? body.replace(RATIONALE_LINE, line) : `${body}\n\n${line}`;
+}
+
 export function upsertParetoLine(body: string, scoring: { gain: number; effort: number }): string {
   const line = formatParetoLine(scoring);
   const anyLine = /^[ \t]*Pareto:[^\r\n]*$/gim;
