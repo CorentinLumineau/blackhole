@@ -10,8 +10,11 @@ import {
   type SemverBump,
 } from './release-cadence.ts';
 
+/** Pending PRs that cut a batch release. */
 export const RELEASE_THRESHOLD = CADENCE_THRESHOLD;
+/** Age of the oldest pending PR that flushes a release. */
 export const RELEASE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+/** Minimum gap after the last tag before a batch or age cut. */
 export const RELEASE_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 
 /** Paths whose change ships to a consumer; a prefix ending in `/` matches a tree, else an exact file. */
@@ -54,6 +57,7 @@ const CONVENTIONAL = /^([a-z]+)(?:\(([^)]*)\))?!?:/i;
 const PR_REF = /\(#(\d+)\)(?!.*\(#\d+\))/;
 const RELEASE_IMMEDIATE_TRAILER = /^Release:\s*immediate\s*$/im;
 
+/** True when `file` is under a rule prefix (ending in `/`) or equals an exact-file rule. */
 export function matchesPathRule(file: string, rules: readonly string[]): boolean {
   return rules.some((rule) => (rule.endsWith('/') ? file.startsWith(rule) : file === rule));
 }
@@ -109,23 +113,29 @@ export type CutDecision = {
 };
 
 /**
- * Inputs for `decideCut`. `isVerified` must be built from the M2 freshness result
- * (`evaluateFreshness`): a commit is verified only when the newest green main run covers it.
+ * Inputs for `decideCut`. Both M2 inputs are required so a caller that skips the freshness check
+ * cannot cut: `freshness` is the `evaluateFreshness` result and `isVerified` says whether the
+ * newest green main run covers a commit.
  */
 export type CutInput = {
   commits: PendingCommit[];
   now: Date;
   lastTagAt: Date | null;
   force?: boolean;
-  /** M2: only an immediate commit already verified by main CI may cut at once. Absent means all are. */
-  isVerified?: (sha: string) => boolean;
+  /** M2: the newest verify run must be green and an ancestor of the tip, or nothing but `force` cuts. */
+  freshness: Freshness;
+  /** M2: only an immediate commit already verified by main CI may cut at once. */
+  isVerified: (sha: string) => boolean;
 };
 
+const validDate = (d: Date): boolean => Number.isFinite(d.getTime());
+
 /**
- * Decide whether to cut now. Class precedence, first match wins: nothing pending, `force`, no
- * shipped path changed, `immediate` (only a verified commit), then `batch`/`age` unless the
- * last tag is inside the cooldown (`cooldown`, no cut), else `none`. The caller must pass an
- * `isVerified` built from the M2 freshness result; omitting it treats every commit as verified.
+ * Decide whether to cut now. Class precedence, first match wins: nothing pending, `force` (the
+ * ADR-063 M1 emergency button, exempt from M2 freshness), no shipped path changed, stale
+ * freshness (`none`), `immediate` (only a verified commit), then an invalid date (`none`, so a
+ * bad timestamp cannot silently skip the age or cooldown check), then `batch`/`age` unless the
+ * last tag is inside the cooldown (`cooldown`, no cut), else `none`.
  */
 export function decideCut(input: CutInput): CutDecision {
   const open = input.commits.filter((c) => !c.isReleaseCommit);
@@ -136,11 +146,17 @@ export function decideCut(input: CutInput): CutDecision {
   if (open.length === 0) return none('nothing pending since the latest tag');
   if (input.force) return { class: 'force', cut: true, reason: 'force dispatch', pending };
   if (!open.some((c) => c.touchesShipped)) return none('no shipped path changed');
+  if (!input.freshness.ok) return none(input.freshness.reason);
 
-  const urgent = open.filter((c) => c.immediate && (input.isVerified?.(c.sha) ?? true));
+  const urgent = open.filter((c) => c.immediate && input.isVerified(c.sha));
   if (urgent.length > 0) {
     return { class: 'immediate', cut: true, reason: `immediate change ${urgent[0].sha.slice(0, 7)}`, pending };
   }
+
+  if (!validDate(input.now)) return none('invalid current time');
+  if (input.lastTagAt !== null && !validDate(input.lastTagAt)) return none('invalid last tag date');
+  const badCommit = batch.find((c) => !validDate(new Date(c.committedAt)));
+  if (badCommit) return none(`invalid commit date on ${badCommit.sha.slice(0, 7)}`);
 
   const cooling = input.lastTagAt !== null && input.now.getTime() - input.lastTagAt.getTime() < RELEASE_COOLDOWN_MS;
   const oldest = batch.reduce((min, c) => Math.min(min, Date.parse(c.committedAt)), Infinity);
