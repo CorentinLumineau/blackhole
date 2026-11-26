@@ -175,13 +175,26 @@ const literalWord = (token) => {
   return dynamic ? token : text;
 };
 
+/** Index just past the `}` that closes a `${` whose body starts at `start`, or -1 when none does.
+ * A quoted span inside the body is walked whole, so a `}` or space in it never ends the word. */
+const bracedExpansionEnd = (text, start, n) => {
+  for (let i = start; i < n; ) {
+    const ch = text[i];
+    if (ch === '}') return i + 1;
+    if (ch === "'" || ch === '"') i = skipQuotedSpan(text, i, n);
+    else i += ch === '\\' ? 2 : 1;
+  }
+  return -1;
+};
+
 /** Quote-aware whitespace tokenizer over an already-visible (masked spans blanked) substring —
  * a quoted span (e.g. a sed script `'s/a/b/'`) is kept as one token, quotes intact, so
  * `stripQuotes` can later decide whether to unwrap it. A backslash-escaped character (`x\ y`)
- * never splits a word. */
+ * never splits a word, and a `${…}` expansion stays one word whatever spaces its body holds. */
 const tokenize = (text) => {
   const tokens = [];
   let current = '';
+  let braceUnclosed = false;
   let i = 0;
   const n = text.length;
   while (i < n) {
@@ -205,6 +218,15 @@ const tokenize = (text) => {
       current += text.slice(i, end);
       i = end;
       continue;
+    }
+    if (ch === '$' && text[i + 1] === '{' && !braceUnclosed) {
+      const end = bracedExpansionEnd(text, i + 2, n);
+      if (end !== -1) {
+        current += text.slice(i, end);
+        i = end;
+        continue;
+      }
+      braceUnclosed = true;
     }
     current += ch;
     i++;
