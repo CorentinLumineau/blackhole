@@ -484,7 +484,7 @@ export const LAUNCH_ROW_KEYS = [
 ] as const;
 export type LaunchRowKey = (typeof LAUNCH_ROW_KEYS)[number];
 
-export type GateOption = { label: string; description: string };
+export type GateOption = { label: string; description: string; preview?: string };
 
 /** One section of the launch summary and, when adjustable, one question of its gate. */
 export type LaunchRow = {

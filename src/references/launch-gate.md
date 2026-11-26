@@ -139,7 +139,9 @@ also offers "Refresh template". Never delete the stored page to reset it (`statu
 One Accept / Adjust question per adjustable row (Budget with no usage limit asks Set usage caps / Run with no limit instead), at most 4 per card. Scope, Merge, Budget and
 Kaizen and staging (and Pacing in a catchup) are always adjustable, and so is Status page unless the host publishes no
 page: a full gate is 2 cards, or 1 card when the Status page row reads `none on this host`.
-Send the cards the `--json` output returns; every option carries its own description. Accept keeps the
+Send the cards the `--json` output returns; every option carries its own description and a `preview`
+holding the full summary table, because the host's question dialog can cover the chat and text printed
+in the same step as the cards is not seen while they are open. Never strip the `preview`. Accept keeps the
 row as shown. Adjust opens only that row's form steps, never the whole form:
 
 | Row | Adjust opens |
