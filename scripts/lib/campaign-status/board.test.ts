@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { buildBoard, buildMoves, buildStreams, cardTitle, DEFAULT_STREAM, prPlacement, stageCounts, streamOf, type BoardInput } from './board.ts';
+import { buildBoard, buildMoves, buildStreams, cardTitle, clip, DEFAULT_STREAM, labelWithPrefix, prPlacement, stageCounts, streamOf, type BoardInput } from './board.ts';
 import type { PrSignal, QueueIssue } from './types.ts';
 
 const sig = (over: Partial<PrSignal> = {}): PrSignal => ({ review: null, review_read: true, ci: 'green', failing: [], mergeable: true, ...over });
@@ -162,6 +162,17 @@ describe('streams — mapped from labels, milestone or epic, with overrides and 
 test('cardTitle drops a conventional-commit prefix and clips long titles', () => {
   expect(cardTitle('fix(api)!: handle empty bodies')).toBe('Handle empty bodies');
   expect(cardTitle('x'.repeat(100))).toHaveLength(70);
+});
+
+test('clip keeps short text and ends a long one with an ellipsis inside the limit', () => {
+  expect(clip('short', 10)).toBe('short');
+  expect(clip('abcdefghij', 5)).toBe('abcd…');
+});
+
+test('labelWithPrefix returns the first non-empty suffix and null otherwise', () => {
+  expect(labelWithPrefix(['kind:bug', 'app:web', 'app:api'], 'app:')).toBe('web');
+  expect(labelWithPrefix(['app:'], 'app:')).toBeNull();
+  expect(labelWithPrefix(undefined, 'app:')).toBeNull();
 });
 
 describe('merged pull requests and queue drift on the board', () => {
