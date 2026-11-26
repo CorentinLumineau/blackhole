@@ -31,6 +31,11 @@ step 8), so a long turn keeps its claims live.
    which reads the cached statusline `rate_limits`, and
    `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/usage-budget.ts --parallel-max <parallel_max> [--usage '<usage-probe JSON>']`,
    whose `--usage` is the harness usage probe's output (#1201; without it the same cache is read).
+   When `ci_capacity.enabled` is `true`, first run `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/ci-capacity-read.ts` and pass its
+   stdout, when it printed any, as `usage-budget.ts --ci-capacity '<reading JSON>'`. It reads the consumer's
+   runners and queued jobs in the configured `ci_capacity.lanes`; no output, a non-zero exit or a warning
+   means no reading, so log the warning and keep the usage `workers` (fail-open, never a pause). A CI cap
+   shows in the verdict's `reasons` (`ci capacity: ...`) and can only lower `workers`.
    This round's target is the **smallest** of the pace target, the usage `workers` and (step 2) the
    resource `batch_size`.
    Pace gate: `STOP-NEW` spawns nothing (let in-flight workers finish, checkpoint, tell the owner),
