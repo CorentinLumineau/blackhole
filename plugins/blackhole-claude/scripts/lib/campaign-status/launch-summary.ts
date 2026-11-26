@@ -364,9 +364,11 @@ export function renderLaunchSummary(rows: LaunchRow[], warnings: string[] = [], 
   ].join('\n');
 }
 
-/** One question per adjustable row, `QUESTIONS_PER_CARD` per card. Print-only mode asks nothing. */
+/** One question per adjustable row, `QUESTIONS_PER_CARD` per card; every option's `preview` is the full summary table. Print-only mode asks nothing. */
 export function gateCards(rows: LaunchRow[], { printOnly }: { printOnly: boolean }): GateCard[] {
   if (printOnly) return [];
+  // The host's question dialog can cover the chat, so the full summary rides on every option.
+  const preview = renderLaunchSummary(rows);
   const questions: GateQuestion[] = rows
     .filter((r) => r.adjustable)
     .map((r) => ({
@@ -374,7 +376,7 @@ export function gateCards(rows: LaunchRow[], { printOnly }: { printOnly: boolean
       header: r.header,
       question: `${r.label}: ${r.consequence}`,
       multiSelect: false,
-      options: r.options ?? [ACCEPT, { label: 'Adjust', description: ADJUST[r.key] ?? 'Change this section.' }],
+      options: (r.options ?? [ACCEPT, { label: 'Adjust', description: ADJUST[r.key] ?? 'Change this section.' }]).map((o) => ({ ...o, preview })),
     }));
   const cards: GateCard[] = [];
   for (let i = 0; i < questions.length; i += QUESTIONS_PER_CARD) cards.push({ questions: questions.slice(i, i + QUESTIONS_PER_CARD) });

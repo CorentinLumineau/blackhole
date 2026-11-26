@@ -335,6 +335,16 @@ describe('gateCards', () => {
     }
   });
 
+  test('every option previews the full summary, so a covering dialog hides nothing', () => {
+    const table = renderLaunchSummary(rows);
+    for (const q of cards.flatMap((c) => c.questions)) {
+      for (const o of q.options) {
+        expect(o.preview).toBe(table);
+        for (const r of rows) expect(o.preview).toContain(`| ${r.label} |`);
+      }
+    }
+  });
+
   test('merge_mode unset drops the Accept option (R-002)', () => {
     const config = { ...SAMPLE_CONFIG, merge_mode: undefined };
     const unset = buildLaunchSummary({ report, config, budget: panel(config, USAGE), statusPage: PAGE });
