@@ -1390,6 +1390,14 @@ describe('carryManifest - symlinked carry targets', () => {
     expect(outcome.skippedEntries[0]!.reason).toContain('symlink');
   };
 
+  // The fail-closed leg's own reason: a bare 'symlink' substring also matches the temp dir name
+  // and the write-failure message, so only this phrase proves the dangling link was refused up front.
+  const expectUnresolvable = (outcome: ReturnType<typeof carryManifest>): void => {
+    expect(outcome.carriedPaths).toEqual([]);
+    expect(outcome.skippedEntries).toHaveLength(1);
+    expect(outcome.skippedEntries[0]!.reason).toContain('cannot be resolved');
+  };
+
   test('a root documentation dir symlinked to .github is refused and .github stays untouched', () => {
     withRepo((repoRoot) => {
       fs.symlinkSync(path.join(repoRoot, '.github'), path.join(repoRoot, 'documentation'));
@@ -1421,6 +1429,26 @@ describe('carryManifest - symlinked carry targets', () => {
       fs.symlinkSync('../.github/z.md', path.join(repoRoot, 'documentation/z.md'));
       expectRefused(carryManifest(manifestFor('documentation/z.md'), repoRoot));
       expect(fs.existsSync(path.join(repoRoot, '.github/z.md'))).toBe(false);
+    });
+  });
+
+  test('a dangling symlink file in a subdirectory into .github/workflows is refused and its target is not created', () => {
+    withRepo((repoRoot) => {
+      fs.mkdirSync(path.join(repoRoot, 'documentation/sub'), { recursive: true });
+      fs.mkdirSync(path.join(repoRoot, '.github/workflows'), { recursive: true });
+      fs.symlinkSync('../../.github/workflows/z.yml', path.join(repoRoot, 'documentation/sub/z.md'));
+      expectUnresolvable(carryManifest(manifestFor('documentation/sub/z.md'), repoRoot));
+      expect(fs.existsSync(path.join(repoRoot, '.github/workflows/z.yml'))).toBe(false);
+    });
+  });
+
+  test('a dangling directory symlink with a deep tail into .github/workflows is refused and nothing is created', () => {
+    withRepo((repoRoot) => {
+      fs.mkdirSync(path.join(repoRoot, 'documentation'));
+      fs.mkdirSync(path.join(repoRoot, '.github/workflows'), { recursive: true });
+      fs.symlinkSync('../.github/workflows/newdir', path.join(repoRoot, 'documentation/d'));
+      expectUnresolvable(carryManifest(manifestFor('documentation/d/a/b/x.yml'), repoRoot));
+      expect(fs.existsSync(path.join(repoRoot, '.github/workflows/newdir'))).toBe(false);
     });
   });
 
