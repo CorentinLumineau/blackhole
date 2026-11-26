@@ -364,11 +364,15 @@ export function renderLaunchSummary(rows: LaunchRow[], warnings: string[] = [], 
   ].join('\n');
 }
 
-/** One question per adjustable row, `QUESTIONS_PER_CARD` per card; every option's `preview` is the full summary table. Print-only mode asks nothing. */
-export function gateCards(rows: LaunchRow[], { printOnly }: { printOnly: boolean }): GateCard[] {
+/**
+ * One question per adjustable row, `QUESTIONS_PER_CARD` per card. The first option of each question
+ * previews the summary exactly as the CLI prints it (warnings and target included); the other options
+ * carry none, so the table is not repeated per option. Print-only mode asks nothing.
+ */
+export function gateCards(rows: LaunchRow[], { printOnly, warnings = [], target }: { printOnly: boolean; warnings?: string[]; target?: LaunchTarget }): GateCard[] {
   if (printOnly) return [];
-  // The host's question dialog can cover the chat, so the full summary rides on every option.
-  const preview = renderLaunchSummary(rows);
+  // The host's question dialog can cover the chat, so the summary rides on each question's canonical option.
+  const preview = renderLaunchSummary(rows, warnings, target);
   const questions: GateQuestion[] = rows
     .filter((r) => r.adjustable)
     .map((r) => ({
@@ -376,7 +380,7 @@ export function gateCards(rows: LaunchRow[], { printOnly }: { printOnly: boolean
       header: r.header,
       question: `${r.label}: ${r.consequence}`,
       multiSelect: false,
-      options: (r.options ?? [ACCEPT, { label: 'Adjust', description: ADJUST[r.key] ?? 'Change this section.' }]).map((o) => ({ ...o, preview })),
+      options: (r.options ?? [ACCEPT, { label: 'Adjust', description: ADJUST[r.key] ?? 'Change this section.' }]).map((o, i) => (i === 0 ? { ...o, preview } : o)),
     }));
   const cards: GateCard[] = [];
   for (let i = 0; i < questions.length; i += QUESTIONS_PER_CARD) cards.push({ questions: questions.slice(i, i + QUESTIONS_PER_CARD) });

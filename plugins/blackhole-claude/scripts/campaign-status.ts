@@ -400,7 +400,7 @@ async function printLaunchSummary(
   if (asJson) {
     const pacing = catchup?.pacing ? { pacing: { ...catchup.pacing, preset: catchup.preset } } : {};
     const targetJson = { repo: target.repo, campaign_dir: target.campaignDir, source: target.source };
-    console.log(JSON.stringify({ target: targetJson, rows, cards: gateCards(rows, { printOnly: readPrintOnly(campaignDir, unattended) }), warnings, ...pacing }, null, 2));
+    console.log(JSON.stringify({ target: targetJson, rows, cards: gateCards(rows, { printOnly: readPrintOnly(campaignDir, unattended), warnings, target }), warnings, ...pacing }, null, 2));
     return;
   }
   console.log(renderLaunchSummary(rows, warnings, target));
