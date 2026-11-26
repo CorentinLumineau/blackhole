@@ -3,7 +3,6 @@ import * as path from 'path';
 import { budgetRows } from './budget.ts';
 import { runRows } from './run-state.ts';
 import { SCOPE_LABELS } from './record.ts';
-import { topDenyCounts } from './deny-counts.ts';
 import { campaignName } from './report.ts';
 import { formatScopeLabel } from './scope-label.ts';
 import { STALE_AFTER_HOURS } from './staleness.ts';
@@ -20,7 +19,6 @@ export const STATUS_DATASET_IDS = [
   'config',
   'decisions',
   'links',
-  'denials',
   'budget',
   'run',
   'pending',
@@ -85,7 +83,6 @@ export function buildStatusData(r: StatusReport): StatusDatasets {
     config: r.config_rows.map((c) => ({ ...c })),
     decisions: r.decisions.map((d) => ({ date: d.date, text: d.text })),
     links: r.links.map((l) => ({ ...l })),
-    denials: topDenyCounts(r.deny_counts).map((c) => ({ pattern_id: c.pattern_id, deny: c.deny, warn: c.warn })),
     budget: budgetRows(r.budget),
     run: runRows(r.run),
     pending: r.pending_decisions.map((d) => ({ ...d })),

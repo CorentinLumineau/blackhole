@@ -10,15 +10,13 @@ import { read, type CheckResult } from './check-utils.ts';
 // `.blackhole/plans/issue-798-investigation.md`). Every documented invocation is pinned via
 // `bun run --cwd <target-root> scripts/<name>.ts ...` (`--cwd` immediately after `bun run`,
 // before the script path) — this check pins the class, not just the three sites fixed for #798
-// (widened to a fourth, `scripts/plan-quality-gate.ts`, by issue #891, and a fifth,
-// `scripts/plugin-drift-signal.ts`, which takes `--repo-root` since issue #1454).
+// (widened to a fourth, `scripts/plan-quality-gate.ts`, by issue #891).
 
 const TARGET_SCRIPTS = [
   'scripts/check-review-artifact.ts',
   'scripts/carry-staged-artifacts.ts',
   'scripts/lib/companion-file-sync.ts',
   'scripts/plan-quality-gate.ts',
-  'scripts/plugin-drift-signal.ts',
 ];
 
 // Optional `--cwd <value>` clause immediately after `bun run`. `<value>` may be a single

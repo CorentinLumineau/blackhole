@@ -3,7 +3,7 @@ import { findMissingGateMarkers } from '../lib/check-common.ts';
 
 // issue #787 — V-TEST-09 reporting-accuracy backstop. The Coverage-regression gate (V-TEST-09,
 // BLOCK, implementer.md § 6) is structurally unmeasurable for any file under `templates/hooks/**`
-// — those modules execute only inside a subprocess spawned by `runPreToolUseHook`, never
+// — those modules execute only inside a hook subprocess, never
 // instrumented by `bun test --coverage`. implementer.md § 6 requires `unmeasurable` (never
 // `pass`) for a diff whose only changed source lives under that path; reviewer.md § 30 (the on-demand
 // module 30-v-test09-hooks-claim-audit.md) is the judgment audit that blocks a PR violating that requirement. No new V-code — this module reuses

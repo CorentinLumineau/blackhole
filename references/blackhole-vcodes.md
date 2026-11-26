@@ -122,9 +122,6 @@ into a prompt (token cost, drift). Persist every finding to `findings-ledger.jso
 | V-VIS-01 | UI-affecting diff with display_targets configured but no visual_evidence declared — silent skip | BLOCK | reviewer.md § Visual Evidence Audit |
 | V-VIS-02 | visual_evidence[] present with a declared capture_status: unavailable entry — non-blocking, never silent | WARN | reviewer.md § Visual Evidence Audit |
 | V-PROOF-01 | User-visible change merged with no `## Proof` section in the PR body (commands run, artifact links, pass/fail, or an explicit `unavailable: <reason>`) — extends the V-VIS evidence concept beyond `display_targets`-gated UI screenshots | BLOCK | reviewer.md § Runtime Proof Audit |
-| V-HOOK-01 | PreToolUse hook denied a destructive/unsafe Bash or Write/Edit call; the `.blackhole/hook-events/` record must be ingested into findings-ledger.json before the issue advances past implement | BLOCK | orchestrator-runtime.md § Triage step 1b |
-| V-HOOK-02 | PreToolUse hook flagged a risky-but-allowed call for review — sensitive-file write, force push, registry publish, destructive SQL | WARN | orchestrator-runtime.md § Triage step 1b |
-| V-HOOK-03 | PreToolUse hook validator process failed before producing a decision and the call was allowed (fail-open); the `.blackhole/hook-events/` record must be ingested into findings-ledger.json | BLOCK | orchestrator-runtime.md § Triage step 1b |
 | V-BRIEF-01 | A worker return — direct, transcript-recovered, or resend-recovered — was applied to `queue.json`/`findings-ledger.json` without first passing `scripts/validate-worker-json.ts`, across any arrival path | BLOCK | orchestrator-runtime.md § Triage |
 | V-BRIEF-02 | A spawn-brief-adjacent doc (`src/agents/*.md`, `src/references/*.md`, excluding `worker-schemas.md`) inlines a literal `"status": "<value>"` skeleton in a fenced JSON block whose value is outside the resolved role's status enum | WARN | scripts/checks/inline-schema-drift.check.ts |
 | V-SHAPE-01 | route field-set parity, two legs — (1) router.ts's `validateRoute` `requireField` keys vs. `campaign-status/types.ts`'s `Route` type keys diverge without a declared `omits:` allowlist entry on `Route`'s header comment (undeclared drift in either direction); (2) every `<!-- shape: exhaustive -->`-marked fenced `route` JSON example under `src/references/*.md` (currently `worker-schemas.md`, `queue-dag.md`) must match router.ts's required key set exactly, no `omits:` allowlist applies to this leg | WARN | scripts/checks/route-shape.check.ts |
@@ -148,10 +145,6 @@ into a prompt (token cost, drift). Persist every finding to `findings-ledger.jso
 | V-MPARITY-01 | V-code severity parity against mercure — a shared, non-allowlisted ID's mercure severity (tier-mapped CRITICAL/HIGH -> BLOCK, MEDIUM/LOW -> WARN) disagrees with blackhole's own severity in `documentation/audits/mercure-vcode-snapshot.json` vs `blackhole-vcodes.md` (issue #869) | WARN | scripts/checks/vcode-parity.check.ts |
 | V-MPARITY-02 | Vendored mercure V-code snapshot (`documentation/audits/mercure-vcode-snapshot.json`) staleness — `synced_at` older than `MERCURE_VCODE_SNAPSHOT_STALE_DAYS` (issue #869) | WARN | scripts/checks/vcode-parity.check.ts |
 | V-CTRLCHAR-01 | A tracked file contains a NUL byte or other always-illegal C0 control byte (0x00-0x08, 0x0B, 0x0C, 0x0E-0x1F, excluding tab/newline/CR), unless the path is declared `binary` in `.gitattributes` (issue #945 — PR #944's invisible-NUL shape) | BLOCK | scripts/checks/control-char.check.ts |
-
-`V-HOOK-02`'s row above does not cover the sibling-plugin-defer event (`pattern_id:
-sibling-plugin-defer`, `tier: defer`) introduced by issue #870 — that event is never ingested by
-Triage and carries no V-code (`src/references/hook-schemas.md` § PreToolUse hook events).
 
 **BLOCK** = must fix before merge (or escalate to user with justification).
 **WARN** = fix or document deferral in PR and ledger.

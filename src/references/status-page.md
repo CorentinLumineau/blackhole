@@ -108,7 +108,7 @@ the plugin version).
 
 One Data dashboard per campaign, laid out by `templates/status-dashboard/index.html` (resolve it
 from the plugin root (`$BLACKHOLE_PLUGIN_ROOT`; the repo root when self-hosting)). Its datasets are `overview`, `moves`, `blockers`, `board`,
-`streams`, `scope`, `config`, `decisions`, `links`, `denials` (the top 5 hook rules by deny and warn count), `budget` (the usage-budget rows, `budgetRows()`), `run` (`runRows()`: run route, decisions mode with its waiting count, coordination role) and `pending` (the parked owner decisions; `STATUS_DATASET_IDS`; the ids and fields:
+`streams`, `scope`, `config`, `decisions`, `links`, `budget` (the usage-budget rows, `budgetRows()`), `run` (`runRows()`: run route, decisions mode with its waiting count, coordination role) and `pending` (the parked owner decisions; `STATUS_DATASET_IDS`; the ids and fields:
 `scripts/lib/campaign-status/data.ts`). The page works STALE out in the reader's browser from
 `overview.last_activity_at` and `overview.stale_after_hours` (the one `STALE_AFTER_HOURS`), so a
 dashboard nobody refreshes stops saying running by itself; "x min ago" is computed when it is
@@ -219,7 +219,6 @@ sees at a glance where the run stands and what to do:
    stream); `--html` ships no script, so it has the table without the filter
 5. **Scope** (in, parked, deferred, blocked upstream, out; the issue filter, `all open issues` when none is set, when no entry is recorded),
    **Config**, **Your decisions** (newest first; the Data dashboard shows four and folds the rest),
-   **Hook denials** (top 5 rules by deny and warn count, or `no hook denials recorded`),
    **Usage budget** — see below — and **Run**: the run route from `run-context.json` (pattern,
    host, state store, question and forge channels, any missing capability), the decisions mode with
    the waiting count, `run /blackhole decide`, `retired sleep_mode ignored` while that block remains in `config.json`, and the coordination role (solo, manager, or peer of its manager)
@@ -263,8 +262,7 @@ or Remote session the history only grows if the orchestrator probes at every tur
 
 `--html` keeps its detail sections after these: in progress, waiting on you, waiting on
 something else by reason class (`elseClasses()`), up next, recently done, and a closed native
-`<details>` with host, checkpoint notes, open findings and the top 5 hook rules by deny and warn count
-(`deny_counts`; `no hook denials recorded` when empty). The text dashboard (`dashboard.ts`)
+`<details>` with host, checkpoint notes, and open findings. The text dashboard (`dashboard.ts`)
 is shorter: it prints the headline, the board counts, your move, the scope, the newest
 decisions and a **Usage budget** section (the same rows) above its queue sections, with no card list and no workstreams.
 Among its queue sections, **Merge next** numbers every open PR in the order to merge it

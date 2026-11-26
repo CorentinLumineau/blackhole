@@ -68,7 +68,7 @@ const resolveFile = (fileRef: string, idx: Map<string, string>): string | null =
 // inside fenced code blocks are not headings (markdown-headings.ts). Returns
 // `null` when a *given* section ref fails to resolve — the caller (scanVcodeCitations) treats
 // that the same as a `null` ref: whole-file fallback, never `V-CITE-01` by itself. See that
-// caller for the rationale (the `orchestrator-runtime.md § Triage step 1b` case).
+// caller for the rationale.
 export const resolveSection = (fileContent: string, sectionRef: string | null): { body: string } | null => {
   if (sectionRef === null) return { body: fileContent };
   const lines = fileContent.split('\n');
@@ -103,8 +103,7 @@ type ScanResult = { unresolved: string[]; codeAbsent: string[] };
 // the expensive part (file reads); V-CITE-01/V-CITE-02 are two different judgments over the
 // same resolved data, not two independent scans.
 //
-// Fallback generalization (ADR-review ruling on the `orchestrator-runtime.md § Triage step 1b`
-// case): a section ref that fails to resolve to a heading degrades to the whole-file body —
+// Fallback generalization: a section ref that fails to resolve to a heading degrades to the whole-file body —
 // the same treatment `parseCitationCell` already gives a `null` sectionRef (e.g. `planner.md
 // §4.8`'s two-level ref). `V-CITE-01` fires only when the *file itself* is missing; a citation
 // naming a section that doesn't exist silently weakens to "the code appears somewhere in the

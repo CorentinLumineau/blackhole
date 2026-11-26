@@ -119,7 +119,7 @@ No hook that can deny a tool call ships in any harness build ([ADR-065](../../do
 
 **Installed copies:** a plugin cache is version-keyed, so an installation keeps the old guards until the plugin is updated or reinstalled.
 
-**`.blackhole/hook-events/`:** nothing writes this directory any more. The Triage reader (`scripts/lib/hook-event-triage.ts`), the `V-HOOK-01..03` codes and the plugin-drift hook-source scan stay in place, inert, until the follow-up slice of issue #1644 retires them.
+**`.blackhole/hook-events/`:** historical. Nothing writes or reads it; an old install may still leave files there, and the state branch excludes the directory. Ledger rows with `V-HOOK-01..03` from earlier campaigns stay valid.
 
 ## PermissionDenied hook (Claude Code, not installed)
 

@@ -204,48 +204,6 @@ section consumes and `model-routing.md` § Escalation rule for the tier-bump mec
 section applies with the narrower cap above.
 
 
-## Implementer write-root containment (issue #620, #907)
-
-**Scope:** every `implementer` spawn only — not `planner`, `reviewer`, `orchestrator`, or
-`coordinator`. The orchestrator and coordinator sessions must **not** be narrowed by either
-mechanism below; they legitimately Write/Edit the main clone (especially `.blackhole/` campaign
-state).
-
-**The reachable mechanism (issue #907): cwd-derived containment, automatic, no declaration
-needed.** `validate-file-changes.js` and `validate-bash-command.js` both resolve the assigned
-root through `readAssignedWorktreeRoot(cwd)` in `hook-event-log.js`. That function's primary tier
-derives the assignment structurally from the PreToolUse payload's own `cwd`: when `cwd` resolves
-to a linked (non-main) worktree, that worktree becomes the sole assigned root automatically —
-writes to the main clone or a sibling worktree are denied (`outside-assigned-worktree` /
-`bash-outside-assigned-worktree`, block tier). An orchestrator or coordinator whose cwd is a linked worktree is denied a state write into a main clone's `.blackhole/` only when that clone is neither its anchored own clone nor named in `permissions.additionalDirectories`: the remedy is to declare the clone in the user settings file, never to widen a worker (`hook-schemas.md`, ADR-064). A validated scratchpad root (`scratchpad_dir` in
-`.blackhole/config.json`, or the opt-in `BLACKHOLE_SCRATCHPAD_DIR` override) is never dropped by
-this narrowing. When `cwd` resolves to the main clone itself (the orchestrator's/`planner`'s/
-`investigator`'s/`hunter`'s legitimate case), this tier does not fire at all — behaviour is
-unchanged from today's `allWorktreeRoots` fallback. This tier requires **no spawn-time action**:
-it works for every dispatch pattern, including Pattern C (the native `Agent`/`Workflow` tool),
-because it needs no channel to carry a declaration to the worker at all.
-
-**The declared-channel mechanism (issue #620): `BLACKHOLE_ASSIGNED_WORKTREE`, Pattern B / manual
-use only.** A shell `export` does not survive between subagent spawns or separate `Bash` tool
-calls, and the native `Agent`/`Workflow` tool provides no environment channel to a spawned
-worker at all — an `export` issued by the orchestrator's own session is never visible inside a
-Pattern C worker's process. This env var therefore has **no reachable effect on a Pattern C
-implementer spawn**; it remains meaningful only for Pattern B (a human or script manually
-exporting it in a shell before invoking Claude Code directly) or other manual/scripted
-invocations that share the orchestrator's own process environment. Where it *is* set, it takes
-precedence over the cwd-derived tier above (checked first in `readAssignedWorktreeRoot`); when
-unset, empty, unresolvable, or not a registered member of `allWorktreeRoots(cwd)`, resolution
-falls through to the cwd-derived tier rather than straight to `allWorktreeRoots`. Contract when
-it does apply:
-
-```bash
-export BLACKHOLE_ASSIGNED_WORKTREE='<absolute wt-<N> path>'
-```
-
-See `hook-schemas.md`'s `pattern_id` table for the full `outside-assigned-worktree` /
-`bash-outside-assigned-worktree` contract, covering both resolution tiers.
-
-
 ## CI Failure Diagnosis Dispatch
 
 **Trigger condition**: `phase-loop.md` § Merge protocol step 2 sub-bullet 4 — CI remains red

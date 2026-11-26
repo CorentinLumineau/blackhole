@@ -133,12 +133,11 @@ definition of the shape; bump `schema_version` on a breaking change):
 | `untracked_prs` | Open forge PRs no queue entry's `pr` names (`{pr, title}`, lowest first): work opened without an issue, such as a trunk fix or a dependency bump. Taken from the open-PR list the `forge` counts already fetch, so no extra call; `null` when that list was not fetched (`--no-gh`, forge failure), never an unchecked `[]`. Additive |
 | `recently_done` | Newest merged/closed items, highest PR then issue number first (the queue holds no merge time), at most 5 |
 | `ledger_open` | Every open finding, BLOCK first then most recent (`id`, `vcode`, `severity`, `summary`, `issue_ref`) |
-| `deny_counts` | PreToolUse hook `deny` (`tier: block`) and `warn` events per `pattern_id` (`pattern_id`, `deny`, `warn`) since the campaign started, from live and archived `.blackhole/hook-events`, most frequent first. Additive; the dashboard's **Hook denials** section lists the top 5 |
 | `budget` | The usage-budget panel (`scripts/lib/campaign-status/budget.ts`): `probed`, `reason` (why not probed, else `null`), `age_seconds`, `five_hour_pct` and `five_hour_resets_at` (`null` when the plan has no current five_hour window), `weekly_pct`, `resets_at` (the weekly reset), `workers_allowed`, `verdict` and `verdict_reasons` (`workersAllowed()`, or `unavailable` with `parallel_max` when `usage_budget` is off or invalid), and `forecast` (`{pct_per_hour, reaches: [{pct, at}]}`, one entry per distinct weekly threshold, `at` `null` when not reached before the reset; `null` without a weekly window), `source` (`rate-limit-cache`, or `null` when not probed) and `windows` (the windows the reading shows, `five_hour` only when the plan has one). Times are ISO 8601. `target_at_reset` is `usage_budget.weekly.target_at_reset` (`null` when unset or invalid), shown as a **Weekly target** row. With no reading, `probed: false` and every number `null`; the page says `usage not probed`. Additive |
 | `run` | The Run panel (`scripts/lib/campaign-status/run-state.ts`): `route` (`run-context.json`'s `host`, `pattern`, `state_store`, `question_channel`, `forge_channel`, `missing`, `refreshed_at`; `null` when the file is absent or has no route), `decisions_mode` (`decisionsMode()`: `park` unless the config opts into `ask`), `retired_sleep_mode` (a retired `sleep_mode` block is still in `config.json`, ignored), `parked` (decisions in `pending-decisions.json`, `null` with `parked_error` when the file is unreadable) and `coordination` (`usage_budget.coordination`, `null` with `coordination_invalid` when `usage_budget` is invalid). Its rows are `RUN_ROW_KEYS`: Run route, Decisions (`park · 3 waiting — run /blackhole decide`, then `retired sleep_mode ignored` while that block remains), Coordination, Doc carry (`doc_carry`: artifacts promised vs staged vs carried, `null` when docs governance is off, `doc_carry_error` when a manifest is unreadable). Additive |
 | `pending_decisions` | The parked owner decisions (`id`, `question`, `recommended` option label, `waiting_items`, `gate`, `created_at`), most-blocking first as the decide round asks them (`wakeBatch`); empty when none is parked or the file is unreadable. The **Decisions waiting for you** panel shows their count and `run /blackhole decide`. Additive |
 | `worker_context` | The runtime worker-context report from `.blackhole/worker-context.json` (`scripts/worker-context-report.ts --record`), or `null` when none is recorded: `recorded_at`, `workers`, `unattributed` (workers with no issue number in the file name, the `.meta.json` `name` or its `description`), `median_first_turn_tokens`, `roles` (`spawns` and `median_first_turn_tokens` per role), `merged_prs`, `spawns_per_merged_pr` and `respawns` (`total`, `warm`, `cold`: a same-role respawn on an issue within the 5-minute cache TTL of the previous worker's last turn is warm). The `overview` dataset carries it as `worker_median_first_turn_tokens`, `worker_spawns_per_merged_pr`, `worker_respawns`, `worker_respawns_warm`, `worker_respawns_cold` and `worker_context_recorded_at`, and none of them when nothing is recorded. Additive |
-| `host` | `pace` (the pace line or `null`) and `notes` (plugin-drift lines) |
+| `host` | `pace` (the pace line or `null`) and `notes` (host notes; none are produced today) |
 | `scope_record` | `recorded` and the `entries` of `config.json` `campaign_scope` (`kind`, `text`, `set_at`, optional `reason`, `refs`, `filter`); malformed entries are dropped. Additive |
 | `decisions` | `owner-decisions.json`, newest first (`date`, `text`, optional `refs`). Additive |
 | `headline` | `{text, source}`: the checkpoint's `## Headline` (`checkpoint`), else one sentence from the stage counts (`generated`). Additive |
@@ -201,8 +200,8 @@ The status script emits markdown with:
    is parked, **Decisions waiting for you (N) — run /blackhole decide**, then forge open issues/PRs, queue active/done/in-flight/blocked/ready, ledger
    severities, and a **Queue health** verdict (`✓ HEALTHY` / `⚠ STALLED` / `✗ DEGRADED`) computed
    from forge availability plus the blocked/in-flight counts already shown here. Scoped
-   deliberately narrow: it says nothing about plugin-cache drift or doc-tree health — those are
-   separate signals read (and, for plugin-drift, rendered) elsewhere.
+   deliberately narrow: it says nothing about doc-tree health, which is a
+   separate signal read elsewhere.
 3. **In-flight** — table: issue, phase, PR, notes
 4. **Blocked** — one line per owner gate (`awaiting-*`, `blocked-escalated:`) with its note, then one line per reason class: label, count, first 3 issue numbers and "and N more". The same `classifyBlocked()` as `blocked_classes` (`scripts/lib/campaign-status/blocked-classes.ts`), so counts match `--json`
 5. **Ready** — Pareto-ready issue numbers
@@ -222,8 +221,7 @@ The status script emits markdown with:
 9. **Issues filed** — ledger rows with `deferred_to_issue` (discovery filings), newest (highest issue number) first, capped at 10 with a `…and N more` line beyond that
 10. **Ledger open** — top open V-code findings, capped at 10 with a `…and N more` line beyond
     that.
-11. **Hook denials** — top 5 hook rules by deny and warn count, or `no hook denials recorded`
-12. **Active workers** — from checkpoint `## In-flight workers` section
+11. **Active workers** — from checkpoint `## In-flight workers` section
 
 ## Coordinator turn flow (with visibility)
 
