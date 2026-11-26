@@ -46,7 +46,13 @@ export type BoardInput = {
   issueUrl: (issue: number) => string | null;
 };
 
-const clip = (text: string, max: number): string => (text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`);
+export const clip = (text: string, max: number): string => (text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`);
+
+/** The text after `prefix` on the first label that carries some, or null. */
+export const labelWithPrefix = (labels: readonly string[] | undefined, prefix: string): string | null => {
+  const hit = (labels ?? []).find((l) => l.startsWith(prefix) && l.length > prefix.length);
+  return hit ? hit.slice(prefix.length) : null;
+};
 
 /** A card title: the conventional-commit prefix dropped, the first letter raised, clipped. */
 export function cardTitle(title: string): string {
@@ -68,8 +74,7 @@ export function streamOf(config: StreamConfig | undefined, issues: Record<string
   if (!entry || !config?.from) return fallback;
   if (config.from === 'label') {
     const prefix = config.label_prefix ?? DEFAULT_LABEL_PREFIX;
-    const label = (entry.labels ?? []).find((l) => l.startsWith(prefix) && l.length > prefix.length);
-    return label ? label.slice(prefix.length).trim() || fallback : fallback;
+    return labelWithPrefix(entry.labels, prefix)?.trim() || fallback;
   }
   if (config.from === 'milestone') return entry.milestone?.trim() || fallback;
   if (config.from === 'epic' && entry.epic_parent != null) {
