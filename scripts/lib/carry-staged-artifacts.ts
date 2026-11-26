@@ -329,6 +329,27 @@ const realTargetRelative = (targetAbs: string, repoRoot: string): string | null 
   return path.relative(resolveExistingAncestor(repoRoot), realTarget).split(path.sep).join('/');
 };
 
+/**
+ * The refusal reason when a write to `targetAbs` would land outside the carry allowlist or inside
+ * a protected tree once symlinks are resolved (or the path cannot be resolved), else null. The one
+ * gate every carry write passes: the per-entry loop and the root index regeneration.
+ */
+const realPathRefusal = (
+  targetAbs: string,
+  displayPath: string,
+  repoRoot: string,
+  packageRoot: string | undefined,
+): string | null => {
+  const realRel = realTargetRelative(targetAbs, repoRoot);
+  if (realRel === null) {
+    return `target_path "${displayPath}" cannot be resolved (dangling symlink or unreadable component)`;
+  }
+  if (!isCarryTargetAllowed(realRel, packageRoot) || isProtectedCarryPath(realRel)) {
+    return `target_path "${displayPath}" resolves through a symlink outside the carry allowlist (real path "${realRel}", protected or non-allowlisted)`;
+  }
+  return null;
+};
+
 // Shared write step for both the `new_file` and `append_row` branches below — identical
 // mkdir/write/catch shape, differing only in the content variable written. Never throws: it
 // resolves to `{ ok: false }` and the caller pushes onto `skipped`. See the `new_file` call site
@@ -440,15 +461,9 @@ export const carryManifest = (
     // Real-path gate: the checks above judge the raw string; a symlinked directory or file on the
     // way makes the write land elsewhere in the repo (`documentation` -> `.github`). The allowlist
     // and protected trees are re-judged on the resolved path, and a dangling link is refused.
-    const realRel = realTargetRelative(targetAbs, repoRoot);
-    if (realRel === null || !isCarryTargetAllowed(realRel, opts.packageRoot) || isProtectedCarryPath(realRel)) {
-      skipped.push({
-        index,
-        reason:
-          realRel === null
-            ? `target_path "${entry.target_path}" cannot be resolved (dangling symlink or unreadable component)`
-            : `target_path "${entry.target_path}" resolves through a symlink outside the carry allowlist (real path "${realRel}", protected or non-allowlisted)`,
-      });
+    const realRefusal = realPathRefusal(targetAbs, entry.target_path, repoRoot, opts.packageRoot);
+    if (realRefusal !== null) {
+      skipped.push({ index, reason: realRefusal });
       continue;
     }
 
@@ -534,7 +549,10 @@ export const carryManifest = (
   if (regenerateRootIndex) {
     const indexAbs = path.join(repoRoot, ROOT_DOC_INDEX_PATH);
     const existing = fs.existsSync(indexAbs) ? fs.readFileSync(indexAbs, 'utf-8') : null;
-    if (!isRegenerableRootIndex(existing)) {
+    const indexRefusal = realPathRefusal(indexAbs, ROOT_DOC_INDEX_PATH, repoRoot, opts.packageRoot);
+    if (indexRefusal !== null) {
+      skipped.push({ index: -1, reason: indexRefusal });
+    } else if (!isRegenerableRootIndex(existing)) {
       skipped.push({
         index: -1,
         reason: `${ROOT_DOC_INDEX_PATH} is not a blackhole-generated index (foreign header, link-style path cells, prose, or a second table); regeneration skipped to keep the consumer index intact (V-INT-01 WARN)`,

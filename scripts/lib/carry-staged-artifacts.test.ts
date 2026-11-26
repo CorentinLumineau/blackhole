@@ -1424,6 +1424,29 @@ describe('carryManifest - symlinked carry targets', () => {
     });
   });
 
+  test('a dangling documentation/INDEX.md symlink into .github is not created by index regeneration', () => {
+    withRepo((repoRoot) => {
+      fs.mkdirSync(path.join(repoRoot, 'documentation'));
+      fs.symlinkSync('../.github/INDEX.md', path.join(repoRoot, 'documentation/INDEX.md'));
+      const outcome = carryManifest(manifestFor('documentation/plans/x.md'), repoRoot);
+      expect(fs.existsSync(path.join(repoRoot, '.github/INDEX.md'))).toBe(false);
+      expect(outcome.carriedPaths).not.toContain('documentation/INDEX.md');
+      expect(outcome.skippedEntries.some((s) => s.index === -1 && s.reason.includes('symlink'))).toBe(true);
+    });
+  });
+
+  test('an existing documentation/INDEX.md symlink into hooks is not overwritten by index regeneration', () => {
+    withRepo((repoRoot) => {
+      fs.mkdirSync(path.join(repoRoot, 'documentation'));
+      fs.writeFileSync(path.join(repoRoot, 'hooks/INDEX.md'), 'keep\n');
+      fs.symlinkSync('../hooks/INDEX.md', path.join(repoRoot, 'documentation/INDEX.md'));
+      const outcome = carryManifest(manifestFor('documentation/plans/x.md'), repoRoot);
+      expect(fs.readFileSync(path.join(repoRoot, 'hooks/INDEX.md'), 'utf-8')).toBe('keep\n');
+      expect(outcome.carriedPaths).not.toContain('documentation/INDEX.md');
+      expect(outcome.skippedEntries.some((s) => s.index === -1 && s.reason.includes('symlink'))).toBe(true);
+    });
+  });
+
   test('a package root named hooks cannot carry into the protected hooks tree', () => {
     withRepo((repoRoot) => {
       const outcome = carryManifest(manifestFor('hooks/documentation/x.md'), repoRoot, { packageRoot: 'hooks' });
