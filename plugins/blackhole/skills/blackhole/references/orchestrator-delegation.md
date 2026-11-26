@@ -99,6 +99,22 @@ counter ahead of it, and write a PR reference as a word with no hyphen before th
 segment is the part before the first `-`, so it contains no hyphen. The same string is the `label`
 of the matching `agent()` call in a `Workflow` fan-out, which is what attributes those runs.
 
+### Fix-round continuation (SendMessage)
+
+A fix round (`phase: implement` re-entered with `review_iteration >= 1`, from a review `changes_requested` or a `V-CI-01` row) re-enters the same issue with a worker that already holds its plan, worktree and diff in context. Continue it with `SendMessage` addressed by its spawn name `implementer-<issue>` (§ Deterministic spawn name) instead of spawning a fresh one, **only when every condition holds**:
+
+1. **Warm**: the transcript `~/.claude/projects/*/$CLAUDE_CODE_SESSION_ID/subagents/agent-aimplementer-<issue>-*.jsonl` (most recent on several matches, `orchestrator-runtime.md` recovery rung 1) was last modified within 5 minutes of the send, the cache TTL `WARM_TTL_MS` in `scripts/lib/worker-context-report.ts`. A cold resume re-bills the whole prior transcript, so past the TTL spawn fresh.
+2. **Small**: that file is at most 600000 bytes (about 150k tokens). A larger transcript costs more to carry than a fresh brief.
+3. **Same worker shape**: the previous return was `status: complete`, no `escalation_trigger` bump changed the model tier, and the plan's Touch-Paths are unchanged (an amendment, `orchestrator-dispatch.md` § Spawn-Time Touch-Paths Amendment, needs a fresh spawn).
+4. **Clean state**: `recovery-protocol.md` § 5 steps 2-4 pass for `wt-<issue>`, and `git -C <worktree> ls-remote origin refs/heads/blackhole/issue-<issue>` equals `git -C <worktree> rev-parse HEAD`, so the worker resumes on the pushed head and not on a stale or mixed worktree.
+5. **Addressable**: the `SendMessage` is accepted. A rejected send, or a worker that no longer exists, falls back to a fresh spawn at once, with no retry.
+
+The message carries only what is new: the open findings or the `V-CI-01` summary with its `<UNTRUSTED-CI-LOG>` excerpt (`ci-diagnosis.md` § Implementer spawn framing), the review head SHA, and a request for the same implementer return JSON (`worker-schemas.md`). It does not repeat `<PLAN_CONTEXT>`. The worker's reply is read like any worker return (`orchestrator-runtime.md` recovery ladder).
+
+A fresh spawn (any condition false) gets a lean brief: `<PLAN_CONTEXT>` and the findings, never the previous transcript. Record the choice in the `campaign-checkpoint.md` Notes as `Fix round #<issue>: continued` or `Fix round #<issue>: fresh (<failed condition>)`; `scripts/worker-context-report.ts` counts the respawns that stay cold.
+
+Never continue a `reviewer` (its independence is the point of a second pass), an `escalation_trigger` return (`orchestrator-dispatch.md` § Escalation dispatch), or the merge-readiness promotion spawn.
+
 ### Route-derived dispatch (ADR-004 step 3)
 
 Before spawning `planner`, derive its spawn directive from the issue's `queue.json`

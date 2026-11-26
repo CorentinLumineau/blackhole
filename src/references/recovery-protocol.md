@@ -85,6 +85,7 @@ After crash or compaction recovery, **complete this checklist** before spawning 
 6. Confirm `queue.json`: `phase: implement`, `status: in-flight` or `ready` as appropriate.
 7. Log recovery action in `campaign-checkpoint.md` Notes (e.g. `Recovery: split stash wt-11 → #11 + #13`).
 8. Only then spawn `implementer` with `<PLAN_CONTEXT>`.
+   A warm fix-round `SendMessage` continuation (`orchestrator-delegation.md` § Fix-round continuation (SendMessage)) replaces this spawn but not steps 2-4: it still needs a clean single-issue worktree on the pushed head.
 
 ---
 
