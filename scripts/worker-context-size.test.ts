@@ -12,7 +12,11 @@ const root = path.resolve(import.meta.dirname, '..');
 
 // Reviewer definition ceiling after the on-demand split. The pre-split compiled definition was
 // 22,247 estimated tokens (88,990 bytes), so this is a falsifiable bound, not a restated total.
-const REVIEWER_TOKEN_CEILING = 13_600;
+// Measured 13,585 after the reviewer return contract moved out of the shared worker schemas, so
+// that move freed no reviewer-shell tokens. 14,000 keeps ~400 tokens (~3%) of headroom for the
+// next reviewer addition while staying ~37% below the pre-split baseline; a larger ceiling would
+// need the shell itself trimmed first.
+const REVIEWER_TOKEN_CEILING = 14_000;
 
 const tmpRoot = (files: Record<string, string>): string => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wcs-'));
