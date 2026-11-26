@@ -4,6 +4,12 @@ import * as os from 'os';
 import * as path from 'path';
 import { parseFrontmatterFields } from './lib/build/content.ts';
 import {
+  findOnDemandStubDrift,
+  IMPLEMENTER_GATE_STUB_SHAPE,
+  loadAuditModules,
+  ONDEMAND_GATE_MODULE_DIR,
+} from './checks/audit-modules.check.ts';
+import {
   AGENT_FRONTMATTER_POLICY,
   AGENT_TOOL_POLICY_DENY_MATRIX,
   checkAgentFrontmatter,
@@ -167,5 +173,56 @@ describe('agents.check runChecks()', () => {
       expect(result!.detail ?? '').toBe('');
       expect(result!.ok).toBe(true);
     }
+  });
+});
+
+// The implementer's conditional gates ship as `references/gate-modules/*.md`; `implementer.md`
+// keeps one `##` stub each. Without these checks a stub could lose its Load-when line or its Read
+// path and the worker would silently stop running that gate.
+describe('implementer on-demand gate stubs (V-GATE-01)', () => {
+  const root = path.resolve(import.meta.dirname, '..');
+  const modules = loadAuditModules(path.join(root, ONDEMAND_GATE_MODULE_DIR));
+  const shell = fs.readFileSync(path.join(root, 'src/agents/implementer.md'), 'utf-8');
+
+  test('the live shell has a complete stub for each of the six gate modules', () => {
+    expect(modules.map((m) => m.file)).toEqual([
+      '04-bugfix-gate.md',
+      '05-conflict-resolution-gate.md',
+      '11-promote-review-artifact.md',
+      '12-companion-file-sync.md',
+      '14-visual-evidence-capture.md',
+      '16-shadcn-skill.md',
+    ]);
+    expect(findOnDemandStubDrift(shell, modules, IMPLEMENTER_GATE_STUB_SHAPE)).toEqual([]);
+  });
+
+  test('no module body is inlined into the shell', () => {
+    for (const m of modules) {
+      const body = fs.readFileSync(path.join(root, ONDEMAND_GATE_MODULE_DIR, m.file), 'utf-8');
+      const firstProse = body.split('\n').find((l) => l.length > 60 && !l.startsWith('#') && !l.startsWith('section:'))!;
+      expect(shell).not.toContain(firstProse);
+    }
+  });
+
+  test('a stub that loses its Read path is reported by module file name', () => {
+    const broken = shell.replace('gate-modules/04-bugfix-gate.md', 'gate-modules/elsewhere.md');
+    const errors = findOnDemandStubDrift(broken, modules, IMPLEMENTER_GATE_STUB_SHAPE);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('04-bugfix-gate.md');
+    expect(errors[0]).toContain('Read');
+  });
+
+  test('a stub that loses its Load-when line is reported', () => {
+    const broken = shell.replace(/\*   \*\*Load when\*\*: the plan frontmatter in[^\n]*\n/, '');
+    const errors = findOnDemandStubDrift(broken, modules, IMPLEMENTER_GATE_STUB_SHAPE);
+    expect(errors).toEqual(['04-bugfix-gate.md: stub has no `Load when` trigger line']);
+  });
+
+  test('a module with no stub heading is reported with the implementer shell name', () => {
+    const broken = shell.replace('## Bundled shadcn skill (conditional)', '## Something else');
+    const errors = findOnDemandStubDrift(broken, modules, IMPLEMENTER_GATE_STUB_SHAPE);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('16-shadcn-skill.md');
+    expect(errors[0]).toContain('implementer.md');
   });
 });

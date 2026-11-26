@@ -469,7 +469,7 @@ below are the procedure only.
 
 ### Runtime Proof Audit (`V-PROOF-01`)
 *   **Entry condition**: the PR diff is a user-visible change per
-    `gates/14-visual-evidence-capture.md` § Runtime Proof. Independent of `display_targets` and of
+    `gates/17-runtime-proof.md` § Runtime Proof. Independent of `display_targets` and of
     UI detection. Not user-visible — emit no finding.
 *   **Missing section (`BLOCK`)**: the PR body has no `## Proof` section.
 *   **Generic reason (`BLOCK`)**: the section carries neither commands run with pass/fail, nor an
