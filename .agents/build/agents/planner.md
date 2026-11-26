@@ -162,7 +162,9 @@ track's whole section; every `§ <Track>` citation resolves to the stub heading 
     which trees a given source compiles to, so a hand enumeration drifts the moment a target is
     added, renamed, or split (`V-INT-02`/`V-DRY-01`: one enumeration, one place). When the
     Touch-Paths are relative to a monorepo sub-package, set the plan's `package_root` frontmatter
-    to that package (`plan-template.md`) and write any repo-root file with a leading `/`.
+    to that package (`plan-template.md`) and write any repo-root file with a leading `/`. When that package owns a `documentation/` tree,
+    stage the plan with `target_path: <package_root>/documentation/plans/...` (the carry step
+    admits it only under `--package-root`).
 *   **Documentation Impact (when `docs_governance.enabled`)**: Companion/consumer docs the
     Touch-Paths affect, or `None — <justification>`. Omit this bullet's output section entirely
     when `docs_governance.enabled` is absent or `false` (see Plan Output File Template below).

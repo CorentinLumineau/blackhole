@@ -306,6 +306,7 @@ at escalation — never overlapping for one issue), so there is no lost-update r
 - The **reviewer audit** that diffs the staged manifest against the PR to detect a declared but
   never-carried artifact is implemented at `reviewer.md` § Staged Artifact Carry Audit
   (`V-AUTO-02`, BLOCK) — this section only documents the manifest shape that audit consumes.
+- **Post-merge sweep**: `scripts/staged-promotion-sweep.ts` re-checks every staged entry against the merged trunk (read-only). The carry allowlist is `documentation/**` and root `ARCHITECTURE.md`; a plan with `package_root` adds that package's own two families via `--package-root`.
 - **Resolved gap (issue #474 follow-up, closed by #557)**: `implementer.md` § Carry Staged
   Artifacts' `append_row` idempotency guard originally keyed off "the row's `path` column
   value" — a table-row assumption that did not generalize to the `ARCHITECTURE.md`

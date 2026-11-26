@@ -347,7 +347,7 @@ export const resolveDocsGovernanceActive = (configPath: string): boolean => {
 export const carryManifest = (
   manifest: Manifest,
   repoRoot: string,
-  opts: { today?: string; stagingRoot?: string; docsGovernanceActive?: boolean } = {},
+  opts: { today?: string; stagingRoot?: string; docsGovernanceActive?: boolean; packageRoot?: string } = {},
 ): CarryOutcome => {
   // The CLI always passes the resolved flag; direct library callers default to active.
   if (opts.docsGovernanceActive === false) return { carriedPaths: [], skippedEntries: [] };
@@ -388,10 +388,10 @@ export const carryManifest = (
     // `package.json`, `.github/workflows/*.yml`, `.git/hooks/*` all pass `isWithinRoot` and reach
     // an unconditional write below. Entry-scoped, same as the containment checks above: joins
     // `skipped` and the rest of the manifest still carries.
-    if (!isCarryTargetAllowed(entry.target_path)) {
+    if (!isCarryTargetAllowed(entry.target_path, opts.packageRoot)) {
       skipped.push({
         index,
-        reason: `target_path "${entry.target_path}" is outside the carry allowlist (documentation/** or root ARCHITECTURE.md)`,
+        reason: `target_path "${entry.target_path}" is outside the carry allowlist (documentation/** or root ARCHITECTURE.md, or the same under --package-root)`,
       });
       continue;
     }

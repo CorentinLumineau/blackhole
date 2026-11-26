@@ -3,6 +3,8 @@ section: Staged Artifact Carry Audit
 vcodes: [V-AUTO-02, V-AUTO-03]
 ---
 ### Staged Artifact Carry Audit (`V-AUTO-02`)
+*   **Pre-merge only**: the post-merge counterpart is `scripts/staged-promotion-sweep.ts`, run by
+    the orchestrator at merge (`phase-loop.md` § Ledger cleanup on merge).
 *   **`route: review` scope note**: this audit covers thinking-time routes (`plan`, `design`,
     `analyze`, `investigate`, `brainstorm`) declared in the manifest before merge-readiness.
     `route: review` entries are appended after LGTM by `implementer` at merge step 2.5 and enforced

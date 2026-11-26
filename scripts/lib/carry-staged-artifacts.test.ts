@@ -890,6 +890,59 @@ describe('isCarryTargetAllowed — carry target allowlist (issue #784 AC1)', () 
   });
 });
 
+describe('isCarryTargetAllowed — package-scoped targets (monorepo sibling of #1394)', () => {
+  test.each([
+    ['services/clauderr/documentation/plans/p.md', 'services/clauderr', true],
+    ['services/clauderr/ARCHITECTURE.md', 'services/clauderr', true],
+    ['documentation/plans/p.md', 'services/clauderr', true],
+    ['services/clauderr/documentation/plans/p.md', undefined, false],
+    ['services/clauderr/documentation/plans/p.md', '', false],
+    ['services/other/documentation/p.md', 'services/clauderr', false],
+    ['services/clauderr/package.json', 'services/clauderr', false],
+    ['services/clauderr/../../package.json', 'services/clauderr', false],
+    ['services/clauderr/documentation/../../../package.json', 'services/clauderr', false],
+    ['.github/workflows/x.yml', 'services/clauderr', false],
+    ['documentation/plans/p.md', '..', true],
+    ['../documentation/p.md', '..', false],
+    ['etc/documentation/p.md', '/etc', false],
+    ['.github/documentation/x.md', '.github', false],
+    ['.git/documentation/x.md', '.git', false],
+    ['a b/documentation/x.md', 'a b', false],
+    ['x/documentation/y.md', 'x\n..', false],
+  ])('isCarryTargetAllowed(%s, %j) === %s', (targetPath, packageRoot, expected) => {
+    expect(isCarryTargetAllowed(targetPath, packageRoot)).toBe(expected);
+  });
+
+  test('carryManifest carries a package-tree target only with the package root', () => {
+    withTempDir('carry-pkg', (dir) => {
+      const staged = path.join(dir, '.blackhole/staged/5');
+      fs.mkdirSync(staged, { recursive: true });
+      fs.writeFileSync(path.join(staged, 'p.md'), '---\ntype: plan\n---\n# P\n');
+      const manifest: Manifest = {
+        issue: 5,
+        updated_at: '2026-01-01T00:00:00.000Z',
+        entries: [
+          {
+            route: 'plan',
+            sub_mode: null,
+            produced_by: 'planner',
+            declared_at: '2026-01-01T00:00:00.000Z',
+            staged_path: '.blackhole/staged/5/p.md',
+            target_path: 'services/clauderr/documentation/plans/p.md',
+            target_kind: 'new_file',
+          },
+        ],
+      };
+      const without = carryManifest(manifest, dir, { docsGovernanceActive: true });
+      expect(without.carriedPaths).toEqual([]);
+      expect(without.skippedEntries[0].reason).toContain('outside the carry allowlist');
+      const withRoot = carryManifest(manifest, dir, { docsGovernanceActive: true, packageRoot: 'services/clauderr' });
+      expect(withRoot.carriedPaths).toEqual(['services/clauderr/documentation/plans/p.md']);
+      expect(fs.existsSync(path.join(dir, 'services/clauderr/documentation/plans/p.md'))).toBe(true);
+    });
+  });
+});
+
 describe('carryManifest — path containment (issue #752)', () => {
   const baseEntry = {
     route: 'plan',
