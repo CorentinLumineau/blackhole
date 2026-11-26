@@ -1,3 +1,4 @@
+import type { WorkerContextRecord } from '../worker-context-report.ts';
 import type { UsageVerdictName, WeeklyPace } from '../usage-budget.ts';
 
 // Mirrors the `route` object SSOT — `queue-dag.md` § `route` object. Field names and enum
@@ -392,6 +393,8 @@ export type StatusReport = {
   run: RunPanel;
   /** The parked owner decisions, most-blocking first: the "Decisions waiting for you" panel. Additive. */
   pending_decisions: PendingRow[];
+  /** The runtime worker-context report `scripts/worker-context-report.ts --record` wrote; null when none is recorded. Additive. */
+  worker_context: WorkerContextRecord | null;
 };
 
 /** The status page's usage-budget panel. Times are ISO 8601; every number is null when the window or the reading is absent. */

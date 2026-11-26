@@ -41,6 +41,7 @@ import { forgeDeclaredCrossRepo } from './lib/pr-dependencies.ts';
 import type { PluginDriftSignal, PluginDriftSource } from './plugin-drift-signal.ts';
 import type { CatchupArgs, StatusReport } from './lib/campaign-status/types.ts';
 import { pluginVersionWarning, readPluginVersion, readPluginVersionCheck } from './lib/plugin-drift.ts';
+import { readWorkerContext } from './lib/worker-context-report.ts';
 import { projectIdentity } from './project-identity.ts';
 
 const PLUGIN_ROOT = path.join(import.meta.dir, '..');
@@ -213,6 +214,7 @@ export async function collectStatusReport(
     runContext: readJsonOrNull(path.join(campaignDir, 'run-context.json')),
     pending: readPending(campaignDir),
     docCarry: readDocCarry(campaignDir, config as Record<string, any>, queue, ledger),
+    workerContext: readWorkerContext(campaignDir),
   });
   return { report, state, host, crossRepoBlockers };
 }
