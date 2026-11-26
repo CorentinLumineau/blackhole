@@ -11,6 +11,7 @@
 - [ ] forge-sync.md protocol
 - [ ] Compute ready set (queue-dag.md)
 - [ ] Persist queue.json → findings-ledger.json → campaign-checkpoint.md when in-flight work exists (checkpoint-protocol.md)
+- [ ] `bun run scripts/roadmap.ts` before the checkpoint commit: rewrites the consumer roadmap (`roadmap.path`) only when the ranking changed, so it rides the checkpoint PR; no `roadmap.path` = no-op, no extra PR (`config-template.md`)
 - [ ] Spawn parallel batch (up to parallel_max) — one turn, end turn (capped to `incident_mode.parallel_max_override` — default 1 — incident-issue-only, when incident mode is active; see `orchestrator-runtime.md` § Incident Mode)
 - [ ] Ready set empty, nothing in flight, only items parked on owner decisions left? → end the turn on `N decisions waiting — run /blackhole decide` (`decision-parking.md` § The choke point): not complete, no wake-up armed for it, and keep-awake released (`campaign-record.ts keep-awake --workers 0`, `keep-awake.md`)
 - [ ] Open issues + open PRs both zero? → campaign complete

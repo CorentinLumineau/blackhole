@@ -38,21 +38,24 @@ export function waveOf(issues: Issues): { waves: Record<number, number>; cycles:
   return { waves, cycles: [...cycles].sort((a, b) => a - b) };
 }
 
-/** Ready issue numbers in selection order. */
-export function orderReady(issues: Issues): number[] {
+/** The issue numbers `include` accepts, in selection order: wave, stored priority desc, effort asc, oldest. */
+export function orderIssues(issues: Issues, include: (issue: QueueIssue) => boolean): number[] {
   const { waves } = waveOf(issues);
   const rank = (n: number) => {
     const pareto = issues[String(n)].pareto;
     return { wave: waves[n], priority: pareto?.priority ?? -1, effort: pareto?.effort ?? Number.POSITIVE_INFINITY };
   };
   return Object.entries(issues)
-    .filter(([, i]) => i.status === 'ready')
+    .filter(([, i]) => include(i))
     .map(([n]) => Number(n))
     .sort((a, b) => {
       const [x, y] = [rank(a), rank(b)];
       return x.wave - y.wave || y.priority - x.priority || x.effort - y.effort || a - b;
     });
 }
+
+/** Ready issue numbers in selection order. */
+export const orderReady = (issues: Issues): number[] => orderIssues(issues, (i) => i.status === 'ready');
 
 /**
  * Up to `limit` issues from the current (lowest) wave's ready set: `userQueueOrder` first, then the
