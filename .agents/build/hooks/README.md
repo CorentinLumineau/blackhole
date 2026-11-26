@@ -90,10 +90,12 @@ repository), so on its own that metadata is only a claim, and the anchor is the 
   existed, `mainCloneRoot(cwd)`, and one `main-clone-anchor-unavailable` line goes to stderr per hook
   process. This never adds a deny: the value `CLAUDE_PROJECT_DIR` holds for a natively dispatched
   worker is visible only to the hook process, and failing closed on a wrong guess would block every
-  worker write. **Residual risk:** with no established anchor a forged clone (variants B and C) and a
-  nested repository (variant D) are not contained. Variants B and C are tracked in #1615. For D the
-  Bash guard cannot tell a nested repository from the campaign clone at all, while the Write hook
-  still denies it; that is tracked in #1609. Both close with the OS-level sandbox direction in #1357.
+  worker write. A repository nested inside a registered campaign linked worktree (back-linked from
+  both ends, a repo with a campaign config) is a worker's own and never the campaign clone, so with
+  no anchor it is contained to that worktree in the Bash guard and the Write hook, and the config it
+  carries grants nothing (variant D). **Residual risk:** with no established anchor a forged clone
+  (variants B and C) and a nested repository outside any registered campaign worktree are not
+  contained. Variants B and C are tracked in #1615. All close with the OS-level sandbox direction in #1357.
 
 A session whose project dir is a linked worktree is in the second case; start the campaign from the
 main clone. A session whose project dir is a main clone but whose `cwd` is in another repository (its

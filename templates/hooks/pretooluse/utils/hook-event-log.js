@@ -210,6 +210,28 @@ const warnAnchorUnavailable = () => {
   );
 };
 
+/** The registered campaign linked worktree a repository `cwd` sits in is nested inside, or `null`.
+ * With no project dir to anchor on, this is the one signal that tells a repository a worker created
+ * inside its worktree from the campaign clone: the clone is never inside a linked worktree, and the
+ * enclosing worktree must pass `campaignWorktreeRoot` (back-linked from both ends, not too broad, a
+ * repo with a campaign config), which a worker cannot forge from inside the tree it writes. Only
+ * meaningful when `cwd`'s own clone and toplevel coincide (the main-clone shape a nested repo has).
+ * Never throws; a filesystem or git failure reads as "not nested". Memoised per environment. */
+const enclosingCampaignWorktree = (cwd = process.cwd()) =>
+  memoByEnvironment('enclosing', cwd, () => {
+    const top = nearestGitRoot(cwd);
+    const clone = top && mainCloneRoot(cwd);
+    if (!clone || resolveExistingAncestor(clone) !== resolveExistingAncestor(top)) return null;
+    let dir = path.dirname(resolveExistingAncestor(top));
+    for (let parent = path.dirname(dir); ; dir = parent, parent = path.dirname(dir)) {
+      if (readPointerFile(path.join(dir, '.git')) !== null) {
+        const worktree = campaignWorktreeRoot(dir);
+        if (worktree) return worktree;
+      }
+      if (parent === dir) return null;
+    }
+  });
+
 /** The campaign main clone, anchored to a source the worker cannot write: the harness project dir
  * (`CLAUDE_PROJECT_DIR`, set by the harness for every hook call). `mainCloneRoot(cwd)` derives the
  * clone from git metadata inside a tree the worker writes (its worktree's `.git` pointer, a planted
@@ -230,7 +252,9 @@ const anchoredMainClone = (cwd = process.cwd()) =>
     const fromProject = harnessProjectClone(cwd);
     if (!fromProject) {
       warnAnchorUnavailable();
-      return mainCloneRoot(cwd);
+      // A repository nested in a registered campaign worktree is a worker's own, never the campaign
+      // clone, so what it claims grants nothing (the Bash guard's variant D, with no project dir).
+      return enclosingCampaignWorktree(cwd) ? null : mainCloneRoot(cwd);
     }
     const fromCwd = mainCloneRoot(cwd);
     return fromCwd && resolveExistingAncestor(fromCwd) === fromProject ? fromProject : null;
@@ -627,8 +651,9 @@ const readAssignedWorktreeRoot = (cwd = process.cwd()) => {
  * and `hunter`'s case). That is a linked worktree, and also a repository other than the harness
  * project's clone (a nested or foreign repo): a worker there is never the orchestrator, and
  * without this a nested repo would switch the Bash write guard off. With no usable harness project
- * dir the main-clone case stays null: there is nothing to tell a nested repo from the campaign
- * clone (the residual the sandbox direction closes).
+ * dir the main-clone case is null unless the repository is nested inside a registered campaign
+ * linked worktree (`enclosingCampaignWorktree`), in which case that worktree is the root; a nested
+ * repo elsewhere cannot be told from the campaign clone (the residual the sandbox direction closes).
  * Shared by `readCwdDerivedAssignedRoot` and the Bash write guard's deferral fallback, so both
  * agree on what counts as a worker worktree. */
 const readLinkedWorktreeRoot = (cwd) => {
@@ -639,7 +664,8 @@ const readLinkedWorktreeRoot = (cwd) => {
   if (!mainClone) return null;
   if (resolveExistingAncestor(mainClone) !== realCwdWorktree) return realCwdWorktree;
   const project = harnessProjectClone(cwd);
-  return project && project !== realCwdWorktree ? realCwdWorktree : null;
+  if (project) return project !== realCwdWorktree ? realCwdWorktree : null;
+  return enclosingCampaignWorktree(cwd);
 };
 
 /** cwd-derived containment tier (#907) — the channel `BLACKHOLE_ASSIGNED_WORKTREE` above actually
