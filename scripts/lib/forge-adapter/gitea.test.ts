@@ -577,6 +577,14 @@ describe('GiteaForgeAdapter', () => {
       await expect(new GiteaForgeAdapter('host/owner/repo').prChecks(9)).rejects.toThrow('head commit');
     });
   });
+
+  test('prUpdateBranch is UNSUPPORTED (no expected-head guard) and calls tea zero times', async () => {
+    runTeaJsonSpy = spyOn(teaCli, 'runTeaJson').mockReturnValue([]);
+    const result = await new GiteaForgeAdapter('host/owner/repo').prUpdateBranch(4, 'abc123');
+    expect(result.verdict).toBe('UNSUPPORTED');
+    expect(result.detail).toContain('expected-head');
+    expect(runTeaJsonSpy).toHaveBeenCalledTimes(0);
+  });
 });
 
 describe('GiteaForgeAdapter claim and release', () => {

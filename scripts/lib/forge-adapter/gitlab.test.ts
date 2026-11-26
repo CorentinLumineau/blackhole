@@ -359,6 +359,14 @@ describe('GitLabForgeAdapter', () => {
       mergedAt: '2026-01-01T00:00:00Z',
     });
   });
+
+  test('prUpdateBranch is UNSUPPORTED (rebase would force-push) and calls glab zero times', async () => {
+    runGlabJsonSpy = spyOn(glabCli, 'runGlabJson').mockReturnValue([]);
+    const result = await new GitLabForgeAdapter('group/project').prUpdateBranch(4, 'abc123');
+    expect(result.verdict).toBe('UNSUPPORTED');
+    expect(result.detail).toContain('force-push');
+    expect(runGlabJsonSpy).toHaveBeenCalledTimes(0);
+  });
 });
 
 describe('GitLabForgeAdapter stacking additions', () => {
