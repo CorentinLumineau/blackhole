@@ -13,16 +13,20 @@
 #   detect-doc-schema.sh index <path-to-INDEX.md>
 #   detect-doc-schema.sh frontmatter <path-to-ADR-file.md>
 #
-# Output format: "schema=mercure" | "schema=blackhole" | "schema=ambiguous" on stdout
+# Output format: "schema=mercure" | "schema=blackhole" | "schema=foreign" | "schema=ambiguous" on stdout
 # (single line). SSOT for the column lists and discriminator keys: this file's detection
 # steps below — do not restate them elsewhere in this repo or in agent prompts.
 #
 # index mode: parses the first markdown table header row (a line matching
 # ^\s*\|.*\|\s*$ immediately followed by a |---|...| separator line). Columns are
-# split on '|', trimmed, and lowercased before comparison.
+# split on '|', trimmed, lowercased, and runs of spaces/hyphens folded to '_' before comparison
+# ('Review trigger' == 'review_trigger').
 #   mercure   (4 cols): adr | title | status | date
 #   blackhole (5 cols): path | summary | type | status | review_trigger
-#   anything else (wrong count, renamed/reordered column, no header found) -> ambiguous
+#   foreign: every column of one of the two lists above is present but the header is not
+#            exactly that list (extra column such as Traceability, or reordered columns) ->
+#            the consumer owns this format: preserve its columns, append rows in its shape
+#   anything else (missing column, renamed column, no header found) -> ambiguous
 #
 # frontmatter mode: parses the YAML block between the first pair of '---' lines,
 # top-level keys only.
@@ -62,9 +66,18 @@ detect_index() {
     local cols=()
     local cell trimmed
     for cell in "${cells[@]}"; do
-        trimmed=$(echo "$cell" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]')
+        trimmed=$(echo "$cell" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]' | sed -e 's/[[:space:]-][[:space:]-]*/_/g')
         [[ -n "$trimmed" ]] && cols+=("$trimmed")
     done
+
+    has_all() {
+        local want c have
+        for want in "$@"; do
+            have=0
+            for c in "${cols[@]}"; do [[ "$c" == "$want" ]] && have=1; done
+            (( have )) || return 1
+        done
+    }
 
     local mercure_cols=("adr" "title" "status" "date")
     local blackhole_cols=("path" "summary" "type" "status" "review_trigger")
@@ -73,6 +86,8 @@ detect_index() {
         emit "mercure"
     elif [[ "${cols[*]}" == "${blackhole_cols[*]}" ]]; then
         emit "blackhole"
+    elif has_all "${mercure_cols[@]}" || has_all "${blackhole_cols[@]}"; then
+        emit "foreign"
     else
         emit "ambiguous"
     fi
