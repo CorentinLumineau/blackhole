@@ -65,7 +65,7 @@ describe('pareto-score', () => {
     fs.writeFileSync(path.join(dir, 'queue.json'), JSON.stringify({ issues: { '4': { status: 'ready', pareto: { gain: 8, effort: 4, priority: 56 } } } }));
     const f = forge([issue(4, 'x\n\nPareto: gain=8 effort=4 priority=56')]);
     expect(await runApply(dir, scores, { adapter: f.adapter, now: new Date('2026-11-26T12:00:00Z') })).toEqual([{ number: 4, result: 'rescored' }]);
-    expect(queueOnDisk().issues['4'].pareto).toEqual({ gain: 3, effort: 2, priority: 27, scored_at: '2026-11-26T12:00:00.000Z', rationale: 'cheaper now' });
+    expect(queueOnDisk().issues['4'].pareto).toEqual({ gain: 3, effort: 2, priority: 27, scored_at: '2026-11-26T12:00:00.000Z', rationale: 'cheaper now', basis: { deps: {}, pr: null } });
   });
 
   test('apply writes the forge and the queue, and a re-run changes nothing further', async () => {
