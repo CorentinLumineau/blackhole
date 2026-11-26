@@ -1929,7 +1929,7 @@ describe('validate-bash-command.js — sibling mercure defer (#870)', () => {
           undefined,
           undefined,
           undefined,
-          undefined,
+          repo,
           claudeHome,
         );
 
@@ -1965,7 +1965,7 @@ describe('validate-bash-command.js — sibling mercure defer (#870)', () => {
           undefined,
           undefined,
           undefined,
-          undefined,
+          repo,
           claudeHome,
         );
 
@@ -1993,7 +1993,7 @@ describe('validate-bash-command.js — sibling mercure defer (#870)', () => {
           undefined,
           undefined,
           undefined,
-          undefined,
+          repo,
           claudeHome,
         );
 
@@ -2017,7 +2017,7 @@ describe('validate-bash-command.js — sibling mercure defer (#870)', () => {
           undefined,
           undefined,
           undefined,
-          undefined,
+          repo,
           claudeHome,
         );
 
@@ -2043,7 +2043,7 @@ describe('validate-bash-command.js — sibling mercure defer (#870)', () => {
           undefined,
           undefined,
           undefined,
-          undefined,
+          repo,
           claudeHome,
         );
 
@@ -2068,7 +2068,7 @@ describe('validate-bash-command.js — sibling mercure defer (#870)', () => {
         undefined,
         undefined,
         undefined,
-        undefined,
+        nonRepo,
         claudeHome,
       );
 
@@ -2093,7 +2093,7 @@ describe('validate-bash-command.js — sibling mercure defer (#870)', () => {
           undefined,
           undefined,
           undefined,
-          undefined,
+          repo,
           claudeHome,
         );
 
@@ -2171,7 +2171,7 @@ describe('validate-bash-command.js — sibling mercure health check (#969)', () 
           undefined,
           undefined,
           undefined,
-          undefined,
+          repo,
           claudeHome,
         );
         expect(result.exitCode).toBe(0);
@@ -2200,7 +2200,7 @@ describe('validate-bash-command.js — sibling mercure health check (#969)', () 
           undefined,
           undefined,
           undefined,
-          undefined,
+          repo,
           claudeHome,
         );
         expect(result.exitCode).toBe(2);
@@ -2227,7 +2227,7 @@ describe('validate-bash-command.js — sibling mercure health check (#969)', () 
           undefined,
           undefined,
           undefined,
-          undefined,
+          repo,
           claudeHome,
         );
         expect(result.exitCode).toBe(2);
@@ -2254,7 +2254,7 @@ describe('validate-bash-command.js — sibling mercure health check (#969)', () 
           undefined,
           undefined,
           undefined,
-          undefined,
+          repo,
           claudeHome,
         );
         expect(result.exitCode).toBe(2);
@@ -2281,7 +2281,7 @@ describe('validate-bash-command.js — sibling mercure health check (#969)', () 
           undefined,
           undefined,
           undefined,
-          undefined,
+          repo,
           claudeHome,
         );
         expect(result.exitCode).toBe(2);
@@ -2313,7 +2313,7 @@ describe('validate-bash-command.js — sibling mercure health check (#969)', () 
           undefined,
           undefined,
           undefined,
-          undefined,
+          repo,
           claudeHome,
         );
         expect(result.exitCode).toBe(0);
@@ -2346,7 +2346,7 @@ describe('recordEvent — hook-event rotation gate wiring (#970)', () => {
       const staleSeconds = (Date.now() - 15 * 24 * 60 * 60 * 1000) / 1000; // 15 days old (> 14-day default)
       fs.utimesSync(stalePath, staleSeconds, staleSeconds);
 
-      const result = await runPreToolUseHook(SCRIPT, bashPayload(denyingBashCommand), repo);
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(denyingBashCommand), repo, PRETOOLUSE_HOOKS_DIR, undefined, undefined, undefined, repo);
 
       expect(result.exitCode).toBe(2);
       expect(fs.existsSync(stalePath)).toBe(false);

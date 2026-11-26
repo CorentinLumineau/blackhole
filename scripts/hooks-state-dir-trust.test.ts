@@ -18,11 +18,20 @@ import {
 const FILE_HOOK = 'validate-file-changes.js';
 const BASH_HOOK = 'validate-bash-command.js';
 
+// The harness project dir of the fixture campaign: the state dir is read only from the main clone
+// it names, so the helpers below pass it as `CLAUDE_PROJECT_DIR` while `withState` runs.
+let projectDir: string | undefined;
+
 const writeAt = (filePath: string, cwd: string, tool = 'Write') =>
   runPreToolUseHook(
     FILE_HOOK,
     { tool_name: tool, tool_input: { file_path: filePath, content: 'x' }, tool_use_id: 'toolu_state_file', agent_type: 'implementer' },
     cwd,
+    PRETOOLUSE_HOOKS_DIR,
+    undefined,
+    undefined,
+    undefined,
+    projectDir,
   );
 
 const bashAt = (command: string, cwd: string) =>
@@ -33,6 +42,8 @@ const bashAt = (command: string, cwd: string) =>
     PRETOOLUSE_HOOKS_DIR,
     undefined,
     cwd,
+    undefined,
+    projectDir,
   );
 
 const decision = (stdout: string): string | undefined => JSON.parse(stdout || '{}').hookSpecificOutput?.permissionDecision;
@@ -42,7 +53,12 @@ const withState = async (fn: (main: string, wt: string, state: string) => Promis
     writeCampaignConfig(main, { forge: 'github' });
     const state = path.join(fs.realpathSync(main), '.blackhole');
     for (const sub of ['plans', 'staged/1', 'hook-events', 'archive']) fs.mkdirSync(path.join(state, sub), { recursive: true });
-    await fn(main, wt, state);
+    projectDir = fs.realpathSync(main);
+    try {
+      await fn(main, wt, state);
+    } finally {
+      projectDir = undefined;
+    }
   });
 
 describe('state dir trust: Write/Edit hook', () => {

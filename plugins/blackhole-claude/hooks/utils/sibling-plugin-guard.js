@@ -21,7 +21,7 @@
  * that check does and does not detect; nothing here may widen the claim it makes.
  *
  * Any detection ambiguity — an unreadable/malformed `installed_plugins.json`, no git context, an
- * anomalous `mainCloneRoot` throw, no candidate install row, a failing health check, or an
+ * unanchored main clone, no candidate install row, a failing health check, or an
  * unreadable-but-present `.blackhole/config.json` stat — fails closed toward NOT deferring:
  * blackhole stays active. This is deliberate (design note turn-19 ruling): a false defer
  * silences blackhole's own containment with only mercure's independently-versioned hook as
@@ -32,7 +32,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { mainCloneRoot, hasNoCampaignConfig } = require('./hook-event-log');
+const { anchoredMainClone, hasNoCampaignConfig } = require('./hook-event-log');
 const { selectCandidateInstalledPluginRows } = require('./installed-plugin-rows');
 const { isPluginHealthy } = require('./sibling-plugin-health');
 
@@ -66,12 +66,9 @@ const shouldDeferToMercure = (cwd = process.cwd()) => {
   // config check. Behaviorally equivalent reordering — every path in this function is an
   // AND-composed short-circuit returning `false` on any failure, so moving a failure-capable
   // step earlier changes no observable outcome, only which check reports first.
-  let mainClone;
-  try {
-    mainClone = mainCloneRoot(cwd);
-  } catch {
-    return false;
-  }
+  // Anchored (`anchoredMainClone`): a clone a worker forged without a config must not read as "no
+  // campaign here" and switch blackhole's containment off. No anchor means do not defer.
+  const mainClone = anchoredMainClone(cwd);
   if (!mainClone) return false;
 
   let allRows = [];

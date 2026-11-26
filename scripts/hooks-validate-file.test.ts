@@ -818,7 +818,7 @@ describe('validate-file-changes.js', () => {
         async (mainRepo) => {
           const target = path.join(scratchpad, 'probe.sh');
           const payload = { tool_name: 'Write', tool_input: { file_path: target, content: 'x' }, cwd: mainRepo };
-          const result = await runPreToolUseHook(SCRIPT, payload, mainRepo);
+          const result = await runPreToolUseHook(SCRIPT, payload, mainRepo, PRETOOLUSE_HOOKS_DIR, undefined, undefined, undefined, mainRepo);
 
           expect(result.exitCode).toBe(0);
           expect(result.stdout.trim()).toBe('');
@@ -1184,7 +1184,7 @@ describe('validate-file-changes.js', () => {
         async (mainRepo, worktree) => {
           const target = path.join(scratchpad, 'shared-coordination.json');
           const payload = { tool_name: 'Write', tool_input: { file_path: target, content: 'x' }, cwd: worktree };
-          const result = await runPreToolUseHook(SCRIPT, payload, worktree);
+          const result = await runPreToolUseHook(SCRIPT, payload, worktree, PRETOOLUSE_HOOKS_DIR, undefined, undefined, undefined, mainRepo);
 
           expect(result.exitCode).toBe(0);
           expect(result.stdout.trim()).toBe('');
@@ -1621,7 +1621,7 @@ describe('validate-file-changes.js — sibling mercure defer (#870)', () => {
           undefined,
           undefined,
           undefined,
-          undefined,
+          repo,
           claudeHome,
         );
 
@@ -1657,7 +1657,7 @@ describe('validate-file-changes.js — sibling mercure defer (#870)', () => {
           undefined,
           undefined,
           undefined,
-          undefined,
+          repo,
           claudeHome,
         );
 
@@ -1685,7 +1685,7 @@ describe('validate-file-changes.js — sibling mercure defer (#870)', () => {
           undefined,
           undefined,
           undefined,
-          undefined,
+          repo,
           claudeHome,
         );
 
@@ -1709,7 +1709,7 @@ describe('validate-file-changes.js — sibling mercure defer (#870)', () => {
           undefined,
           undefined,
           undefined,
-          undefined,
+          repo,
           claudeHome,
         );
 
@@ -1735,7 +1735,7 @@ describe('validate-file-changes.js — sibling mercure defer (#870)', () => {
           undefined,
           undefined,
           undefined,
-          undefined,
+          repo,
           claudeHome,
         );
 
@@ -1760,7 +1760,7 @@ describe('validate-file-changes.js — sibling mercure defer (#870)', () => {
         undefined,
         undefined,
         undefined,
-        undefined,
+        nonRepo,
         claudeHome,
       );
 
@@ -1785,7 +1785,7 @@ describe('validate-file-changes.js — sibling mercure defer (#870)', () => {
           undefined,
           undefined,
           undefined,
-          undefined,
+          repo,
           claudeHome,
         );
 
@@ -1861,7 +1861,7 @@ describe('validate-file-changes.js — sibling mercure health check (#969)', () 
           undefined,
           undefined,
           undefined,
-          undefined,
+          repo,
           claudeHome,
         );
         expect(result.exitCode).toBe(0);
@@ -1890,7 +1890,7 @@ describe('validate-file-changes.js — sibling mercure health check (#969)', () 
           undefined,
           undefined,
           undefined,
-          undefined,
+          repo,
           claudeHome,
         );
         expect(result.exitCode).toBe(2);
@@ -1917,7 +1917,7 @@ describe('validate-file-changes.js — sibling mercure health check (#969)', () 
           undefined,
           undefined,
           undefined,
-          undefined,
+          repo,
           claudeHome,
         );
         expect(result.exitCode).toBe(2);
@@ -1944,7 +1944,7 @@ describe('validate-file-changes.js — sibling mercure health check (#969)', () 
           undefined,
           undefined,
           undefined,
-          undefined,
+          repo,
           claudeHome,
         );
         expect(result.exitCode).toBe(2);
@@ -1971,7 +1971,7 @@ describe('validate-file-changes.js — sibling mercure health check (#969)', () 
           undefined,
           undefined,
           undefined,
-          undefined,
+          repo,
           claudeHome,
         );
         expect(result.exitCode).toBe(2);
@@ -2003,7 +2003,7 @@ describe('validate-file-changes.js — sibling mercure health check (#969)', () 
           undefined,
           undefined,
           undefined,
-          undefined,
+          repo,
           claudeHome,
         );
         expect(result.exitCode).toBe(0);

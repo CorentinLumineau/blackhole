@@ -69,8 +69,34 @@ For campaign-scoped callers, both write guards (`validate-file-changes.js` and t
 guard) treat the main clone's `.blackhole/` as a second allowed root, so workers can write
 `plans/`, `staged/<issue>/`, `queue.json`, `findings-ledger.json` and their `.tmp` files from a
 linked worktree. The root (`campaignStateRoot` in `utils/hook-event-log.js`) exists only when the
-main clone resolves, `.blackhole/config.json` exists, and the realpath is not a broad directory;
-it is derived from the main clone, so a link planted inside a worktree cannot mint it.
+anchored main clone resolves, `.blackhole/config.json` exists, and the realpath is not a broad
+directory; it is derived from the main clone, so a link planted inside a worktree cannot mint it.
+
+**Main-clone anchor.** The campaign config, the state dir, the configured `scratchpad_dir` and the
+sibling-plugin defer are read from the main clone `anchoredMainClone(cwd)` returns. A worker can
+rewrite the git metadata in `cwd` (its worktree's `.git` pointer, a planted `.git`, a nested
+repository), so on its own that metadata is only a claim, and the anchor is the harness project dir
+(`CLAUDE_PROJECT_DIR`, accepted by `isHarnessProjectDir`):
+
+- **Anchor established** (the project dir is absolute, existing, not a linked worktree, not inside
+  the worker's worktree or scratchpad, and belongs to a main clone): the clone the git metadata in
+  `cwd` names is trusted only when it is that same clone. A disagreement is a forged clone, and those
+  four sources then grant nothing; the payload `scratchpad_dir`, `BLACKHOLE_SCRATCHPAD_DIR` and the
+  user settings keep working. The deny record still goes to the project dir's `.blackhole/hook-events`,
+  and the hook-event rotation runs only when the anchor holds. A `cwd` in a repository other than the
+  project's clone (a nested repo) is contained to its own root, in the Bash guard too.
+- **Anchor not established** (unset, relative, missing, a linked worktree, inside the worker's
+  worktree or scratchpad, or not a git clone): the decision is the one made before the anchor
+  existed, `mainCloneRoot(cwd)`, and one `main-clone-anchor-unavailable` line goes to stderr per hook
+  process. This never adds a deny: the value `CLAUDE_PROJECT_DIR` holds for a natively dispatched
+  worker is visible only to the hook process, and failing closed on a wrong guess would block every
+  worker write. **Residual risk:** with no established anchor a forged clone (variants B and C) and a
+  nested repository (variant D) are not contained, and the Bash guard cannot tell a nested repository
+  from the campaign clone at all; the Write hook still denies D. Tracked in #1609, closed by the
+  OS-level sandbox direction in #1357.
+
+A session whose project dir is a linked worktree, or that works in another repo's worktree than its
+project's, is in the second case; start the campaign from the main clone.
 
 Trust is an allow-list of write shapes (`utils/state-dir-write-shape.js`), because the guard
 judges a path while the shell picks the file actually written. In the Bash guard, a target under
@@ -104,7 +130,8 @@ Bash write guard both call it, so a root is never trusted by one tool and refuse
 - **Scratchpad**: the payload's `scratchpad_dir` (the real PreToolUse payload carries it; it has no
   field for additional working directories), the configured `scratchpad_dir`, and
   `BLACKHOLE_SCRATCHPAD_DIR`. Each must be an existing directory that is not broad (never `/`,
-  `$HOME` or a bare temp root, judged on the path and on its realpath).
+  `$HOME` or a bare temp root, judged on the path and on its realpath). The configured one is read
+  from the anchored main clone (see the main-clone anchor above).
 - **Cross-repo worktrees**: the union of `permissions.additionalDirectories` from two settings
   sources only: the user file `~/.claude/settings.json`, and `.claude/settings.json` plus
   `.claude/settings.local.json` of the harness project dir `CLAUDE_PROJECT_DIR`. The project dir is
