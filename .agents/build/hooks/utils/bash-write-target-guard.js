@@ -43,6 +43,7 @@ const { computeMaskedSpans, computeHeredocBodyMask } = require('./bash-context')
 const { skipQuotedSpan, isRedirectAmpersand, decodeAnsiC, shellWordEnd } = require('./shell-lexer');
 const {
   readAssignedWorktreeRoot,
+  readLinkedWorktreeRoot,
   mainCloneRoot,
   isUnderRoot,
   resolveExistingAncestor,
@@ -1900,8 +1901,8 @@ const collectWriteSignals = (visible, heredocText, cwd, initialState, onSubstitu
 };
 
 /**
- * Entry point for `validate-bash-command.js`. Returns null when `readAssignedWorktreeRoot(cwd)`
- * resolves no root (the env var is unset/invalid and cwd is not a linked worktree) or when nothing
+ * Entry point for `validate-bash-command.js`. Returns null when neither `readAssignedWorktreeRoot(cwd)`
+ * nor the linked worktree `cwd` sits in resolves a root (cwd is the main clone or outside git) or when nothing
  * write-shaped is found. Otherwise returns `{ tier: 'block', pattern_id, reason }` for the first
  * resolvable target found outside the assigned root, or `{ tier: 'warn', pattern_id, reason }`
  * when every resolvable target is in-bounds but a dynamic target or an unresolvable command was
@@ -1909,7 +1910,8 @@ const collectWriteSignals = (visible, heredocText, cwd, initialState, onSubstitu
  * actionable signal).
  */
 const evaluateBashWriteTargets = (command, cwd, input = {}) => {
-  const assignedRoot = readAssignedWorktreeRoot(cwd);
+  // A disjoint scratchpad makes the cwd-derived tier defer; the linked worktree stays the root.
+  const assignedRoot = readAssignedWorktreeRoot(cwd) || readLinkedWorktreeRoot(cwd);
   if (!assignedRoot) return null;
   const stateRoot = campaignStateRoot(cwd);
   const mainClone = mainCloneRoot(cwd);

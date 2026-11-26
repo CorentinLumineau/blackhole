@@ -3308,3 +3308,43 @@ describe('validate-bash-command.js — fork-bomb pattern stays linear on long id
     });
   });
 });
+
+describe('validate-bash-command.js — disjoint BLACKHOLE_SCRATCHPAD_DIR keeps the write guard on (#1495)', () => {
+  const payloadAt = (command: string, cwd: string) => ({
+    tool_name: 'Bash',
+    tool_input: { command },
+    tool_use_id: 'toolu_1495_bash',
+    cwd,
+  });
+
+  const withDisjointScratchpad = async (fn: (mainRepo: string, worktree: string, scratch: string) => Promise<void>) =>
+    withLinkedWorktree('blackhole-hook-1495-', async (mainRepo, worktree) => {
+      writeCampaignConfig(mainRepo, { campaign: 'x' });
+      const scratch = makeTempDir('blackhole-hook-1495-scratch-');
+      try {
+        await fn(mainRepo, worktree, scratch);
+      } finally {
+        fs.rmSync(scratch, { recursive: true, force: true });
+      }
+    });
+
+  for (const command of ['echo x > ../main/.blackhole/config.json', 'echo x | tee ../main/.blackhole/config.json']) {
+    test(`\`${command}\` is denied from a linked worktree`, async () => {
+      await withDisjointScratchpad(async (mainRepo, worktree, scratch) => {
+        const real = command.replace('../main', mainRepo);
+        const result = await runPreToolUseHook(SCRIPT, payloadAt(real, worktree), worktree, PRETOOLUSE_HOOKS_DIR, undefined, undefined, scratch);
+        expect(result.exitCode).toBe(2);
+        expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'bash-outside-assigned-worktree' });
+      });
+    });
+  }
+
+  test('a write inside the worktree and one inside the disjoint scratchpad stay allowed', async () => {
+    await withDisjointScratchpad(async (mainRepo, worktree, scratch) => {
+      for (const target of [path.join(worktree, 'a.txt'), path.join(scratch, 'b.txt')]) {
+        const result = await runPreToolUseHook(SCRIPT, payloadAt(`echo x > ${target}`, worktree), worktree, PRETOOLUSE_HOOKS_DIR, undefined, undefined, scratch);
+        expect(result.exitCode).toBe(0);
+      }
+    });
+  });
+});
