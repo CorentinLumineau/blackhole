@@ -321,7 +321,9 @@ else:
 ```
 
 On campaign complete, release the keep-awake hold: `bun scripts/campaign-record.ts keep-awake
---workers 0` (`keep-awake.md`).
+--workers 0` (`keep-awake.md`), and release the contract claim labels with
+`bun run scripts/release-claims.ts --campaign-dir .blackhole` (`orchestrator-dispatch.md` § Contract
+claim labels), so the finished campaign leaves no `claim_labels` entry on an issue it is not working.
 
 `kaizen.trigger` gates whether this on-empty check ever fires at all: it only applies when
 `kaizen.trigger == "on-empty"` (default) or `kaizen.trigger == "manual"` is not the deciding
