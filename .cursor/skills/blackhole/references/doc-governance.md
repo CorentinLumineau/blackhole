@@ -176,8 +176,10 @@ step, not a Claude-Code-native hook, achieving the equivalent cadence with a pri
 already has.
 
 Scope boundary restated in one sentence: this channel only ever refreshes blackhole's own
-Scope-1 `documentation/` tree; Scope-2 (a consumer repo's tree) is enforced at review time by
-`reviewer.md` § Doc-Governance Judgment Audit.
+Scope-1 `documentation/` tree by default; run with `--repo-root <consumer root>` it gives a
+consumer tree the same advisory signal (row ceiling, line ceiling, an ADR file with no
+`decisions/INDEX.md` row), skipping the row count for a foreign root INDEX. Judgment-based
+Scope-2 enforcement stays at review time in `reviewer.md` § Doc-Governance Judgment Audit.
 
 ## INDEX.md Maintenance
 

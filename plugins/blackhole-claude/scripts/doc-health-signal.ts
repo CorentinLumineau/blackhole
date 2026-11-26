@@ -4,6 +4,7 @@ import { evaluateDocTreeHealth } from './checks/doc-health.check.ts';
 import { root } from './checks/check-utils.ts';
 import { parseDecisionLogIds } from './decision-log-append.ts';
 import { readJsonFile } from './lib/fs.ts';
+import { parseFlags } from './lib/argv-flags.ts';
 
 // Issue #499 (ADR-021 D6 residual) — the always-on-channel half of the Scope-1 doc-tree health
 // signal. `doc-health.check.ts` (PR #494 / issue #462) delivered detection; nothing read it
@@ -67,12 +68,39 @@ export const writeDocHealthSignalAtomic = (campaignDir: string, signal: DocHealt
   fs.renameSync(tmp, target);
 };
 
-function main(): void {
-  const docsDir = path.join(root, 'documentation');
-  const campaignDir = path.join(root, '.blackhole');
-  const queueJsonPath = path.join(campaignDir, 'queue.json');
-  const signal = computeDocHealthSignal(docsDir, new Date(), queueJsonPath);
+// `--repo-root <abs>` points the signal at a consumer checkout (Scope-2 read-only evaluation, its
+// signal written to that checkout's own `.blackhole/`); absent, it stays blackhole's own root.
+export const resolveRepoRoot = (argv: string[], ownRoot: string): string => {
+  const value = parseFlags(argv)['repo-root'];
+  if (value === undefined) return ownRoot;
+  if (typeof value !== 'string') throw new Error('--repo-root requires a directory path');
+  const resolved = path.resolve(value);
+  if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) {
+    throw new Error(`--repo-root is not an existing directory: ${resolved}`);
+  }
+  return resolved;
+};
+
+export const runDocHealthSignal = (repoRoot: string): DocHealthSignal => {
+  const campaignDir = path.join(repoRoot, '.blackhole');
+  const signal = computeDocHealthSignal(
+    path.join(repoRoot, 'documentation'),
+    new Date(),
+    path.join(campaignDir, 'queue.json'),
+  );
   writeDocHealthSignalAtomic(campaignDir, signal);
+  return signal;
+};
+
+function main(): void {
+  let repoRoot: string;
+  try {
+    repoRoot = resolveRepoRoot(process.argv.slice(2), root);
+  } catch (err) {
+    console.error((err as Error).message);
+    process.exit(1);
+  }
+  const signal = runDocHealthSignal(repoRoot);
   console.log(
     `doc_debt=${signal.doc_debt}${signal.detail ? ` detail=${signal.detail}` : ''} decision_log_silent_prs=${signal.decision_log_silent_prs}`,
   );

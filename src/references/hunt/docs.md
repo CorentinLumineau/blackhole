@@ -4,9 +4,9 @@ Scan heuristics, calibration table, and scoring rule for the `docs` hunt kind
 (`kaizen.kinds`, [config-template.md](../config-template.md)). This kind is the **Scope-2**
 enforcement site for `V-DOC-04` (doc-tree structural staleness — [blackhole-vcodes.md](../blackhole-vcodes.md)):
 `scripts/checks/doc-health.check.ts` cannot serve this role because its `DOCS_DIR` is
-`import.meta.dirname`-pinned to blackhole's own checkout (Scope 1) and therefore cannot reach
-a consumer repo's `documentation/` tree during a campaign at all — this kind is the Scope-2
-complement, reusing `doc-health.check.ts`'s `V-DOCHEALTH-01` dangling-row detection *rule* as
+`import.meta.dirname`-pinned to blackhole's own checkout (Scope 1). The advisory signal reaches
+a consumer tree via `scripts/doc-health-signal.ts --repo-root`; this kind stays the agent-driven
+Scope-2 complement, reusing `doc-health.check.ts`'s `V-DOCHEALTH-01` dangling-row detection *rule* as
 hunter-agent scan guidance rather than reimplementing a cross-repo-incapable script
 (`V-INT-02`; ADR-021 D6, issue #496 design § Decision C). Like every prior kind, this is a
 pure additive extension: it reuses every existing kaizen mechanism verbatim — the `V-HUNT-01`

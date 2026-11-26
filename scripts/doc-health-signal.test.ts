@@ -1,7 +1,13 @@
 import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
-import { computeDocHealthSignal, writeDocHealthSignalAtomic, type DocHealthSignal } from './doc-health-signal.ts';
+import {
+  computeDocHealthSignal,
+  resolveRepoRoot,
+  runDocHealthSignal,
+  writeDocHealthSignalAtomic,
+  type DocHealthSignal,
+} from './doc-health-signal.ts';
 import { DOC_HEALTH_THRESHOLDS } from './lib/build/facts.ts';
 import { makeTempDir } from './lib/fs.ts';
 
@@ -158,6 +164,37 @@ describe('writeDocHealthSignalAtomic', () => {
         decision_log_silent_prs: 0,
       });
       expect(fs.existsSync(path.join(campaignDir, 'doc-health.json'))).toBe(true);
+    });
+  });
+});
+
+describe('resolveRepoRoot', () => {
+  test('defaults to blackhole\'s own root when --repo-root is absent', () => {
+    expect(resolveRepoRoot([], '/own/root')).toBe('/own/root');
+  });
+
+  test('returns the resolved --repo-root when it is an existing directory', () => {
+    withFixtureDir((dir) => {
+      expect(resolveRepoRoot(['--repo-root', dir], '/own/root')).toBe(path.resolve(dir));
+    });
+  });
+
+  test('throws for a missing directory or a valueless flag', () => {
+    expect(() => resolveRepoRoot(['--repo-root', '/definitely/not/here'], '/own/root')).toThrow(/--repo-root/);
+    expect(() => resolveRepoRoot(['--repo-root'], '/own/root')).toThrow(/--repo-root/);
+  });
+});
+
+describe('runDocHealthSignal against a consumer root', () => {
+  test('writes <repo-root>/.blackhole/doc-health.json with doc_debt yes for an over-ceiling tree', () => {
+    withFixtureDir((dir) => {
+      const lineCount = DOC_HEALTH_THRESHOLDS.singleDocLineCeiling + 5;
+      write(dir, 'documentation/audits/big.md', Array.from({ length: lineCount }, (_, i) => `line ${i}`).join('\n'));
+      const signal = runDocHealthSignal(dir);
+      expect(signal.doc_debt).toBe('yes');
+      const written = JSON.parse(fs.readFileSync(path.join(dir, '.blackhole', 'doc-health.json'), 'utf-8'));
+      expect(written.doc_debt).toBe('yes');
+      expect(written.detail).toContain('audits/big.md');
     });
   });
 });
