@@ -125,6 +125,12 @@ describe('campaign-record decide with the owner gate', () => {
     expect(empty.report).toContain(`- Decisions waiting for you: none found; ${OWNER_GATE_UNCHECKED} (HTTP 502).`);
   });
 
+  test('a blocked issue whose PR is gated is asked once, as the PR card', () => {
+    const queue = { ...QUEUE, '10': { status: 'blocked', pr: 100, notes: 'awaiting-owner-gate on PR #100' } };
+    const out = decide(campaign(GATED_CONFIG, [PARKED], queue), GATED);
+    expect(ids(out)).toEqual(['PR-100', 'PD-1', 'BR-20']);
+  });
+
   test('decide never writes the forge decisions to pending-decisions.json', () => {
     const dir = campaign(GATED_CONFIG);
     decide(dir, GATED);

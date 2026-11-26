@@ -123,13 +123,13 @@ export function ownerGateDecisions(
 
 /**
  * One question per blocked queue issue only the owner can clear (`waitReason(...).owner`: an
- * `awaiting-*` gate or a `blocked-escalated:` note), unless it is already parked: its note is
- * `PARK_REASON`, or a parked decision lists it in `blocks`.
+ * `awaiting-*` gate or a `blocked-escalated:` note), unless it is already asked: its note is
+ * `PARK_REASON`, or a decision in `asked` (parked, or an owner-gated PR) lists it in `blocks`.
  */
-export function blockedReturnDecisions(issues: Record<string, QueueIssue> | null, parked: PendingDecision[], nowIso: string): PendingDecision[] {
+export function blockedReturnDecisions(issues: Record<string, QueueIssue> | null, asked: PendingDecision[], nowIso: string): PendingDecision[] {
   const all = issues ?? {};
   const queue = sameRepo(all);
-  const parkedItems = new Set(parked.flatMap((d) => d.blocks));
+  const parkedItems = new Set(asked.flatMap((d) => d.blocks));
   return queue
     .filter(([n, i]) => i.status === 'blocked' && !parkedItems.has(n) && !(i.notes ?? '').trim().startsWith(PARK_REASON) && waitReason(i, all).owner)
     .map(([n, i]) => {

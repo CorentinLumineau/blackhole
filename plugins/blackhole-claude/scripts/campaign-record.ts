@@ -268,11 +268,9 @@ export function runRecord(
       : gateConfig
         ? { status: 'unavailable', reason: (gateConfig as { invalid: string }).invalid }
         : null;
-    const batch = wakeBatch([
-      ...parked,
-      ...(usableGate && gate?.status === 'ok' ? ownerGateDecisions(gate.prs, usableGate, issues, now.toISOString()) : []),
-      ...blockedReturnDecisions(issues, parked, now.toISOString()),
-    ]);
+    const gated = usableGate && gate?.status === 'ok' ? ownerGateDecisions(gate.prs, usableGate, issues, now.toISOString()) : [];
+    const asked = [...parked, ...gated];
+    const batch = wakeBatch([...asked, ...blockedReturnDecisions(issues, asked, now.toISOString())]);
     const budget = readBudget(flags.campaignDir, config, now);
     const report = buildDecideReport({
       baseline: readDecideBaseline(flags.campaignDir, config),
