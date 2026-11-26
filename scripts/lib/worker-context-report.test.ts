@@ -38,6 +38,12 @@ describe('roleAndIssue', () => {
     expect(roleAndIssue(h, meta({ agentType: 'blackhole:reviewer', name: 'reviewer-5333-recheck1-t159' }))).toEqual({ role: 'reviewer', issue: 5333 });
     expect(roleAndIssue(h, meta({ name: 'inv-6060' }))).toEqual({ role: 'inv', issue: 6060 });
   });
+  test('the documented <role>-<issue> shape attributes, and a PR number is never the issue', () => {
+    const h = 'agent-a4a097790b966c4c8.jsonl';
+    expect(roleAndIssue(h, meta({ name: 'implementer-1576' }))).toEqual({ role: 'implementer', issue: 1576 });
+    expect(roleAndIssue(h, meta({ name: 'reviewer-1576-recheck1' }))).toEqual({ role: 'reviewer', issue: 1576 });
+    expect(roleAndIssue(h, meta({ name: 'reviewer-pr1502' }))).toEqual({ role: 'reviewer', issue: null });
+  });
   test('a meta name without a numeric segment leaves the issue unattributed', () => {
     expect(roleAndIssue('agent-a1.jsonl', meta({ agentType: 'blackhole:orchestrator', name: 'bh-orchestrator-t159' }))).toEqual({ role: 'orchestrator', issue: null });
   });
