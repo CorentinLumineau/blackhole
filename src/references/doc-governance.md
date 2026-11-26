@@ -271,12 +271,16 @@ normalization rules — is not restated here; `scripts/detect-doc-schema.sh` is 
 as cross-reference, not invoked by prose-only consumers of this rule, same pattern as
 `scripts/detect-frontend.sh` in `reviewer.md`'s V-ADA-04 keyword SSOT).
 
-Three-outcome contract, per artifact layer:
+Outcome contract, per artifact layer (`foreign` applies to the index layer only):
 
 - **File/ADR absent**: fall back to blackhole's own schema. No `V-INT-01` — there is nothing
   to diverge from yet.
 - **`schema=mercure` or `schema=blackhole`**: the detected schema wins — emit in that schema,
   matching the repo's existing convention exactly.
+- **`schema=foreign`** (index layer): the header carries every column of one known schema plus
+  extras or in another order. The consumer owns the format: preserve its columns and append rows
+  in its existing shape; never regenerate the file in blackhole's schema, and emit no `V-INT-01`
+  (the consumer's convention is being followed).
 - **`schema=ambiguous`**: fall back to blackhole's own schema **and** emit a `V-INT-01` WARN
   citing the offending `file:line` (the malformed/partial header or frontmatter block that
   produced the ambiguous result) — the misfire must be visible, never silent (ADR-012 R6).

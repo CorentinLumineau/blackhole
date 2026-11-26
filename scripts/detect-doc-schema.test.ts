@@ -66,6 +66,21 @@ describe('detect-doc-schema.sh — index mode', () => {
     }
   });
 
+  test.each([
+    ['extra Traceability column', '| ADR | Title | Status | Date | Traceability |\n|---|---|---|---|---|\n', 'foreign'],
+    ['reordered columns', '| Title | ADR | Status | Date |\n|---|---|---|---|\n', 'foreign'],
+    ['spaced Review trigger', '| Path | Summary | Type | Status | Review trigger |\n|---|---|---|---|---|\n', 'blackhole'],
+    ['blackhole plus extra', '| path | summary | type | status | review_trigger | owner |\n|---|---|---|---|---|---|\n', 'foreign'],
+  ])('%s -> schema=%s', (_n, content, expected) => {
+    const fixtureDir = makeFixtureDir();
+    try {
+      const result = run('index', writeFixture(fixtureDir, 'INDEX.md', content));
+      expect(result.stdout).toBe(`schema=${expected}\n`);
+    } finally {
+      fs.rmSync(fixtureDir, { recursive: true, force: true });
+    }
+  });
+
   test('header with extra whitespace/case variance normalizes to schema=mercure', () => {
     const fixtureDir = makeFixtureDir();
     try {
@@ -82,7 +97,7 @@ describe('detect-doc-schema.sh — index mode', () => {
     }
   });
 
-  test('reordered columns -> schema=ambiguous', () => {
+  test('reordered columns -> schema=foreign', () => {
     const fixtureDir = makeFixtureDir();
     try {
       const filePath = writeFixture(
@@ -92,7 +107,7 @@ describe('detect-doc-schema.sh — index mode', () => {
       );
       const result = run('index', filePath);
       expect(result.status).toBe(0);
-      expect(result.stdout).toBe('schema=ambiguous\n');
+      expect(result.stdout).toBe('schema=foreign\n');
     } finally {
       fs.rmSync(fixtureDir, { recursive: true, force: true });
     }
