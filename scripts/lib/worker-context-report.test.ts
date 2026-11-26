@@ -26,6 +26,9 @@ describe('roleAndIssue', () => {
   test('reads <role>-<issue> from a named transcript file', () => {
     expect(roleAndIssue('agent-aimplementer-1538-0123456789abcdef.jsonl')).toEqual({ role: 'implementer', issue: 1538 });
   });
+  test('reads the issue from a named transcript file whose name carries a suffix', () => {
+    expect(roleAndIssue('agent-areviewer-5333-recheck1-0123456789abcdef.jsonl')).toEqual({ role: 'reviewer', issue: 5333 });
+  });
   test('falls back to the meta agentType for the role and leaves the issue unattributed', () => {
     expect(roleAndIssue('agent-a87fb169909c83e19.jsonl', meta({ agentType: 'blackhole:reviewer' }))).toEqual({ role: 'reviewer', issue: null });
   });

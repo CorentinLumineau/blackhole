@@ -92,12 +92,13 @@ undiscoverable return.
 
 **Name shape**: `<role>-<issue-number>`, optionally followed by `-<suffix>` segments such as
 `-recheck1` or `-t159` (`implementer-5333`, `reviewer-5333-recheck1`). `scripts/worker-context-report.ts`
-reads the issue from the **first** `-<digits>` segment of the name (`NAME_ISSUE`), so the issue
+reads the issue from the **first** `-<digits>` segment of the spawn name in `.meta.json` (`NAME_ISSUE`) and
+from a name-bearing transcript file's `<role>-<issue>[-<suffix>]` form (`ROLE_ISSUE`), so the issue
 number comes first and nothing before it may match `-<digits>`: never put a PR number or round
 counter ahead of it, and write a PR reference as a word with no hyphen before the digits
 (`reviewer-pr1502` carries no issue; `review-1502` would read PR 1502 as the issue). The role
-segment is the part before the first `-`, so it contains no hyphen. The same string is the `label`
-of the matching `agent()` call in a `Workflow` fan-out, which is what attributes those runs.
+segment is the part before the first `-`, so it contains no hyphen. The same string MUST be passed as the `label`
+of the matching `agent()` call in a `Workflow` fan-out; without it those runs are unattributed.
 
 ### Fix-round continuation (SendMessage)
 
