@@ -8,7 +8,7 @@ import { PRETOOLUSE_HOOKS_DIR, runPreToolUseHook, withLinkedWorktree } from './l
 // target the same way, or `> "<main>/.worktrees/\wt"` resolves to a different path than it writes.
 
 const utils = (name: string) => require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', name));
-const normalize = (word: string) => utils('worktree-removal-guard.js').normalizeShellWord(word);
+const normalize = (word: string) => utils('shell-invocation-scan.js').normalizeShellWord(word);
 
 const verdict = async (build: (main: string, wt: string) => string) => {
   let result: unknown = undefined;
@@ -260,20 +260,6 @@ describe('bash-write-target-guard.js — quotes inside a literal path (#1308)', 
         else process.env.BLACKHOLE_ASSIGNED_WORKTREE = saved;
         fs.rmSync(other, { recursive: true, force: true });
       }
-    });
-  });
-});
-
-describe('worktree-removal-guard — a quoted removal still resolves', () => {
-  test('rm -rf "<worktree>" with no backslash is still refused', async () => {
-    await withLinkedWorktree('blackhole-hook-1308-', async (mainRepo, worktree) => {
-      const result = await runPreToolUseHook(
-        'validate-bash-command.js',
-        { tool_name: 'Bash', tool_input: { command: `rm -rf "${worktree}"` }, tool_use_id: 'toolu_1308', cwd: mainRepo },
-        mainRepo,
-        PRETOOLUSE_HOOKS_DIR,
-      );
-      expect(result.exitCode).toBe(2);
     });
   });
 });

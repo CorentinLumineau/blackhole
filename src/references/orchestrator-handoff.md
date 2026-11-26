@@ -49,7 +49,7 @@ instead of duplicated in each role's section above (`V-DRY-01`):
    `--now` cuts at the worker's current position regardless of whether that unit is done.
 3. **Commit and push whatever is already changed**, even if incomplete or broken — a partial
    push the orchestrator can see beats clean work it loses. This directly narrows what issue
-   #524's worktree-removal guard has to catch: a worker that reliably pushes on request leaves
+   the push-before-removal rule has to catch: a worker that reliably pushes on request leaves
    less unpushed history behind (cited, not duplicated — #524 owns the orchestrator-side removal
    check itself).
 4. **State plainly what is done and what is not**, in whatever channel the worker's natural

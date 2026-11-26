@@ -3,7 +3,7 @@
 
 /**
  * shell-lexer.js — the uniform, pure shell-scanning primitives that `bash-context.js`,
- * `bash-write-target-guard.js` and `worktree-removal-guard.js` each reimplemented independently.
+ * `bash-write-target-guard.js` and `shell-invocation-scan.js` each reimplemented independently.
  * Extracted here: `skipQuotedSpan` (5 near-identical copies) and `isRedirectAmpersand` (3
  * copies). Pure string scanning only — no `fs`, no `child_process`, no
  * `require` of any sibling module — every one of these three guards is a pre-execution safety
@@ -12,10 +12,10 @@
  *
  * Deliberately NOT extracted here, and not a gap: the three guards' own CLAUSE SPLITTERS
  * (`bash-context.js`'s heredoc/masking scan, `bash-write-target-guard.js`'s `splitClauses`,
- * `worktree-removal-guard.js`'s `findClauseStartIndices` / `clauseTailFrom`). Their quote
+ * `shell-invocation-scan.js`'s `findClauseStartIndices` / `clauseTailFrom`). Their quote
  * policies are opposite by requirement, not by accident, and each is fail-closed for its own
  * guard's detection semantics — see `bash-write-target-guard.js`'s `splitClauses` and
- * `worktree-removal-guard.js`'s `findClauseStartIndices` docstrings for the `QUOTE POLICY:`
+ * `shell-invocation-scan.js`'s `findClauseStartIndices` docstrings for the `QUOTE POLICY:`
  * statement each one pins, and `documentation/decisions/ADR-040-shell-lexer-primitives-and-splitter-quote-policy.md`
  * for the full rejected-alternatives record. Unifying the splitters was evaluated and rejected:
  * a quote-unaware union reopens the F-00065 `eval`-wrapped-removal bypass
@@ -25,7 +25,7 @@
  * no guard's externally observable deny/warn/allow decision on any input.
  *
  * The whitespace-bounded brace-group (`{`/`}`) reserved-word predicate is a third uniform
- * primitive by shape, but its 3 copies all live inside `worktree-removal-guard.js` alone — it is
+ * primitive by shape, but its 3 copies all live inside `shell-invocation-scan.js` alone — it is
  * de-duplicated as a file-private helper in that file instead of exported here, since a
  * single-consumer-file primitive gains nothing from living in a shared module (V-YAGNI-03).
  */
