@@ -155,6 +155,15 @@ describe('buildDocIndexRows', () => {
     });
   });
 
+  test('an H1 keeps a literal trailing # but drops a closing # sequence', () => {
+    withFixtureDir((dir) => {
+      const fm = '---\ntype: audit\nstatus: current\nreview_trigger: "on release"\n---\n\n';
+      write(dir, 'a/csharp.md', `${fm}# C#\n`);
+      write(dir, 'a/closed.md', `${fm}# Title ##\n`);
+      expect(buildDocIndexRows(dir).map((r) => r.summary)).toEqual(['Title', 'C#']);
+    });
+  });
+
   test('a regenerated table with an H1-fallback row round-trips with no stale bucket (#1403)', () => {
     withFixtureDir((dir) => {
       write(dir, 'a/x.md', '---\ntype: audit\nstatus: current\nreview_trigger: "on release"\n---\n\n# A | B title\n');

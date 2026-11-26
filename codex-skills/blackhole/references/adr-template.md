@@ -1,6 +1,6 @@
 # ADR Authoring Template
 
-Required skeleton for Design Track staged ADRs (`planner.md` §4.8). Every section below must
+Required skeleton for Design Track staged ADRs (`planner-tracks/04-design-track.md` §4.8). Every section below must
 appear as a `##` heading in the staged body — a missing section blocks the plan (`status: blocked`).
 
 ## Two Shapes
@@ -14,7 +14,7 @@ against every tracked ADR by `scripts/checks/adr-shape.check.ts` (`V-ADR-08`):
 - **`designTrack`** (8 headings: `## Requirements Framing`, `## Options + Trade-off Matrix`,
   `## Adversarial Evaluation`, `## Component Decomposition`, `## Design Principles Validation`,
   `## Refactoring Impact Analysis`, `## Assumption Audit`, `## Gate`) — the deeper, plan-track-gated
-  design note `planner.md` §4.8's Design Track produces, carrying its own trade-off matrix,
+  design note `planner-tracks/04-design-track.md` §4.8's Design Track produces, carrying its own trade-off matrix,
   adversarial critic evaluation, and gate outcome. Use this shape when the ADR *is* a Design
   Track plan artifact, not a standalone narrative record.
 
@@ -33,7 +33,7 @@ What problem or constraint forced this decision? Link prior ADRs or audits where
 ## Decision
 
 The chosen approach — imperative, one primary option. Cross-cutting constraints promoted to
-`ARCHITECTURE.md` cite `(ADR-{NNN})` per `planner.md` §4.8 Trigger A.
+`ARCHITECTURE.md` cite `(ADR-{NNN})` per `planner-tracks/04-design-track.md` §4.8 Trigger A.
 
 ## Alternatives Considered
 

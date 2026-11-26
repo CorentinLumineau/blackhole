@@ -426,11 +426,12 @@ describe('syncQueue — pareto', () => {
     expect('pareto' in sync({ queue, issues: [issue(1, { body: 'no line' })] }).queue.issues['1']).toBe(false);
     expect('pareto' in sync({ queue, issues: [issue(1, { body: 'Pareto: gain=1 effort=1 priority=5' })] }).queue.issues['1']).toBe(false);
   });
-  test('reconcile keeps scored_at and rationale while the line is unchanged, drops them when it changes', () => {
+  test('reconcile keeps scored_at, rationale and basis while the line is unchanged, drops them when it changes', () => {
     const queue = sync({ issues: [issue(1, { body: LINE48 })] }).queue;
     (queue.issues['1'].pareto as Record<string, unknown>).scored_at = '2026-11-25T10:00:00.000Z';
     (queue.issues['1'].pareto as Record<string, unknown>).rationale = 'why';
-    expect(sync({ queue, issues: [issue(1, { body: LINE48 })] }).queue.issues['1'].pareto).toEqual({ gain: 8, effort: 5, priority: 48, scored_at: '2026-11-25T10:00:00.000Z', rationale: 'why' });
+    (queue.issues['1'].pareto as Record<string, unknown>).basis = { deps: { '2': 'open' }, pr: 7 };
+    expect(sync({ queue, issues: [issue(1, { body: LINE48 })] }).queue.issues['1'].pareto).toEqual({ gain: 8, effort: 5, priority: 48, scored_at: '2026-11-25T10:00:00.000Z', rationale: 'why', basis: { deps: { '2': 'open' }, pr: 7 } });
     expect(sync({ queue, issues: [issue(1, { body: 'Pareto: gain=10 effort=4 priority=70' })] }).queue.issues['1'].pareto).toEqual({ gain: 10, effort: 4, priority: 70 });
   });
   test('an entry the forge did not list keeps its pareto', () => {

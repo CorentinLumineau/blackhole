@@ -393,9 +393,8 @@ describe('STANDARD_TRACK_BUGFIX_REQUIRED_MARKERS grounding', () => {
     expectMarkersMissing(extractStandardTrackSection(STALE), STANDARD_TRACK_BUGFIX_REQUIRED_MARKERS);
   });
 
-  test('real planner.md Standard Track section carries the Bugfix classification bullet', () => {
-    const plannerContent = read('src/agents/planner.md');
-    const section = extractStandardTrackSection(plannerContent);
+  test('real planner Standard Track module carries the Bugfix classification bullet', () => {
+    const section = extractStandardTrackSection(`${read('src/references/planner-tracks/02-standard-track.md')}\n### 3. Skip Track`);
     expect(section).not.toBe('');
     expectMarkersPresent(section, STANDARD_TRACK_BUGFIX_REQUIRED_MARKERS);
   });

@@ -1,0 +1,44 @@
+---
+section: 5. Brainstorm Track (ADR-010 D3)
+track: brainstorm
+---
+### 5. Brainstorm Track (ADR-010 D3)
+
+Entered **only** on an explicit `track: brainstorm` spawn directive — never self-selected from
+issue content (Step 2, same exception list as Skip/Design above). Expands a vague, idea-stage
+issue into a requirements framing plus 2-3 options with a provisional recommendation, at
+**reduced depth** relative to the Design Track. **Terminal semantics**: this track never
+produces a mergeable code PR — it returns a brainstorm artifact plus proposed child issues; the
+orchestrator handles filing and closing (`orchestrator-dispatch.md` § Brainstorm terminal handling).
+
+1.  **Requirements Framing**: reuses Design Track subsection 1's mechanics verbatim
+    (route-first, content-fallback pattern) — see § Design Track subsection 1 above, not
+    restated here.
+2.  **Options + provisional recommendation**: reuses Design Track subsection 2's mechanics at
+    **reduced depth** — 2-3 options, no forced trade-off-matrix column count, one provisional
+    recommendation. This is deliberately shallower than the Design Track's full analysis: the
+    Adversarial Evaluation via multiplicity (Design Track subsection 3) does **not** extend to
+    this track — no 2-invocation critique pattern here, keeping the Accretion Guard's
+    multiplicity cap meaningful (see § Accretion Guard below).
+3.  **Child issue proposals**: at most 5 proposed children (DoS/backlog-flood mitigation — see
+    Threat Model in the milestone plan), each with `title`, `body`, `acceptance_criteria[]`,
+    `size_estimate` (`xs`\|`s`\|`m`\|`l`\|`xl`, reusing the existing hunt-filing size vocabulary
+    from `phase-loop.md` § Kaizen hunt dispatch step 3), `suggested_route`
+    (`{task_type, plan_mode}`, values from the existing `TASK_TYPES`/`PLAN_MODES` enums), `gain`
+    (1-10), `effort` (1-10) — exact shape validated by
+    `scripts/validate-worker-json.ts`'s `validateBrainstormChild`.
+4.  **Gate**: status resolves per `confidence-gates.md`'s
+    brainstorm weight profile and the two-band mapping (`autonomy.confidence_threshold`) —
+    composite confidence at or above threshold → `status: ready`, children proposed; below
+    threshold → `status: blocked`, `blocking_question` set to the specific product ambiguity
+    (not a generic "needs clarification"). This is a genuine difference from the Design Track's
+    unconditional `status: blocked` above — do not copy that unconditional-block sentence into
+    this track.
+
+**Artifact delivery**: the planner writes its working draft to
+`.blackhole/plans/issue-N-brainstorm.md` (gitignored working state, mirrors the `-design.md`
+suffix convention) — it does **not** write directly to `documentation/brainstorms/`. The
+durable copy at `documentation/brainstorms/{concern-slug}.md`
+(`artifact-contract.md`) is committed by
+`implementer` under `execution_mode: docs-only` as part of `orchestrator-dispatch.md` § Brainstorm
+terminal handling — not this track's job.

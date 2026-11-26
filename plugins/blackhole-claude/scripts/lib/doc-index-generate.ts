@@ -32,7 +32,7 @@ const isExcludedPath = (relPath: string): boolean =>
 // A doc authored without a `summary:` key still gets a useful row: its first H1, flattened to one
 // line with `|` replaced, since a row cell cannot hold either (parseIndexTableRows splits on `|`).
 const h1Fallback = (body: string): string => {
-  const h1 = /^#[ \t]+(.+?)[ \t]*#*[ \t]*$/m.exec(body)?.[1] ?? '';
+  const h1 = /^#[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$/m.exec(body)?.[1] ?? '';
   return h1.replace(/\|/g, '/').replace(/\s+/g, ' ').trim();
 };
 

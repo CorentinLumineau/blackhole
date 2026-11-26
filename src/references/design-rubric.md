@@ -1,7 +1,7 @@
 # Design Rubric (ADR-010 D4)
 
 Fixed trade-off matrix columns and per-column weights, keyed by decision type. This file — not
-the planner, not the aggregate script — owns the scoring axes: `planner.md` §4.3 cites it
+the planner, not the aggregate script — owns the scoring axes: `planner-tracks/04-design-track.md` §4.3 cites it
 verbatim rather than picking columns ad hoc, and `scripts/design-aggregate.ts` validates every
 scorer's input against its declared weights before computing a verdict. Closing this axis-choice
 gap is ADR-010 D4.1's exact target.
