@@ -3,8 +3,8 @@ import type { ForgeAdapter, ForgePr } from './forge-adapter/types.ts';
 
 // Releases the contract claim labels (`config.claim_labels`) a campaign leaves behind when it
 // stops or drains. It works from the forge's own label state, so it needs no lane and no record of
-// who claimed what: an issue of the queue that still carries a claim label and has no open PR in
-// flight is released.
+// who claimed what: an issue the campaign dispatched that still carries a claim label and has no
+// open PR in flight is released.
 
 const SOFT_LINK = /\b(?:part\s+of|refs?)\s*:?\s+#(\d+)/gi;
 
@@ -19,22 +19,27 @@ export const prLinksIssue = (pr: ForgePr, issue: number): boolean =>
   [...(pr.body ?? '').matchAll(SOFT_LINK)].some((m) => Number(m[1]) === issue) ||
   branchNamesIssue(pr.headRefName ?? '', issue);
 
+/** Queue statuses of an entry this campaign worked; a `ready` or `blocked` entry may be claimed by another owner. */
+export const DISPATCHED_STATUSES: readonly string[] = ['in-flight', 'merged', 'closed'];
+
 export type ClaimReleaseReport = {
   released: Array<{ issue: number; label: string }>;
   kept: Array<{ issue: number; label: string; pr: number }>;
+  failed: Array<{ issue: number; label: string; error: string }>;
 };
 
 /**
  * `issues` are the campaign's own issue numbers; `labels` the configured claim labels. Each member
  * of `issues` that carries a label and has no open linking PR loses the label and gets one comment.
- * A member with an open linking PR is kept: the PR is the work in flight.
+ * A member with an open linking PR is kept: the PR is the work in flight. A forge error on one
+ * member lands in `failed` and the pass goes on, so the report always covers every member reached.
  */
 export async function releaseClaimLabels(
   adapter: Pick<ForgeAdapter, 'issueList' | 'prList' | 'labelRemove' | 'issueComment'>,
   issues: number[],
   labels: string[],
 ): Promise<ClaimReleaseReport> {
-  const report: ClaimReleaseReport = { released: [], kept: [] };
+  const report: ClaimReleaseReport = { released: [], kept: [], failed: [] };
   if (labels.length === 0 || issues.length === 0) return report;
   const own = new Set(issues);
   const prs = (await adapter.prList({ state: 'open', limit: 200 })).filter((p) => p.state === 'OPEN');
@@ -46,9 +51,13 @@ export async function releaseClaimLabels(
         report.kept.push({ issue: number, label, pr: pr.number });
         continue;
       }
-      await adapter.labelRemove({ type: 'issue', number }, [label]);
-      await adapter.issueComment(number, RELEASE_COMMENT);
-      report.released.push({ issue: number, label });
+      try {
+        await adapter.labelRemove({ type: 'issue', number }, [label]);
+        await adapter.issueComment(number, RELEASE_COMMENT);
+        report.released.push({ issue: number, label });
+      } catch (error) {
+        report.failed.push({ issue: number, label, error: error instanceof Error ? error.message : String(error) });
+      }
     }
   }
   return report;

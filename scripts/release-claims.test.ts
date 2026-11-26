@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { branchNamesIssue, prLinksIssue, readClaimLabels, RELEASE_COMMENT } from './lib/claim-release.ts';
-import { runReleaseClaims, UsageError } from './release-claims.ts';
+import { reportExitCode, runReleaseClaims, UsageError } from './release-claims.ts';
 import type { ForgeAdapter, ForgeIssue, ForgePr } from './lib/forge-adapter/types.ts';
 
 let dir: string;
@@ -12,19 +12,22 @@ beforeEach(() => {
 });
 afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 
-const write = (config: Record<string, unknown>, issues: number[]): void => {
+const write = (config: Record<string, unknown>, issues: number[], status = 'in-flight'): void => {
   fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ repo: 'o/r', forge: 'github', ...config }));
-  fs.writeFileSync(path.join(dir, 'queue.json'), JSON.stringify({ issues: Object.fromEntries(issues.map((n) => [String(n), { status: 'ready' }])) }));
+  fs.writeFileSync(path.join(dir, 'queue.json'), JSON.stringify({ issues: Object.fromEntries(issues.map((n) => [String(n), { status }])) }));
 };
 const issue = (number: number, label: string): ForgeIssue => ({ number, title: 't', body: '', labels: [{ name: label }], milestone: null, state: 'OPEN' });
 const pr = (number: number, body: string, headRefName = 'blackhole/other'): ForgePr => ({ number, title: 't', body, headRefName, state: 'OPEN', mergedAt: null });
 
-const fake = (claimed: Record<string, ForgeIssue[]>, prs: ForgePr[]) => {
+const fake = (claimed: Record<string, ForgeIssue[]>, prs: ForgePr[], failOn: number[] = []) => {
   const calls: unknown[][] = [];
   const adapter = {
     issueList: async (f: { labels?: string[] }) => claimed[f.labels?.[0] ?? ''] ?? [],
     prList: async () => prs,
-    labelRemove: async (e: unknown, l: unknown) => void calls.push(['labelRemove', e, l]),
+    labelRemove: async (e: { number: number }, l: unknown) => {
+      if (failOn.includes(e.number)) throw new Error(`forge down for ${e.number}`);
+      calls.push(['labelRemove', e, l]);
+    },
     issueComment: async (n: number, b: string) => void calls.push(['issueComment', n, b]),
   } as unknown as ForgeAdapter;
   return { adapter, calls };
@@ -35,7 +38,7 @@ describe('runReleaseClaims', () => {
     write({ claim_labels: ['in-progress:claude'] }, [10, 11]);
     const f = fake({ 'in-progress:claude': [issue(10, 'in-progress:claude'), issue(11, 'in-progress:claude')] }, [pr(50, 'Closes #11')]);
     const report = await runReleaseClaims(['--campaign-dir', dir], { adapter: f.adapter });
-    expect(report).toEqual({ released: [{ issue: 10, label: 'in-progress:claude' }], kept: [{ issue: 11, label: 'in-progress:claude', pr: 50 }] });
+    expect(report).toEqual({ released: [{ issue: 10, label: 'in-progress:claude' }], kept: [{ issue: 11, label: 'in-progress:claude', pr: 50 }], failed: [] });
     expect(f.calls).toEqual([
       ['labelRemove', { type: 'issue', number: 10 }, ['in-progress:claude']],
       ['issueComment', 10, RELEASE_COMMENT],
@@ -45,14 +48,48 @@ describe('runReleaseClaims', () => {
   test('an issue outside the queue is never touched', async () => {
     write({ claim_labels: ['in-progress:claude'] }, [10]);
     const f = fake({ 'in-progress:claude': [issue(99, 'in-progress:claude')] }, []);
-    expect(await runReleaseClaims(['--campaign-dir', dir], { adapter: f.adapter })).toEqual({ released: [], kept: [] });
+    expect(await runReleaseClaims(['--campaign-dir', dir], { adapter: f.adapter })).toEqual({ released: [], kept: [], failed: [] });
     expect(f.calls).toEqual([]);
+  });
+
+  test.each(['ready', 'blocked'])('a %s queue entry the campaign never dispatched keeps its claim label', async (status) => {
+    write({ claim_labels: ['in-progress:claude'] }, [10], status);
+    const f = fake({ 'in-progress:claude': [issue(10, 'in-progress:claude')] }, []);
+    expect(await runReleaseClaims(['--campaign-dir', dir], { adapter: f.adapter })).toEqual({ released: [], kept: [], failed: [] });
+    expect(f.calls).toEqual([]);
+  });
+
+  test.each(['in-flight', 'merged', 'closed'])('a %s queue entry the campaign dispatched is released', async (status) => {
+    write({ claim_labels: ['in-progress:claude'] }, [10], status);
+    const f = fake({ 'in-progress:claude': [issue(10, 'in-progress:claude')] }, []);
+    const report = await runReleaseClaims(['--campaign-dir', dir], { adapter: f.adapter });
+    expect(report.released).toEqual([{ issue: 10, label: 'in-progress:claude' }]);
+  });
+
+  test('a forge error on one issue is reported in failed and the other issues are still released', async () => {
+    write({ claim_labels: ['in-progress:claude'] }, [10, 11, 12]);
+    const f = fake({ 'in-progress:claude': [10, 11, 12].map((n) => issue(n, 'in-progress:claude')) }, [pr(50, 'Closes #12')], [10]);
+    const report = await runReleaseClaims(['--campaign-dir', dir], { adapter: f.adapter });
+    expect(report).toEqual({
+      released: [{ issue: 11, label: 'in-progress:claude' }],
+      kept: [{ issue: 12, label: 'in-progress:claude', pr: 50 }],
+      failed: [{ issue: 10, label: 'in-progress:claude', error: 'forge down for 10' }],
+    });
+    expect(f.calls).toEqual([
+      ['labelRemove', { type: 'issue', number: 11 }, ['in-progress:claude']],
+      ['issueComment', 11, RELEASE_COMMENT],
+    ]);
+  });
+
+  test('exit code is 1 when any release failed, 0 otherwise', () => {
+    expect(reportExitCode({ released: [], kept: [], failed: [{ issue: 1, label: 'l', error: 'e' }] })).toBe(1);
+    expect(reportExitCode({ released: [{ issue: 1, label: 'l' }], kept: [], failed: [] })).toBe(0);
   });
 
   test('no claim_labels prints empty sets and never reads the forge', async () => {
     write({}, [10]);
     const f = fake({}, []);
-    expect(await runReleaseClaims(['--campaign-dir', dir], { adapter: f.adapter })).toEqual({ released: [], kept: [] });
+    expect(await runReleaseClaims(['--campaign-dir', dir], { adapter: f.adapter })).toEqual({ released: [], kept: [], failed: [] });
     expect(f.calls).toEqual([]);
   });
 
