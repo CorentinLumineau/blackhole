@@ -661,3 +661,38 @@ describe('lazy roots: nothing is resolved until a target lies outside the truste
     expect(resolved).toBe(1);
   });
 });
+
+describe('lazy roots: a resolution failure for an out-of-root target fails closed', () => {
+  const PRELOAD = path.join(import.meta.dir, 'lib', 'throw-in-trusted-roots.preload.ts');
+  // Not red-first: the fail-closed branch in validate-file-changes.js already exists; this pins it.
+  const spawnWithBrokenRoots = async (w: World, target: string) => {
+    const base: Record<string, string | undefined> = { ...process.env };
+    for (const key of SCOPED_ENV) delete base[key];
+    const proc = Bun.spawn({
+      cmd: ['bun', 'run', '--preload', PRELOAD, path.join(PRETOOLUSE_HOOKS_DIR, FILE_HOOK)],
+      stdin: new Blob([JSON.stringify({ agent_type: 'implementer', tool_name: 'Write', tool_input: { file_path: target, content: 'x' }, cwd: w.wtA })]),
+      stdout: 'pipe',
+      stderr: 'pipe',
+      cwd: w.wtA,
+      env: { ...base, HOME: w.home, BLACKHOLE_CLAUDE_HOME: NO_CLAUDE_HOME } as Record<string, string>,
+    });
+    const [exitCode, stdout] = await Promise.all([proc.exited, new Response(proc.stdout).text(), new Response(proc.stderr).text()])
+    return { exitCode, stdout };
+  };
+
+  test('an out-of-root target denies as worktree-root-resolution-failure and is recorded as a block', async () => {
+    await withWorld(async (w) => {
+      const r = await spawnWithBrokenRoots(w, path.join(w.mainB, 'README.md'));
+      expect(r.exitCode).toBe(2);
+      expect(patternOf(r.stdout)).toBe('worktree-root-resolution-failure');
+      expect(readHookEvents(w.mainA).at(-1)).toMatchObject({ tier: 'block', pattern_id: 'worktree-root-resolution-failure' });
+    });
+  });
+
+  test('an in-root target never resolves the roots, so the same failure is not reached', async () => {
+    await withWorld(async (w) => {
+      const r = await spawnWithBrokenRoots(w, path.join(w.wtA, 'srcdir', 'f.txt'));
+      expect(r.exitCode).toBe(0);
+    });
+  });
+});
