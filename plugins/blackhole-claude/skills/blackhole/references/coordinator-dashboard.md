@@ -43,14 +43,14 @@ stands in for `config.json`'s `repo`). Exit `3` when `--stated` names another re
 prints `{repo, campaign_dir, source, stated, mismatch}` plus, on a mismatch, the Continue here /
 Stop `card`. The summary heading names the same target.
 
-Catchup form (`--mode catchup`, `launch-gate.md` § Catchup form): the same 13 rows, with the
+Catchup form (`--mode catchup`, `launch-gate.md` § Catchup form): the same 14 rows, with the
 catchup's own **Pacing** row (the floor reading) in the run's Pacing slot. It adds `--usage-file <path>` (the usage reading as a file, the same
 hand-off `usage.ts --usage` and `pace-floor.ts --usage` take as a path), and the invocation-only
 overrides `--floor <pct>`, `--no-spawn-at <pct>`, `--stop-workers-at <pct>` and `--lane <name>`;
 inline `--usage` is refused with it (exit `2`), and the catchup flags are refused without it.
 `--json` adds a `pacing` object (the reading, the effective floor and the effective preset).
 
-Run form: 13 rows in fixed order (Scope, Order, Merge, Pacing, Budget, Status page, Kaizen and staging,
+Run form: 14 rows in fixed order (Scope, Order, Roadmap, Merge, Pacing, Budget, Status page, Kaizen and staging,
 Autonomy, Resource policy, Wave scheduling, Peers, Decisions, Other config),
 each with a one-line consequence. The status page reads the same builder, so the two never
 disagree. The Peers row reads `scripts/peer-campaigns.ts detect` (ADR-057) and states its reach:
@@ -60,6 +60,9 @@ disagree. The Peers row reads `scripts/peer-campaigns.ts detect` (ADR-057) and s
 and `unknown (N unreadable: <file names>)` when records cannot be read; either makes the row the gate's stop / join / take-over question (`launch-gate.md` §
 Questions). `--summary` accepts only `--usage`, `--now`, `--json`, `--campaign-dir` and `--no-gh`,
 and cannot be combined with `--html`, `--out`, `--data` or `config-summary`.
+The Roadmap row lists up to 5 ready issues as `#N P<priority>` (`unscored` when the queue holds no score), in
+`scripts/pareto-order.ts` order, then `N re-scored this run` (scores stamped at or after the queue's
+`refreshed_at`; 0 when the queue has none) and `N more ready`.
 
 - `--usage '<json>'` is the harness's usage report (its `get_usage` tool; a malformed value exits
   `2`). Without it the Budget row reads the host's usage source (`scripts/lib/usage-source.ts`,

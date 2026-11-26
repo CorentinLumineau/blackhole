@@ -7,9 +7,10 @@ import { parallelMaxOf, resolveBudgetSettings, when } from './budget.ts';
 import { formatScopeLabel } from './dashboard.ts';
 import { autonomyRow, otherConfigRow, plural, resourcePolicyRow, runPacingRow, waveSchedulingRow } from './launch-config-rows.ts';
 import { decisionsMode, QUESTIONS_PER_CARD, rawDecisionsMode, retiredSleepModeWarning } from './pending-decisions.ts';
+import { roadmapRow } from './roadmap-row.ts';
 import { statusPageRow, type StatusPageInput } from './status-page-row.ts';
 import { targetHeading, type LaunchTarget } from './launch-target.ts';
-import { LAUNCH_ROW_KEYS, type BudgetPanel, type ConfigSummaryInput, type GateOption, type LaunchRow, type LaunchRowKey, type StatusReport } from './types.ts';
+import { LAUNCH_ROW_KEYS, type BudgetPanel, type ConfigSummaryInput, type GateOption, type LaunchRow, type LaunchRowKey, type QueueJson, type StatusReport } from './types.ts';
 
 // The executive-summary launch gate: one row per section, each with a one-line consequence, and
 // the Accept / Adjust question cards built from those rows. Pure: every input is already read;
@@ -35,6 +36,8 @@ export type LaunchSummaryInput = {
   catchup?: CatchupInput;
   /** `scripts/peer-campaigns.ts detect`; absent when detection did not run (no git clone): the row shows the configured role only. */
   peers?: DetectResult;
+  /** `queue.json`, read after the bootstrap re-score: the Roadmap row ranks its ready issues. Absent: the row shows none. */
+  queue?: QueueJson;
 };
 
 /** The catchup launch inputs (ADR-054 C2): the effective preset after the invocation's overrides, the
@@ -330,11 +333,11 @@ export function decisionsRow(config: Record<string, unknown>, waiting: number | 
   return { ...base, value: parts.join(' · '), consequence };
 }
 
-/** The 13 rows in `LAUNCH_ROW_KEYS` order, for a run and for a catchup; a catchup swaps in its own Pacing row. */
-export function buildLaunchSummary({ report, config, budget, statusPage, catchup, peers }: LaunchSummaryInput): LaunchRow[] {
+/** The 14 rows in `LAUNCH_ROW_KEYS` order, for a run and for a catchup; a catchup swaps in its own Pacing row. */
+export function buildLaunchSummary({ report, config, budget, statusPage, catchup, peers, queue }: LaunchSummaryInput): LaunchRow[] {
   const floorBudget = catchup && !('invalid' in catchup) ? catchup.budget : undefined;
   return [
-    scopeRow(report, config), orderRow(), mergeRow(config.merge_mode),
+    scopeRow(report, config), orderRow(), roadmapRow(queue), mergeRow(config.merge_mode),
     catchup ? pacingRow(catchup) : runPacingRow(config, budget),
     budgetRow(budget, config, floorBudget), statusPageRow(statusPage), kaizenRow(config),
     autonomyRow(config), resourcePolicyRow(config), waveSchedulingRow(config),

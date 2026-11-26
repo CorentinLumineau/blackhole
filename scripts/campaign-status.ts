@@ -302,7 +302,7 @@ function readPrintOnly(campaignDir: string, unattended: boolean): boolean {
 }
 
 /**
- * `--summary`: the launch gate's 13 rows and question cards. The Budget row reads the same
+ * `--summary`: the launch gate's 14 rows and question cards. The Budget row reads the same
  * `BudgetPanel` the status page shows: built from `--usage` (restricted to `usage_budget.windows`)
  * when given, else from the host's usage source at `--now`, as `report.budget` is.
  */
@@ -348,7 +348,7 @@ function readPeers(campaignDir: string): DetectResult | undefined {
 }
 
 /**
- * `--summary`: the launch gate's rows and question cards (13 for `run` and for
+ * `--summary`: the launch gate's rows and question cards (14 for `run` and for
  * `--mode catchup`). The Budget row reads the same `BudgetPanel` the status page shows: built from
  * `--usage` (restricted to `usage_budget.windows`) when given, else from the host's usage source at
  * `--now`, as `report.budget` is. A catchup reads `--usage-file` through the same source chain.
@@ -390,6 +390,7 @@ async function printLaunchSummary(
     statusPage: readStatusPageInput(campaignDir, collected.state.config, nowIso),
     catchup: catchup?.input,
     peers: readPeers(campaignDir),
+    queue: collected.state.queue,
   });
   const versionWarning = pluginVersionWarning(
     readPluginVersionCheck({ running: readPluginVersion(PLUGIN_ROOT), homeDir: os.homedir(), pluginName: projectIdentity.name }),
