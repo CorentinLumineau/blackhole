@@ -11,6 +11,7 @@
     "verify:codex": "bun run scripts/verify.ts",
     "release": "bun run scripts/release.ts",
     "release-cadence": "bun run scripts/release-cadence.ts",
+    "release-policy": "bun run scripts/release-policy.ts",
     "status": "bun run scripts/campaign-status.ts",
     "forge-sync": "bun run scripts/forge-sync.ts",
     "record": "bun run scripts/campaign-record.ts",
