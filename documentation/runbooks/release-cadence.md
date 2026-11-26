@@ -138,6 +138,6 @@ Follow-up issues must include `Pareto: gain=G effort=E priority=N` (Priority = G
 | `bun run release-cadence --prepare` | Write artifacts only (no tag/push) |
 | `bun run release-cadence --cut` | Full CI cut path |
 | `bun run release-cadence --cut --force` | Cut below the 10-PR threshold |
-| `bun run release-policy [--json] [--force]` | Offline ADR-063 decision from first-parent git history: class (`immediate`, `batch`, `age`, `cooldown`, `force`, `none`), reason, pending count, next version. Not yet wired to the cut |
+| `bun run release-policy [--json] [--force] [--verified-sha <sha>]` | Offline ADR-063 decision from first-parent git history (`--verified-sha` is the newest green main run, asserted green by the caller and not checked by the CLI; without it only `--force` cuts): class (`immediate`, `batch`, `age`, `cooldown`, `force`, `none`), reason, pending count, next version. Not yet wired to the cut |
 
 A `package.json` already above the latest tag cuts early at that version without `--force`.

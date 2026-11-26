@@ -1,5 +1,6 @@
 // Prints the deterministic release decision (ADR-063 M4) for the current checkout: offline, git only,
 // no model call. `--json` is the machine-readable form; the default is one human line.
+// `--verified-sha <sha>` is the newest green main run, asserted green by the caller (not checked here).
 import { execFileSync } from 'child_process';
 import * as path from 'path';
 import { parseLatestVTagList } from './release-cadence.ts';
@@ -37,7 +38,8 @@ const ancestorTest =
 /**
  * Offline release decision for the checkout: reads tags and first-parent history through `git`
  * and decides with `decideCut`. It does not list verify runs: the caller passes the SHA of the
- * newest green main run as `verifiedSha`, and without it the M2 freshness check fails closed
+ * newest green main run as `verifiedSha` (asserted green by the caller, never checked here: the
+ * synthetic success run is built from it), and without it the M2 freshness check fails closed
  * (only `force` cuts). An immediate commit is verified when it is an ancestor of that SHA.
  */
 export function reportPolicy(
