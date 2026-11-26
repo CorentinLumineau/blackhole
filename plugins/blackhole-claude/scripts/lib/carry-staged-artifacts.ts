@@ -64,7 +64,13 @@ const REQUIRED_FIELDS = [
  */
 export const loadManifest = (manifestPath: string): Manifest | null => {
   if (!fs.existsSync(manifestPath)) return null;
-  const parsed: unknown = readJsonFile(manifestPath, manifestPath);
+  let parsed: unknown;
+  try {
+    parsed = readJsonFile(manifestPath, manifestPath);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`${reason} — staging write failed; do not skip the carry (zero-byte or unparseable manifest)`);
+  }
   const shape = Array.isArray(parsed) ? 'a bare array' : parsed === null ? 'null' : typeof parsed;
   if (shape !== 'object' || !Array.isArray((parsed as { entries?: unknown }).entries)) {
     throw new Error(

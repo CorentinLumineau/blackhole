@@ -72,6 +72,7 @@ describe('carry-staged-artifacts CLI — manifest shape guard', () => {
     const [code, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
     expect(code).toBe(1);
     expect(stderr).toContain(manifestPath);
+    expect(stderr).toContain('staging write failed; do not skip the carry');
   });
 
   test('unparseable manifest: exits 1', async () => {

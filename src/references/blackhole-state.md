@@ -299,7 +299,10 @@ Enforced by `scripts/checks/staging-schema.check.ts`.
 ### Write protocol extension
 
 Same atomic `.tmp` + `mv` read-modify-write as § Write protocol above, applied to
-`manifest.json`. Each producer (`planner`, `investigator`) appends only its own entries and never
+`manifest.json`. `scripts/stage-manifest.ts append` is the sole writer: it validates the entry,
+refuses an existing zero-byte or unparseable manifest, and renames a `.tmp` into place, so no
+producer ever redirects into the live file. The carry step exits 1 on such a manifest and the
+implementer stops rather than skipping it. Each producer (`planner`, `investigator`) appends only its own entries and never
 mutates another producer's row. The first producer for an issue creates the file as the object
 shown above, `{issue, updated_at, entries: [...]}`, never a bare array of entries; every entry
 carries `declared_at`. A manifest of any other shape is refused by every reader

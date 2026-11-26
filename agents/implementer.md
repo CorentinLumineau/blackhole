@@ -386,8 +386,10 @@ this section states only what the script does not decide.
     for this issue). A manifest that **exists but is zero-byte or fails to parse as JSON** exits
     1 — distinct from absent (issue #558): it means a staging write was attempted and failed, so
     treating it identically to "nothing staged" would silently drop staged artifacts. On exit 1,
-    log a `new_findings[]` row (`kind: bug`) citing the manifest path and skip the carry for this
-    issue this run — the script itself never writes to the ledger. A malformed individual entry
+    stop: log a `new_findings[]` row (`kind: bug`) citing the manifest path, return
+    `status: blocked`, and do not open the PR as carried — never skip the carry and continue
+    (the script itself never writes to the ledger; the sole manifest writer is
+    `scripts/stage-manifest.ts`). A malformed individual entry
     (missing field, out-of-enum `target_kind`) is reported on stderr and skipped without failing
     the run; log each such line as its own `new_findings[]` row (`kind: bug`). A declared
     `staged_path` missing under `--staging-root` also exits 1 — the message names both roots and
