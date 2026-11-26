@@ -4,14 +4,17 @@ import { FORGE_CLI_MAX_BUFFER, toForgeSpawnResult, type ForgeSpawnResult } from 
 export type GhSpawnResult = ForgeSpawnResult;
 
 /** Sole `gh` spawn site for the GitHub forge backend (ADR-027, #679). */
-export function runGh(args: string[], options?: { repo?: string; input?: string }): GhSpawnResult {
+export function runGh(args: string[], options?: { repo?: string; input?: string; timeoutMs?: number }): GhSpawnResult {
   const fullArgs = [...args];
   if (options?.repo && !args.includes('--repo')) {
     fullArgs.push('--repo', options.repo);
   }
-  const spawnOptions = options?.input === undefined
-    ? { encoding: 'utf-8' as const, maxBuffer: FORGE_CLI_MAX_BUFFER }
-    : { encoding: 'utf-8' as const, maxBuffer: FORGE_CLI_MAX_BUFFER, input: options.input };
+  const spawnOptions = {
+    encoding: 'utf-8' as const,
+    maxBuffer: FORGE_CLI_MAX_BUFFER,
+    ...(options?.input === undefined ? {} : { input: options.input }),
+    ...(options?.timeoutMs === undefined ? {} : { timeout: options.timeoutMs }),
+  };
   const result = spawnSync('gh', fullArgs, spawnOptions);
   return toForgeSpawnResult('gh', fullArgs, result);
 }
@@ -47,16 +50,17 @@ export type GhApiMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
  * is blocked or `gh auth status` fails, so every GitHub adapter call goes through here. A JSON
  * `body` is sent on stdin. Returns the raw spawn result so callers can tell a 404 from a failure.
  */
-export function runGhApi(method: GhApiMethod, endpoint: string, body?: unknown): GhSpawnResult {
+export function runGhApi(method: GhApiMethod, endpoint: string, body?: unknown, options?: { timeoutMs?: number }): GhSpawnResult {
   const args = ['api', '-X', method, endpoint];
-  if (body === undefined) return runGh(args);
-  return runGh([...args, '--input', '-'], { input: JSON.stringify(body) });
+  if (body === undefined) return runGh(args, options);
+  return runGh([...args, '--input', '-'], { ...options, input: JSON.stringify(body) });
 }
 
 export const isNotFound = (result: GhSpawnResult): boolean => /HTTP 404/.test(result.stderr);
 
-export function runGhApiRestJson<T>(method: GhApiMethod, endpoint: string, body?: unknown): T {
-  const result = runGhApi(method, endpoint, body);
+export function runGhApiRestJson<T>(method: GhApiMethod, endpoint: string, body?: unknown, options?: { timeoutMs?: number }): T {
+  const result = runGhApi(method, endpoint, body, options);
+  if (result.error?.code === 'ETIMEDOUT') throw new Error(`gh api ${method} ${endpoint} timed out after ${options?.timeoutMs}ms`);
   if (result.status !== 0) {
     throw new Error(result.stderr.trim() || result.stdout.trim() || `gh api ${method} ${endpoint} failed`);
   }

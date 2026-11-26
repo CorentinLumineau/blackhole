@@ -299,8 +299,8 @@ prints nothing and a warning, exit 0. The caller supplies the lanes; the plugin 
 
 The runner read is repo-level and needs a token with admin rights on the repository: runners registered at
 organization level are not counted, and a `403` is no reading (a warning, the worker count unchanged). The reader makes
-up to 13 sequential `gh api` calls, so the call site bounds it with `timeout 60` (`orchestrator-runtime.md` § spawn round);
-a timeout exits non-zero, which is also no reading.
+up to 13 sequential `gh api` calls, so the script bounds the whole read to 60 s itself (`--timeout-ms` overrides it; no
+GNU `timeout` needed); a timeout is a warning and no reading, the worker count unchanged.
 
 ## catchup
 
