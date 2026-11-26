@@ -294,14 +294,28 @@ const COMMAND_PREFIXES = new Set([
 /** Wrapper options whose value is the next word (`sudo -u bob`, `nice -n 5`, `env -C dir`). */
 const PREFIX_VALUE_OPTIONS = new Set(['-u', '-g', '-n', '-C', '-k', '-p', '-I', '-L', '-P', '-o', '-e']);
 
-/** A word that is one whole substitution placeholder (`$(…)` or backticks, see `extractSubstitutions`)
- * or one bare parameter expansion (`$X`, `${X}`, `$@`): each may expand to nothing. */
-const WHOLE_PLACEHOLDER_RE = /^\$(?:\u0001\d+\u0001|[A-Za-z_]\w*|[@*#?!$0-9-])$/;
+/** One substitution placeholder (`$(…)` or backticks, see `extractSubstitutions`) or one bare
+ * parameter expansion (`$X`, `$@`), matched at the sticky position: each may expand to nothing. */
+const PLACEHOLDER_AT_RE = /\$(?:\u0001\d+\u0001|[A-Za-z_]\w*|[@*#?!$0-9-])/y;
 
-/** A word that is one whole `${…}` expansion, nested or quoted bodies included. */
-const isWholeBracedExpansion = (word) => word.startsWith('${') && bracedExpansionEnd(word, 2, word.length) === word.length;
-
-const isPossiblyEmptyWord = (word) => WHOLE_PLACEHOLDER_RE.test(word) || isWholeBracedExpansion(word);
+/** A word made only of whole placeholders and `${…}` expansions, one or several adjacent
+ * (`$X`, `${X}${Y}`, `$X$(true)`): each part may expand to nothing, so the word may be empty. */
+const isPossiblyEmptyWord = (word) => {
+  const n = word.length;
+  let i = 0;
+  while (i < n && word[i] === '$') {
+    if (word[i + 1] === '{') {
+      const end = bracedExpansionEnd(word, i + 2, n);
+      if (end === -1) return false;
+      i = end;
+    } else {
+      PLACEHOLDER_AT_RE.lastIndex = i;
+      if (!PLACEHOLDER_AT_RE.test(word)) return false;
+      i = PLACEHOLDER_AT_RE.lastIndex;
+    }
+  }
+  return n > 0 && i === n;
+};
 
 /** Index of the first word at or after `i` that is not a redirect or a redirect's separate target. */
 const skipRedirectWords = (tokens, i) => {
