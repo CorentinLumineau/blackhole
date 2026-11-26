@@ -35,6 +35,15 @@ export const ORCHESTRATOR_DISPATCH_REQUIRED_MARKERS = [
   'does not rest solely on',
 ];
 
+// Issue #1654: a read-only reviewer must never discard another session's uncommitted work.
+export const REVIEWER_REQUIRED_MARKERS = [
+  'No-Checkout Rule',
+  'git worktree add --detach',
+  'Never `git checkout`',
+];
+
+export const PHASE_REVIEW_REQUIRED_MARKERS = ['No-Checkout Rule', 'git worktree add --detach'];
+
 const checkWorkerGitSafety = (): CheckResult => {
   const phaseImplementMissing = findMissingGateMarkers(
     read('src/references/phase-implement.md'),
@@ -49,10 +58,21 @@ const checkWorkerGitSafety = (): CheckResult => {
     ORCHESTRATOR_DISPATCH_REQUIRED_MARKERS,
   );
 
+  const reviewerMissing = findMissingGateMarkers(
+    readComposedAgentDoc('src/agents/reviewer.md'),
+    REVIEWER_REQUIRED_MARKERS,
+  );
+  const phaseReviewMissing = findMissingGateMarkers(
+    read('src/references/phase-review.md'),
+    PHASE_REVIEW_REQUIRED_MARKERS,
+  );
+
   const errors = [
     ...phaseImplementMissing.map((m) => `phase-implement.md missing "${m}"`),
     ...implementerMissing.map((m) => `implementer.md missing "${m}"`),
     ...orchestratorDispatchMissing.map((m) => `orchestrator-dispatch.md missing "${m}"`),
+    ...reviewerMissing.map((m) => `reviewer.md missing "${m}"`),
+    ...phaseReviewMissing.map((m) => `phase-review.md missing "${m}"`),
   ];
 
   if (errors.length) return { id: 'V-GITSAFE-01', ok: false, detail: errors.join('; ') };
