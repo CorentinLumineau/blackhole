@@ -7,6 +7,7 @@ import { parallelMaxOf, resolveBudgetSettings, when } from './budget.ts';
 import { formatScopeLabel } from './dashboard.ts';
 import { autonomyRow, ciCapacityRow, otherConfigRow, plural, resourcePolicyRow, runPacingRow, waveSchedulingRow } from './launch-config-rows.ts';
 import { decisionsMode, QUESTIONS_PER_CARD, rawDecisionsMode, retiredSleepModeWarning } from './pending-decisions.ts';
+import { writeGovernanceActive } from '../merge-gate/review-artifact.ts';
 import { roadmapRow } from './roadmap-row.ts';
 import { statusPageRow, type StatusPageInput } from './status-page-row.ts';
 import { targetHeading, type LaunchTarget } from './launch-target.ts';
@@ -232,10 +233,10 @@ export function pacingRow(input: CatchupInput): LaunchRow {
 
 const TRIGGERS: Record<string, string> = { 'on-empty': 'when the queue empties', manual: 'only on request' };
 
-function kaizenRow(config: ConfigSummaryInput & { kaizen?: { trigger?: string; loop_interval?: number } }): LaunchRow {
+export function kaizenRow(config: ConfigSummaryInput & { kaizen?: { trigger?: string; loop_interval?: number } }): LaunchRow {
   const kz = config.kaizen?.enabled === true;
   const trigger = config.kaizen?.trigger ?? 'on-empty';
-  const staging = config.docs_governance?.enabled === true && config.docs_governance.write_governance !== false;
+  const staging = writeGovernanceActive(config.docs_governance);
   const cadence = TRIGGERS[trigger] ?? `every ${config.kaizen?.loop_interval ?? 5} loops`;
   return {
     key: 'kaizen_staging',
