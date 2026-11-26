@@ -72,9 +72,36 @@ describe('usage-budget CLI', () => {
     });
   });
 
-  test('a malformed --ci-capacity is a usage error', () => {
+  test('a malformed --ci-capacity fails open: warns, exit 0, workers unchanged', () => {
     withTempDir('usage-budget-cli', (dir) => {
-      expect(run(dir, ['--usage', usageJson(10, 10), '--ci-capacity', '{"idle_runners":-1,"queued_jobs":0}']).code).toBe(2);
+      const r = run(dir, ['--usage', usageJson(10, 10), '--ci-capacity', '{"idle_runners":-1,"queued_jobs":0}']);
+      expect(r.code).toBe(0);
+      expect(r.out.workers).toBe(run(dir, ['--usage', usageJson(10, 10)]).out.workers);
+      expect(r.err).toContain('ci capacity');
+    });
+  });
+
+  test('--ci-capacity with no value, or both ci flags together, warn and leave workers unchanged', () => {
+    withTempDir('usage-budget-cli', (dir) => {
+      const base = run(dir, ['--usage', usageJson(10, 10)]).out.workers;
+      const valueless = run(dir, ['--usage', usageJson(10, 10), '--ci-capacity']);
+      expect(valueless.code).toBe(0);
+      expect(valueless.out.workers).toBe(base);
+      expect(valueless.err).toContain('--ci-capacity needs a value');
+      const file = path.join(dir, 'ci.json');
+      fs.writeFileSync(file, '{"idle_runners":0,"queued_jobs":3}');
+      const both = run(dir, ['--usage', usageJson(10, 10), '--ci-capacity', '{"idle_runners":0,"queued_jobs":3}', '--ci-capacity-file', file]);
+      expect(both.code).toBe(0);
+      expect(both.out.workers).toBe(base);
+      expect(both.err).toContain('exclusive');
+    });
+  });
+
+  test('--ci-capacity with every runner busy caps workers before anything queues', () => {
+    withTempDir('usage-budget-cli', (dir) => {
+      const r = run(dir, ['--usage', usageJson(10, 10), '--ci-capacity', '{"idle_runners":0,"busy_runners":2,"queued_jobs":0}']);
+      expect(r.out.workers).toBe(1);
+      expect(r.out.reasons.join(' ')).toContain('busy');
     });
   });
 

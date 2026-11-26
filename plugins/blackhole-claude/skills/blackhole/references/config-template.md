@@ -139,6 +139,10 @@ Committed template: `.blackhole/config.json`
 | `usage_budget.coordination.role` | no | `solo`, `manager` or `peer`: how this session shares one budget with others (default `solo`) |
 | `usage_budget.coordination.manager_session` | no | Session that grants worker slots; required non-empty when `role` is `peer` (default `null`) |
 | `usage_budget.coordination.peer_floor` | no | Worker slots a peer may always use without a grant (default `1`; integer `>= 0`) |
+| `ci_capacity` | no | Optional lowering of the worker count from the consumer's own CI runner capacity, read by `scripts/ci-capacity-read.ts` and judged by `usage-budget.ts --ci-capacity`; off by default. **Resolution**: absent block or key ⇒ the defaults below; a wrong type throws with the key path (sub-keys: enabled, lanes, queue_allowance) |
+| `ci_capacity.enabled` | no | Master switch for the forge reader (default `false`; `false` ⇒ it prints nothing and the worker count is the token budget's) |
+| `ci_capacity.lanes` | no | Runner labels the consumer's PR gate needs (default `[]`; an empty list reads nothing). A runner or queued job counts when it carries any of them; no label is assumed by the plugin |
+| `ci_capacity.queue_allowance` | no | Backlog beyond idle runners tolerated before workers are lowered, and the workers allowed once every runner in the lanes is busy (default `1`; integer `>= 0`) |
 | `catchup` | no | Pacing preset of `/blackhole catchup` mode (ADR-054): the keys below. Never read by `run`. **Resolution**: absent block or key ⇒ the default; a wrong type throws with the key path |
 | `catchup.weekly_target_pct` | no | Share of the weekly allowance the pace floor reaches at the reset; the floor grows linearly over all 168 h of the week (default `80`; number in (0, 100]). **Resolution**: absent block or key ⇒ the default; a wrong type or range throws with the key path |
 | `catchup.five_hour.no_spawn_at` | no | 5-hour `used_percentage` at or above which a catchup spawns no new worker (default `75`; must be `<` `stop_workers_at`). **Resolution**: absent block or key ⇒ the default; a wrong type throws with the key path |
@@ -277,11 +281,20 @@ rename, remove or retype one. The executive-summary launch gate's Budget row may
 the verdict `PACE-WAIT` (drain, wake at `wake_at`, resume) is part of the gate's output contract. The gate is
 `scripts/usage-budget.ts`; it sits beside the pace gate (`resource_policy.pace`), which is unchanged.
 
-`usage-budget.ts` also takes an optional CI-capacity reading, `--ci-capacity '{"idle_runners":n,"queued_jobs":n}'`
-or `--ci-capacity-file <path>` (no config key). Queued jobs beyond idle runners plus `queue_allowance` (default 1)
-lower `workers` one for one, never below one and never above the token-budget count; no reading, or an
-unreadable file, leaves the count unchanged. The caller supplies counts already restricted to the runner labels
-its PR gate needs.
+`usage-budget.ts` also takes an optional CI-capacity reading, `--ci-capacity
+'{"idle_runners":n,"queued_jobs":n[,"busy_runners":n][,"queue_allowance":n]}'` or `--ci-capacity-file <path>`.
+`busy_runners` and `queue_allowance` are optional fields of the reading; `queue_allowance` (default 1, or the
+config's) is the backlog tolerated beyond idle runners. Each queued job beyond idle runners plus the allowance
+lowers `workers` by one; with `idle_runners` 0 and `busy_runners` above 0 (every runner busy) `workers` is also
+capped at `idle_runners + queue_allowance` before anything queues. Both terms keep at least one worker and never
+go above the token-budget count. It fails open: no reading, a flag without a value, both flags together, an
+unreadable file or a malformed reading warns on stderr and leaves the count unchanged.
+
+`scripts/ci-capacity-read.ts` produces that reading from the forge when `ci_capacity.enabled` is `true`:
+`GET repos/{repo}/actions/runners` (online runners carrying a lane label, split by `busy`), `GET
+repos/{repo}/actions/runs?status=queued`, and the jobs of the first ten queued runs (a run past ten counts as
+one queued job). GitHub only; any other forge, a missing `repo`, a forge error or an unexpected payload prints
+nothing and a warning, exit 0. The caller supplies the lanes; the plugin assumes no runner layout.
 
 ## catchup
 
@@ -345,6 +358,7 @@ cell leaves out.
 | `resource_policy` | `config` | Verification | The test-lock carve-out; the host pace line is on the `--html` Host section | Resource policy |
 | `usage_budget` | `budget` | Workers allowed, Weekly, Weekly target, Pace | Verdict, weekly %, target, pace against the target and reset | Pacing, Peers |
 | `usage_budget.coordination` | `run` | Coordination | | Peers |
+| `ci_capacity` | none | — | A pacing input: the worker cap it causes shows in the usage verdict's reasons | Other config |
 | `catchup` | none | — | The pacing preset is shown on the launch summary's Pacing row; the budget panel keeps the verdict | Pacing |
 | `stop_budget_cleared_at` | none | — | Audit timestamp of a past owner action | Other config |
 | `issue_484_disposition` | none | — | One campaign's historical pin; the parked issue shows on the board | Other config |
