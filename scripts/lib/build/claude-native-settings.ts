@@ -2,214 +2,69 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 /**
- * .claude/settings.json PreToolUse merge (issue #472). This repo's own campaign runs from
- * .claude/, so the same PreToolUse safety gate shipped to the consumer-facing plugin bundles
- * (#447/#470) must be wired here too — but `.claude/settings.json` may carry maintainer-set
- * `permissions`/`env`/`skillOverrides` that a naive overwrite would clobber. The merge below
- * therefore touches exactly one key path, `hooks.PreToolUse`, and passes every other key through
- * untouched; writes go through the same atomic tmp+rename idiom as
+ * .claude/settings.json cleanup (ADR-065). Earlier builds merged blackhole's PreToolUse guard entries
+ * into this repo's own `.claude/settings.json`; no guard ships any more, so the build removes exactly
+ * those entries and passes every other key, hook event and foreign PreToolUse entry through
+ * untouched (the file may carry maintainer-set `permissions`/`env`/`skillOverrides`). Writes go
+ * through the same atomic tmp+rename idiom as
  * `scripts/campaign-resume-signal.ts:writeResumeRequestAtomic` (V-INT-02).
  */
 
-type HookCommand = { type: 'command'; command: string; timeout: number };
+type HookCommand = { command?: unknown };
 type PreToolUseEntry = { matcher?: unknown; hooks?: unknown };
 
-type MatcherSpec = {
-  /** Claude Code tool matcher this entry gates. */
-  matcher: string;
-  /** Validator script under .claude/hooks/, copied verbatim by copyHooksDir. */
-  script: string;
-};
+/** Substrings that fingerprint a command as one of the retired guard validators. */
+const RETIRED_GUARD_FINGERPRINTS = ['validate-bash-command.js', 'validate-file-changes.js'];
 
-const MATCHERS: MatcherSpec[] = [
-  { matcher: 'Bash', script: 'validate-bash-command.js' },
-  { matcher: 'Write|Edit', script: 'validate-file-changes.js' },
-];
-
-/**
- * The ERROR-outcome contract (plan § Database/API Schema Changes): exit 0 (allow) and exit 2
- * (the validator's own deliberate deny) pass through verbatim — anything else means the validator
- * process itself could not run to completion (bad path, missing binary, crash before it reaches
- * its own failClosed()). That case degrades to allow rather than fail-closed (a TIMEOUT does not: see the deadline policy in `buildCommand`), so an infra hiccup
- * can never stall the orchestrator's own session, but it is durably recorded under
- * .blackhole/hook-events/ with `tier: "error"` so Triage still surfaces it. The explicit
- * `code=$?` capture and 0/2 branch (not a blanket `command1 || fallback`) is what keeps a
- * legitimate deny from being silently converted into an allow — the single most load-bearing
- * line in this contract.
- *
- * The record carries no stdin/command replay — this fallback never needs to reimplement
- * hook-event-log.js's `redact()` in shell (V-INT-02); the two "process ran" decision paths
- * reuse `redact()` unchanged. `detail` is no longer the bare exit code: ADR-042
- * enriches it with a timeout-vs-crash discriminator and a capped tail of the validator's own
- * stderr, so a collapsed hook-exec-failure class is still diagnosable — capped at 300 chars,
- * the same bound `hook-schemas.md` already documents for block/warn-tier `detail`.
- *
- * `agent_id`/`agent_type` (#907) are hardcoded `null` here rather than read off stdin: this
- * wrapper never parses the payload it forwards (same "no stdin/command replay" posture as the
- * paragraph above), so there is nothing to extract them from. `null` is the correct, permanent
- * value for this one record type — not a temporary gap — keeping the schema uniform across both
- * paths (`hook-event-log.js`'s `recordEvent` populates the real value on every other record).
- */
-/** Double-quoted JS only — it is embedded inside a single-quoted shell argument. */
-const RECORD_JS =
-  'const e=process.env;const t=e.HOOK_STDERR_TAIL;process.stdout.write(JSON.stringify({version:2,recorded_at:e.HOOK_RECORDED_AT,hook:e.HOOK_NAME,tool:e.HOOK_TOOL||null,decision:e.HOOK_DECISION,tier:e.HOOK_TIER,pattern_id:e.HOOK_PATTERN,reason:e.HOOK_REASON,worktree:e.HOOK_WORKTREE||null,detail:"process exit code "+e.HOOK_CODE+" ("+e.HOOK_KIND+")"+(t?": "+t:""),agent_id:null,agent_type:null}));';
-
-const buildCommand = (spec: MatcherSpec): string => {
-  const hookName = spec.script.replace(/\.js$/, '');
-  // Empty string maps to a JSON null in RECORD_JS.
-  const toolName = spec.matcher === 'Bash' ? 'Bash' : '';
-  return [
-    // ADR-042 item 5 — capture the validator's own stderr to a temp file rather
-    // than `output=$(cmd 2>&1)`: a combined-output capture would also swallow the process's
-    // *stdout* (the hookSpecificOutput JSON the 0/2 paths must still emit for Claude Code to
-    // read), which a plain command substitution does not let pass through. `trap ... EXIT`
-    // guarantees cleanup on every exit path without touching the exit-code contract line below.
-    'stderr_tmp="$(mktemp)"',
-    'input_tmp="$(mktemp)"',
-    'deadline_flag="$stderr_tmp.deadline"',
-    'trap \'rm -f "$stderr_tmp" "$input_tmp" "$deadline_flag"\' EXIT',
-    // Deadline policy (#1197): the validator runs under its own deadline, below the harness's 5 s
-    // hook timeout, which fails OPEN. A validator that has not reached a verdict by then is
-    // killed and the call is DENIED (`hook-verification-timeout`) — an input slow enough to
-    // outrun the deadline must never turn into an allow. A CRASH (any non-0/2 exit before the
-    // deadline) stays fail-open, exactly as the contract above. Plain POSIX shell (background job
-    // plus a killing watcher) because `timeout` is absent from stock macOS. A background job gets
-    // /dev/null for stdin, so the payload is spooled first; the watcher's output is detached so
-    // its orphaned `sleep` cannot hold the hook's stdout open.
-    'cat > "$input_tmp"',
-    'start_s="$(date +%s)"',
-    `bun run "$CLAUDE_PROJECT_DIR/.claude/hooks/${spec.script}" < "$input_tmp" 2>"$stderr_tmp" &`,
-    'validator_pid=$!',
-    '( sleep "${BLACKHOLE_HOOK_DEADLINE_S:-4}" && : > "$deadline_flag" && kill -9 "$validator_pid" ) >/dev/null 2>&1 &',
-    'watcher_pid=$!',
-    'wait "$validator_pid"',
-    'code=$?',
-    'kill "$watcher_pid" >/dev/null 2>&1',
-    'end_s="$(date +%s)"',
-    'if [ "$code" = "0" ] || [ "$code" = "2" ]; then exit "$code"; fi',
-    'decision=allow; tier=error; pattern=hook-exec-failure',
-    'reason="validator process exited $code before producing a decision"',
-    'timed_out=0',
-    'if [ -e "$deadline_flag" ]; then',
-    '  timed_out=1; decision=deny; tier=block; pattern=hook-verification-timeout',
-    '  reason="validator did not reach a verdict before its deadline - refused fail-closed. Remedy: split the command into smaller calls."',
-    'fi',
-    'mkdir -p "$CLAUDE_PROJECT_DIR/.blackhole/hook-events" 2>/dev/null',
-    'worktree="$(git -C "$CLAUDE_PROJECT_DIR" rev-parse --show-toplevel 2>/dev/null || true)"',
-    // Whole-second elapsed time, not `date +%s%N`: BSD/macOS date has no %N, and an
-    // arithmetic expansion on its literal "N" output would abort the script. Coarse but
-    // sufficient to discriminate near-the-5s-hook-timeout kills from an instant crash.
-    'elapsed_s=$(( end_s - start_s ))',
-    'if [ "$elapsed_s" -ge 4 ]; then kind="timeout"; else kind="crash"; fi',
-    'stderr_tail="$(tail -c 300 "$stderr_tmp" 2>/dev/null | tr -d \'\\0\')"',
-    // bun builds the JSON (not jq: absent jq left a 0-byte record under `2>/dev/null` while the
-    // notice below still claimed one existed). Values go in as env vars so bun does the escaping.
-    // The record is generated into a dot-prefixed temp file and `mv`d into place only when
-    // generation succeeded and produced bytes, so a reader never sees a partial or empty record.
-    'events_dir="$CLAUDE_PROJECT_DIR/.blackhole/hook-events"',
-    'record_tmp="$(mktemp "$events_dir/.hook-exec-error.XXXXXX" 2>/dev/null || true)"',
-    'record_written=0',
-    'if [ -n "$record_tmp" ]; then',
-    '  HOOK_RECORDED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \\',
-    `  HOOK_NAME="${hookName}" \\`,
-    `  HOOK_TOOL="${toolName}" \\`,
-    '  HOOK_CODE="$code" \\',
-    '  HOOK_DECISION="$decision" HOOK_TIER="$tier" HOOK_PATTERN="$pattern" HOOK_REASON="$reason" \\',
-    '  HOOK_WORKTREE="$worktree" \\',
-    '  HOOK_KIND="$kind" \\',
-    '  HOOK_STDERR_TAIL="$stderr_tail" \\',
-    `  bun -e '${RECORD_JS}' > "$record_tmp" 2>/dev/null`,
-    '  gen=$?',
-    '  if [ "$gen" = "0" ] && [ -s "$record_tmp" ] && mv "$record_tmp" "$events_dir/hook-exec-error-$(date +%s%N).json" 2>/dev/null; then record_written=1; fi',
-    '  rm -f "$record_tmp" 2>/dev/null',
-    'fi',
-    'if [ "$record_written" = "1" ]; then note="see .blackhole/hook-events/"; else note="record NOT written to .blackhole/hook-events/"; fi',
-    'if [ "$timed_out" = "1" ]; then',
-    '  printf \'{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"blackhole PreToolUse: denied - %s [hook-verification-timeout]"}}\\n\' "$reason"',
-    '  echo "blackhole PreToolUse: denied - $reason [hook-verification-timeout]" >&2',
-    '  exit 2',
-    'fi',
-    `echo "[blackhole-hook] ${hookName}: validator process exited $code before producing a decision — call allowed (fail-open); $note" >&2`,
-    'exit 0',
-  ].join('\n');
-};
-
-const blackholeEntry = (spec: MatcherSpec): PreToolUseEntry & { matcher: string; hooks: HookCommand[] } => ({
-  matcher: spec.matcher,
-  hooks: [{ type: 'command', command: buildCommand(spec), timeout: 5 }],
-});
-
-/** True when `entry` is blackhole's own PreToolUse entry for `spec` — identified by a stable
- * substring (the validator script filename) in its command, not by matcher alone, so a
- * maintainer's own custom Bash-matcher entry is never mistaken for blackhole's. */
-const isBlackholeEntry = (entry: PreToolUseEntry, spec: MatcherSpec): boolean => {
+/** True when `entry` runs a retired blackhole validator — identified by the script filename in its
+ * command, not by matcher alone, so a maintainer's own Bash-matcher entry is never removed. */
+const isRetiredGuardEntry = (entry: PreToolUseEntry): boolean => {
   const hooks = Array.isArray(entry.hooks) ? (entry.hooks as HookCommand[]) : [];
-  return hooks.some((h) => typeof h.command === 'string' && h.command.includes(spec.script));
+  return hooks.some(
+    (h) => typeof h.command === 'string' && RETIRED_GUARD_FINGERPRINTS.some((f) => (h.command as string).includes(f)),
+  );
 };
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
 /**
- * Pure merge: computes the next `.claude/settings.json` content from `existing`. Fingerprint
- * replace-not-append keeps a rebuild idempotent — running this twice on identical input produces
- * a byte-identical result the second time (AC-4a). Every top-level key other than `hooks`, and
- * every `hooks.*` entry other than blackhole's own two `PreToolUse` matchers, passes through
- * unchanged (AC-4b/4c).
+ * Pure removal: computes the next `.claude/settings.json` content from `existing`. Idempotent — a
+ * second pass over its own output is byte-identical. An emptied `PreToolUse` array and an emptied
+ * `hooks` object are dropped, so a settings file that carried only blackhole's guards ends as `{}`.
  */
-export const computeMergedSettings = (existing: unknown): Record<string, unknown> => {
+export const stripBlackholeGuardHooksFrom = (existing: unknown): Record<string, unknown> => {
   if (existing !== null && existing !== undefined && !isPlainObject(existing)) {
     throw new Error(
       'claude-native-settings: existing .claude/settings.json does not parse to a JSON object — refusing to guess at its shape',
     );
   }
-  const base: Record<string, unknown> = isPlainObject(existing) ? { ...existing } : {};
+  const { hooks, ...rest } = isPlainObject(existing) ? existing : ({} as Record<string, unknown>);
+  if (!isPlainObject(hooks)) return hooks === undefined ? rest : { ...rest, hooks };
 
-  const existingHooks = isPlainObject(base.hooks) ? { ...base.hooks } : {};
-  const existingPreToolUse: PreToolUseEntry[] = Array.isArray(existingHooks.PreToolUse)
-    ? (existingHooks.PreToolUse as PreToolUseEntry[])
-    : [];
-
-  const merged = [...existingPreToolUse];
-  for (const spec of MATCHERS) {
-    const entry = blackholeEntry(spec);
-    const idx = merged.findIndex((e) => isBlackholeEntry(e, spec));
-    if (idx >= 0) merged[idx] = entry;
-    else merged.push(entry);
-  }
-
-  return {
-    ...base,
-    hooks: {
-      ...existingHooks,
-      PreToolUse: merged,
-    },
-  };
+  const { PreToolUse, ...otherEvents } = hooks;
+  const kept = Array.isArray(PreToolUse) ? (PreToolUse as PreToolUseEntry[]).filter((e) => !isRetiredGuardEntry(e)) : PreToolUse;
+  const nextHooks = kept === undefined || (Array.isArray(kept) && kept.length === 0) ? otherEvents : { ...otherEvents, PreToolUse: kept };
+  return Object.keys(nextHooks).length === 0 ? rest : { ...rest, hooks: nextHooks };
 };
 
 /**
- * Reads `<claudeRoot>/settings.json` (or treats it as absent if the file does not exist),
- * computes the merge, and writes the result back atomically (tmp + rename). An existing file
- * that exists but is malformed or zero-byte is a distinct, suspicious state from "no settings
- * yet" — it throws rather than silently treating maintainer state as empty (this file may carry
- * hand-set `permissions`/`env`/`skillOverrides`; guessing wrong here is data loss, not a test
- * failure).
+ * Reads `<claudeRoot>/settings.json` (an absent file stays absent), removes the retired guard
+ * entries, and writes the result back atomically. A file that exists but is malformed or zero-byte
+ * is a distinct, suspicious state from "no settings yet": it throws rather than treating maintainer
+ * state as empty (guessing wrong here is data loss, not a test failure).
  */
-export const mergeClaudeSettingsHooks = (claudeRoot: string): void => {
+export const stripBlackholeGuardHooks = (claudeRoot: string): void => {
   const target = path.join(claudeRoot, 'settings.json');
-  let existing: unknown = {};
-  if (fs.existsSync(target)) {
-    const raw = fs.readFileSync(target, 'utf-8');
-    if (raw.trim().length === 0) {
-      throw new Error(
-        `claude-native-settings: ${target} exists but is empty — refusing to guess whether this is fresh or truncated state`,
-      );
-    }
-    existing = JSON.parse(raw);
+  if (!fs.existsSync(target)) return;
+  const raw = fs.readFileSync(target, 'utf-8');
+  if (raw.trim().length === 0) {
+    throw new Error(
+      `claude-native-settings: ${target} exists but is empty — refusing to guess whether this is fresh or truncated state`,
+    );
   }
-  const merged = computeMergedSettings(existing);
+  const next = stripBlackholeGuardHooksFrom(JSON.parse(raw));
   const tmp = `${target}.tmp`;
-  fs.mkdirSync(claudeRoot, { recursive: true });
-  fs.writeFileSync(tmp, `${JSON.stringify(merged, null, 2)}\n`, 'utf-8');
+  fs.writeFileSync(tmp, `${JSON.stringify(next, null, 2)}\n`, 'utf-8');
   fs.renameSync(tmp, target);
 };

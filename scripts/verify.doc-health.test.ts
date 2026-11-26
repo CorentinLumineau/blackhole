@@ -13,6 +13,7 @@ import {
   findOrphanDocs,
   findOversizedDocs,
   findStaleDeprecatedDocs,
+  evaluateDocTreeHealth,
   findStaleIndexRows,
   isRootIndexRowCeilingExceeded,
   isTreeSizeAdvisoryExceeded,
@@ -20,6 +21,7 @@ import {
   runChecks,
 } from './checks/doc-health.check.ts';
 import { root } from './checks/check-utils.ts';
+import { findAdrsMissingIndexRow } from './lib/adr-index-presence.ts';
 import { DOC_HEALTH_THRESHOLDS } from './lib/build/facts.ts';
 import { makeTempDir } from './lib/fs.ts';
 
@@ -342,6 +344,98 @@ describe('findStaleDeprecatedDocs (deprecation window)', () => {
   test('a non-deprecated doc is never flagged regardless of age', () => {
     const files = [{ relPath: 'reference/old.md', status: 'current', lastUpdated: '2020-01-01' }];
     expect(findStaleDeprecatedDocs(files, 90, now)).toEqual([]);
+  });
+});
+
+describe('evaluateDocTreeHealth review_trigger grammar lint (V-DOCHEALTH-03, advisory)', () => {
+  const fm = (trigger: string): string =>
+    FM({ type: 'plan', status: 'current', review_trigger: trigger, created: '2026-01-01', last_updated: '2026-01-01' });
+
+  test('a malformed issue-keyed trigger is reported but never blocks', () => {
+    withFixtureDir((dir) => {
+      write(dir, 'plans/bad.md', fm('"when #5228 closes"'));
+      const result = evaluateDocTreeHealth(dir);
+      expect(result.id).toBe('V-DOCHEALTH-03');
+      expect(result.ok).toBe(true);
+      expect(result.detail).toContain('review_trigger not in grammar');
+      expect(result.detail).toContain('plans/bad.md');
+    });
+  });
+
+  test('a well-formed trigger and enum values add no detail', () => {
+    withFixtureDir((dir) => {
+      write(dir, 'plans/good.md', fm('"on issue-close #12"'));
+      write(dir, 'plans/enum.md', fm('"on file change"'));
+      const result = evaluateDocTreeHealth(dir);
+      expect(result.ok).toBe(true);
+      expect(result.detail).toBeUndefined();
+    });
+  });
+});
+
+describe('findAdrsMissingIndexRow (V-DOCHEALTH-03, advisory)', () => {
+  const adr = FM({ type: 'adr', status: 'accepted' });
+  const INDEX_HEAD = '| path | summary | type | status | review_trigger |\n|---|---|---|---|---|\n';
+
+  test('flags an ADR file whose id appears in INDEX.md only in prose', () => {
+    withFixtureDir((dir) => {
+      write(dir, 'decisions/ADR-070-x.md', adr);
+      write(dir, 'decisions/INDEX.md', `${INDEX_HEAD}\nADR-070 is taken by another record.\n`);
+      expect(findAdrsMissingIndexRow(dir)).toEqual(['ADR-070-x.md']);
+    });
+  });
+
+  test('a table row carrying the id, bare or as a link, counts as present', () => {
+    withFixtureDir((dir) => {
+      write(dir, 'decisions/ADR-070-x.md', adr);
+      write(dir, 'decisions/ADR-071-y.md', adr);
+      write(
+        dir,
+        'decisions/INDEX.md',
+        `| ADR | Title | Status | Date |\n|---|---|---|---|\n| ADR-070 | x | accepted | 2026-01-01 |\n| [ADR-071](./ADR-071-y.md) | y | accepted | 2026-01-01 |\n`,
+      );
+      expect(findAdrsMissingIndexRow(dir)).toEqual([]);
+    });
+  });
+
+  test('returns [] when decisions/ or its INDEX.md is absent', () => {
+    withFixtureDir((dir) => {
+      expect(findAdrsMissingIndexRow(dir)).toEqual([]);
+      write(dir, 'decisions/ADR-070-x.md', adr);
+      expect(findAdrsMissingIndexRow(dir)).toEqual([]);
+    });
+  });
+
+  test('evaluateDocTreeHealth reports the gap as advisory detail, never blocking', () => {
+    withFixtureDir((dir) => {
+      write(dir, 'decisions/ADR-070-x.md', adr);
+      write(dir, 'decisions/INDEX.md', `${INDEX_HEAD}`);
+      const result = evaluateDocTreeHealth(dir);
+      expect(result.ok).toBe(true);
+      expect(result.detail).toContain('ADR files with no decisions/INDEX.md row: ADR-070-x.md');
+    });
+  });
+});
+
+describe('evaluateDocTreeHealth root INDEX row ceiling (foreign-index guard)', () => {
+  const ceiling = DOC_HEALTH_THRESHOLDS.rootIndexRowCeiling;
+  const rows = (n: number): string => Array.from({ length: n }, (_, i) => `| a/doc-${i}.md | s | audit | current | on release |`).join('\n');
+
+  test('a blackhole-shaped index over the ceiling still reports the row count', () => {
+    withFixtureDir((dir) => {
+      const n = ceiling + 1;
+      write(dir, 'INDEX.md', `# Index\n\n| path | summary | type | status | review_trigger |\n|------|---------|------|--------|----------------|\n${rows(n)}\n`);
+      expect(evaluateDocTreeHealth(dir).detail).toContain(`INDEX.md row count ${n} exceeds ${ceiling}`);
+    });
+  });
+
+  test('a foreign-header index is not row-counted and the detail says so', () => {
+    withFixtureDir((dir) => {
+      write(dir, 'INDEX.md', `# Docs\n\n| doc | owner | kind | state | when |\n|---|---|---|---|---|\n${rows(ceiling + 100)}\n`);
+      const detail = evaluateDocTreeHealth(dir).detail ?? '';
+      expect(detail).not.toContain('row count');
+      expect(detail).toContain('foreign root INDEX, row ceiling not evaluated');
+    });
   });
 });
 

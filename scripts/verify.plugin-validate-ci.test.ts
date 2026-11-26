@@ -76,14 +76,13 @@ describe('plugin-validate surface at plugins/blackhole-claude', () => {
     expect(skill).toContain('description:');
   });
 
-  test('PreToolUse commands quote ${CLAUDE_PLUGIN_ROOT}', () => {
-    const ssot = JSON.parse(
-      fs.readFileSync(path.join(REPO, 'templates', 'hooks', 'pretooluse', 'hooks.json'), 'utf-8'),
-    ) as { hooks: { PreToolUse: { hooks: { command: string }[] }[] } };
-    for (const entry of ssot.hooks.PreToolUse) {
-      for (const h of entry.hooks) {
-        expect(h.command).toMatch(/^bun run "\$\{CLAUDE_PLUGIN_ROOT\}\/hooks\/[^"]+"$/);
-      }
+  test('hooks.json registers only the SessionStart plugin-root export, no PreToolUse', () => {
+    const parsed = JSON.parse(fs.readFileSync(path.join(bundle, 'hooks', 'hooks.json'), 'utf-8')) as {
+      hooks: Record<string, { hooks: { command: string }[] }[]>;
+    };
+    expect(Object.keys(parsed.hooks)).toEqual(['SessionStart']);
+    for (const entry of parsed.hooks.SessionStart) {
+      for (const h of entry.hooks) expect(h.command).toContain('BLACKHOLE_PLUGIN_ROOT');
     }
   });
 });

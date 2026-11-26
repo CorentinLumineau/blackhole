@@ -72,3 +72,26 @@ export const readClaimLabels = (config: { claim_labels?: unknown }): string[] =>
   }
   return [...new Set(raw as string[])];
 };
+
+export type ClaimApplyReport = {
+  claimed: Array<{ issue: number; label: string }>;
+  failed: Array<{ issue: number; label: string; error: string }>;
+};
+
+/**
+ * Adds each claim label to `issue` (the mirror of `releaseClaimLabels`). `labelAdd` is idempotent,
+ * so a fix-round respawn re-claims harmlessly. A forge error on one label lands in `failed` and the
+ * rest still go on: a claim never blocks dispatch.
+ */
+export async function applyClaimLabels(adapter: Pick<ForgeAdapter, 'labelAdd'>, issue: number, labels: string[]): Promise<ClaimApplyReport> {
+  const report: ClaimApplyReport = { claimed: [], failed: [] };
+  for (const label of labels) {
+    try {
+      await adapter.labelAdd({ type: 'issue', number: issue }, [label]);
+      report.claimed.push({ issue, label });
+    } catch (error) {
+      report.failed.push({ issue, label, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+  return report;
+}

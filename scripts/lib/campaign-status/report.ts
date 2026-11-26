@@ -19,7 +19,6 @@ import type {
   BlockedGroup,
   CheckpointMeta,
   ConfigSummaryInput,
-  DenyCount,
   ForgeCounts,
   IssueRow,
   LedgerJson,
@@ -59,8 +58,6 @@ export type StatusReportInput = {
   mergedPrs?: MergedPr[] | null;
   /** The plugin's own version, shown in the config rows. */
   pluginVersion?: string | null;
-  /** Hook deny/warn counts per rule (`collectDenyCounts`); absent ⇒ none. */
-  denyCounts?: DenyCount[];
   /** The usage-budget panel (`readBudgetPanel`); absent ⇒ not probed. */
   budget?: BudgetPanel;
   /** `run-context.json` as read, or null when absent or unreadable. */
@@ -443,7 +440,6 @@ export function buildStatusReport(input: StatusReportInput): StatusReport {
     links: buildLinks(repoWebUrl(forgeKind, forgeHost, config.repo ?? ''), forgeKind, config.status_page),
     config_rows: buildConfigRows(config, input.pluginVersion ?? null),
     drift: reconciled.drift,
-    deny_counts: input.denyCounts ?? [],
     budget: input.budget ?? NOT_PROBED,
     run: buildRunPanel({ config: config as Record<string, unknown>, runContext: input.runContext ?? null, pending: input.pending ?? [], docCarry: input.docCarry }),
     pending_decisions: pendingRows(input.pending ?? []),

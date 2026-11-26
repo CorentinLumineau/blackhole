@@ -146,7 +146,7 @@ Committed template: `.blackhole/config.json`
 | `ci_capacity.enabled` | no | Master switch for the forge reader (default `false`; `false` ⇒ it prints nothing and the worker count is the token budget's) |
 | `ci_capacity.lanes` | no | Runner labels the consumer's PR gate needs (default `[]`; an empty list reads nothing). A runner or queued job counts when it carries any of them; no label is assumed by the plugin |
 | `ci_capacity.queue_allowance` | no | Backlog beyond idle runners tolerated before workers are lowered, and the workers allowed once every runner in the lanes is busy (default `1`; integer `>= 0`) |
-| `claim_labels` | no | Contract claim labels the campaign releases on `stop` and on a drained queue, for issues with no open PR in flight (for example `["in-progress:claude"]`; default `[]` = off; read by `scripts/release-claims.ts`). **Resolution**: absent key ⇒ the default; a wrong type throws with the key path |
+| `claim_labels` | no | Contract claim labels the campaign adds to an issue at implementer dispatch (`scripts/claim-labels.ts`) and releases on `stop` and on a drained queue, for issues with no open PR in flight (for example `["in-progress:claude"]`; default `[]` = off; read by `scripts/release-claims.ts`). **Resolution**: absent key ⇒ the default; a wrong type throws with the key path |
 | `catchup` | no | Pacing preset of `/blackhole catchup` mode (ADR-054): the keys below. Never read by `run`. **Resolution**: absent block or key ⇒ the default; a wrong type throws with the key path |
 | `catchup.weekly_target_pct` | no | Share of the weekly allowance the pace floor reaches at the reset; the floor grows linearly over all 168 h of the week (default `80`; number in (0, 100]). **Resolution**: absent block or key ⇒ the default; a wrong type or range throws with the key path |
 | `catchup.five_hour.no_spawn_at` | no | 5-hour `used_percentage` at or above which a catchup spawns no new worker (default `75`; must be `<` `stop_workers_at`). **Resolution**: absent block or key ⇒ the default; a wrong type throws with the key path |
@@ -258,21 +258,11 @@ overwrite existing runtime config without user confirmation.
 
 ### Environment Variable Overrides
 
-Every field above is a `.blackhole/config.json` key. This section is for the one tunable
-(issue #970) that deliberately is **not**: the PreToolUse hooks' `.blackhole/hook-events/`
-rotation mechanism (`src/references/hook-schemas.md` § "Rotation") only ever sweeps when
-`.blackhole/config.json` is **absent** — a config-file-sourced setting would be definitionally
-unreadable in the one context that mechanism runs in, so it is read from the environment
-instead.
+Every field above is a `.blackhole/config.json` key. The one tunable that deliberately is not:
 
 | Variable | Default | Description |
 |----------|---------|--------------|
-| `BLACKHOLE_HOOK_EVENT_RETENTION_DAYS` | `14` | Age, in days, past which a `.blackhole/hook-events/` file becomes eligible for the sentinel-gated rotation sweep to archive into `.blackhole/archive/hook-events-rotated-<ts>/`. Any non-positive-integer value (unset, non-numeric, `0`, negative, fractional) falls back to the default rather than throwing. |
-
-This is not a registry of every pre-existing `BLACKHOLE_*` hook environment variable
-(`BLACKHOLE_HOOK_EVENT_DIR`, `BLACKHOLE_ASSIGNED_WORKTREE`, `BLACKHOLE_SCRATCHPAD_DIR`,
-`BLACKHOLE_CLAUDE_HOME`) — those are pre-existing, undocumented-here debt out of this issue's
-scope; only the rotation tunable is registered.
+| `BLACKHOLE_ARCHIVE_SNAPSHOT_RETENTION` | `2` | Number of pre-mutation `queue.json` / `findings-ledger.json` snapshots kept per file in `.blackhole/archive/`; older ones are deleted when a new snapshot is taken. Any non-positive-integer value (unset, non-numeric, `0`, negative, fractional) falls back to the default, so at least one snapshot always survives. |
 
 ## usage_budget
 
@@ -340,7 +330,7 @@ cell leaves out.
 | `forge` | `links` | — | Picks the forge the quick links point at | Other config |
 | `parallel_max` | `config` | Concurrency | | Budget |
 | `pareto_max_age_days` | none | — | Staleness threshold of the re-score; nothing the owner acts on | Other config |
-| `claim_labels` | none | — | Contract labels released on stop; the stop report lists them, not the page | Other config |
+| `claim_labels` | none | — | Contract labels claimed at implementer dispatch (`scripts/claim-labels.ts`) and released on stop; the stop report lists them, not the page | Other config |
 | `scratchpad_dir` | none | — | Where worktrees live on this machine; nothing the owner acts on | Other config |
 | `size_label_prefix` | none | — | Label spelling the sync reads; sizes appear on no panel | Other config |
 | `default_touch_paths` | none | — | Per-issue plan scope; each plan carries its own | Other config |

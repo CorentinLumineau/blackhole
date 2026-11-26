@@ -5,7 +5,7 @@ vcodes: [V-TEST-09]
 ### V-TEST-09 Hooks-Claim Audit (`V-TEST-09`, issue #787)
 *   **Context**: the Coverage-regression gate (`V-TEST-09`, BLOCK, `implementer.md` § 6) is
     structurally unmeasurable for any file under `templates/hooks/**` — those modules execute
-    only inside a subprocess spawned by `runPreToolUseHook`, so `bun test --coverage` never
+    only inside a hook subprocess, so `bun test --coverage` never
     instruments them. `implementer.md` § 6 requires a worker to report `unmeasurable`, never
     `pass`, when the diff's only changed source lives under that path, with real evidence of
     what was checked instead. This audit reuses `V-TEST-09` — no new code — since the underlying

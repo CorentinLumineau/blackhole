@@ -16,7 +16,6 @@ const STATE: Record<string, string | Buffer> = {
 };
 const MACHINE_ONLY: Record<string, string> = {
   '.blackhole/run-context.json': '{}',
-  '.blackhole/plugin-drift.json': '{}',
   '.blackhole/pace-log.jsonl': '{}',
   '.blackhole/usage-history.jsonl': '{}',
   '.blackhole/worker-context.json': '{}',

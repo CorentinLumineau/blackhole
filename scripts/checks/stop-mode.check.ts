@@ -115,11 +115,11 @@ export const findUsageStopViolations = (phaseStop: string): string[] => {
   return errors;
 };
 
-// The Spawn usage-verdict table (up to Spawn step 2) and Session resume step 7 (up to the next
+// The Spawn usage-verdict table (up to Spawn step 2) and Session resume step 5 (up to the next
 // heading) in orchestrator-runtime.md, which both decide what a usage stop does.
 const RUNTIME_SECTIONS: [string, string, RegExp][] = [
   ['usage verdict table', 'Usage gate (`usage_budget`', /\n2\. When the round includes/],
-  ['resume step 7', '7. **Resume after a pace or usage pause**', /\n#{1,6} /],
+  ['resume step 5', '5. **Resume after a pace or usage pause**', /\n#{1,6} /],
 ];
 
 export const findUsageRuntimeViolations = (runtime: string): string[] =>

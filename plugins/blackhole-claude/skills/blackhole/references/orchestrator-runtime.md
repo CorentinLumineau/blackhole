@@ -142,7 +142,6 @@ For each completed worker (case A, or case B after a successful recovery):
 
 1. Parse and validate return JSON (`scripts/validate-worker-json.ts` or harness hook output) — see `orchestrator-handoff.md` § Orchestrator validation and § Barrier triage. This validation is unconditional across every arrival path — direct return (case A), transcript-recovered (Recovery ladder rung 1), and resend-recovered (rung 2): the orchestrator never applies a worker's JSON to `queue.json`/`findings-ledger.json` from a hand-extracted or otherwise unvalidated payload (`V-BRIEF-01`, BLOCK).
 1a. **Enum-source pin** (issue #738): when the return's own PR modifies `scripts/lib/worker-json/**`, run step 1's validator with `--enum-source <PR worktree>`. The role enums (`scripts/lib/worker-json/constants.ts`) are otherwise read from the tree the validator runs in — the orchestrator's clone at the pre-merge commit — so a return whose PR *widens* an enum is rejected for a value its own branch legitimately declares, and the reject is indistinguishable from a genuinely malformed payload. Flag contract, default (the validator's own tree) and the exit-2 unresolvable-tree case: `scripts/validate-worker-json.ts` usage output. Validating an enum-widening return against the pre-merge tree and applying the result anyway is `V-BRIEF-01`. **Trust boundary**: the path passed to `--enum-source` is always the orchestrator's own recorded worktree for that issue (`queue.json`'s `worktree` field), never a path echoed from the worker's return JSON — the flag selects which tree's validator code runs, so a worker-supplied path would let a return choose the validator that judges it.
-1b. **Hook event ingestion** (issue #447, identity corrected by ADR-042/issue #893): glob `.blackhole/hook-events/*.json` **before** validating this worker's return JSON — a PreToolUse refusal is written by non-agent code precisely because the worker's own report cannot be relied on to mention it. Invoke `scripts/lib/hook-event-triage.ts` (`ingestHookEvents`) to perform the mechanical ingest: for each event, resolve `issue_ref` by matching its `worktree` field against `queue.json`'s in-flight `worktree` paths, then append or bump a `V-HOOK-01` (`tier: block`), `V-HOOK-02` (`tier: warn`), or `V-HOOK-03` (`tier: error` — wrapper fail-open / `hook-exec-failure`) findings-ledger row with `phase: "implement"`. Finding identity is **per class**, `(vcode, pattern_id, worktree)`, not per event (ADR-042) — a recurrence of a class already carrying an `open` row increments that row's `occurrences` and bumps `last_seen_at` rather than appending a second row; a class whose only prior row was `deferred` still gets a fresh `open` row, never a silent bump onto the deferred one. Full write mechanics: `findings-ledger.md` § Write protocol — never re-derived here. The consumed event file is then moved to `.blackhole/archive/hook-events-<turn-timestamp>/`, never unlinked. Event schema: `hook-schemas.md` § PreToolUse hook events. An event whose `worktree` matches no in-flight issue is still appended, with `issue_ref: null` — never dropped.
 2. **Ruling-revision quarantine** (issue #422, gated by `docs_governance.enabled`/`companion_files`): before applying this worker's mutations, compare its recorded spawn-time `rulings_revision` (step 2 above) against the ledger's current `rulings_revision`. On mismatch — **quarantine**: do not advance the phase; set `status: blocked`, `notes: awaiting-ruling-recheck`; add the issue to the coordinator's conflict list instead of applying the worker's normal mutations (step 3 below).
 3. Apply queue/ledger mutations per role, **serially, one completed worker at a time** — even
    though the batch itself ran in parallel, the orchestrator never parallelizes the
@@ -223,10 +222,7 @@ after reading checkpoint and forge sync:
    attempted) on a dirty tracked-file working tree. Treat a non-zero exit as a blocker: resolve
    it via the turn-start `git status --porcelain` dirty-check (`orchestrator.md` § Git &
    Worktree Hygiene) before proceeding with this turn's recovery sequence. This runs **first**
-   in this list, ahead of step 5's plugin-drift-signal scan specifically, because that scan
-   compares plugin-cache content against the live tree — the analysis note's highest-risk,
-   unmitigated call site (a stale live tree makes a real drift look absent, or an absent drift
-   look present). This step is a secondary net alongside `phase-loop.md`'s post-merge refresh
+   in this list. This step is a secondary net alongside `phase-loop.md`'s post-merge refresh
    (Merge protocol step 4.5): the post-merge refresh closes the window opened by blackhole's own
    merges; this step additionally bounds staleness to at most one turn's worth of drift from any
    other cause (e.g. a human push to the shared branch mid-campaign, or the very first turn
@@ -239,33 +235,7 @@ after reading checkpoint and forge sync:
    `route.body_hash` no longer matches; drift advances without re-run when artifacts match
    the current revision and are not stale.
 4. Inspect worktrees per `recovery-protocol.md` §2.
-5. Refresh the advisory plugin-cache drift signal (issue #800, ADR-030): run
-   `bun run --cwd <abs repo-root> "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/plugin-drift-signal.ts --repo-root <abs repo-root>`,
-   where `<abs repo-root>` is the campaign repo's main clone. `--repo-root` is required in a
-   consumer: without it the script describes its own folder, which is the plugin cache there,
-   not the campaign repo, and the script refuses to run. Existence-gated on
-   `scripts/plugin-drift-signal.ts` being present: inert when no blackhole install provides the
-   script — no error.
-   **Local-only**: skip it when the run context routes `state_store: branch`. That machine
-   installed the plugin fresh for this session and is reclaimed afterwards, so there is no
-   long-lived cache to drift; say "plugin drift: skipped (ephemeral machine)" once in the turn.
-   Surfaced on the `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts` dashboard when it reports content drift; full mechanism:
-   `blackhole-state.md` § Plugin-Drift Signal.
-6. **Ingest hook events at turn start** (ADR-042, issue #893): run
-   `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/lib/hook-event-triage.ts`, existence-gated on that script being present
-   (a consumer repo without it simply has nothing to run — no error). This closes the gap Triage
-   step 1b alone leaves open — a fail-open recorded between worker batches (or in a turn that
-   spawns no workers at all) previously sat unread until the next background-worker barrier;
-   this step surfaces it within the current turn instead. Mechanics — class identity, dedup,
-   archive-then-delete — are identical to step 1b's `ingestHookEvents` call, never re-derived
-   here. **On-throw disposition**: a non-zero exit is logged and the turn proceeds — this step
-   never blocks the orchestrator's own turn on a state-write-guard refusal or a missing/malformed
-   `.blackhole/findings-ledger.json`; the live ledger is left untouched by the write guard on
-   any refusal (`blackhole-state.md` § Write protocol), so a failed ingest here is a missed
-   visibility opportunity, never a corruption risk. The next turn's step 1b (when workers spawn)
-   or this same step 6 (next turn) will retry against whatever events remain on disk.
-
-7. **Resume after a pace or usage pause**: when the latest `.blackhole/pace-log.jsonl` line has
+5. **Resume after a pace or usage pause**: when the latest `.blackhole/pace-log.jsonl` line has
    `rate_limit_stop: true` (a pace `STOP-NEW`, or a usage `NO-SPAWN`, `STOP-WORKERS`, `PACE-WAIT`
    or `STOP-CAMPAIGN`), or the checkpoint carries `stopped_by: usage`, treat the previous turn as a
    pause: run no recovery action and no re-route. A turn that starts

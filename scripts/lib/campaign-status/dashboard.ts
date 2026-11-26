@@ -5,7 +5,6 @@ import { formatMergeNextItem, mergeNextOrder, trunkFixIssues } from '../merge-ne
 import { formatStackMergeOrder, stackMergeOrder } from '../stack-parent.ts';
 import { budgetRows } from './budget.ts';
 import { DECIDE_HINT, runRows } from './run-state.ts';
-import { safePatternId, topDenyCounts } from './deny-counts.ts';
 import { SCOPE_LABELS } from './record.ts';
 import { formatScopeLabel } from './scope-label.ts';
 import { severityRank } from '../worker-json/constants.ts';
@@ -20,7 +19,6 @@ import type {
   BudgetPanel,
   CheckpointMeta,
   ConfigSummaryInput,
-  DenyCount,
   ForgeCounts,
   IssueRow,
   LedgerFinding,
@@ -263,12 +261,9 @@ export type QueueHealth = 'healthy' | 'stalled' | 'degraded';
 /**
  * Queue health verdict for the dashboard's Counts block. Deliberately narrow: inputs are the
  * three counts `formatDashboard()` already has in hand (forge availability, blocked count,
- * in-flight count) — not plugin-drift or doc-health. Both of those are read and rendered
- * elsewhere (`main()` calls `renderPluginDriftWarning()` after `formatDashboard()`, and
- * `.blackhole/doc-health.json` is never read by `bun run status` at all), so folding either into
- * this verdict would either add a file-read dependency `formatDashboard()` doesn't have today or
+ * in-flight count) — not doc-health, which `bun run status` never reads, so folding it in would
  * assert something true about a signal this function cannot see. The label stays scoped to what
- * it actually covers rather than reading as a summary that subsumes state it knows nothing about.
+ * it actually covers.
  *
  * Priority order is load-bearing: an unreachable forge means the counts below cannot be trusted,
  * so `degraded` is checked first and overrides everything else regardless of blocked/in-flight.
@@ -337,7 +332,7 @@ export function renderStackMergeOrderSection(issues: Record<string, QueueIssue>)
 
 /** The campaign facts the page leads with, from the same report as `--json`: what the text dashboard repeats. */
 export type DashboardView = Pick<StatusReport, 'headline' | 'stage_counts' | 'moves' | 'scope_record' | 'decisions' | 'forge_checked'> &
-  Partial<Pick<StatusReport, 'deny_counts' | 'budget' | 'run' | 'pending_decisions'>>;
+  Partial<Pick<StatusReport, 'budget' | 'run' | 'pending_decisions'>>;
 
 const DECISIONS_SHOWN = 3;
 
@@ -363,15 +358,6 @@ export function renderViewSection(view: DashboardView, scopeLabel: string): stri
     const shown = view.decisions.slice(0, DECISIONS_SHOWN);
     lines.push('### Your decisions', ...shown.map((d) => `- ${d.date} ${d.text}`), ...capOverflowLine(view.decisions.length, shown.length), '');
   }
-  return lines;
-}
-
-/** Top hook rules by deny and warn count; always printed once the report carries the field. */
-export function renderDenyCountsSection(rows: DenyCount[]): string[] {
-  const lines = ['### Hook denials'];
-  if (rows.length === 0) lines.push('no hook denials recorded');
-  for (const r of topDenyCounts(rows)) lines.push(`- \`${safePatternId(r.pattern_id)}\` — ${r.deny} deny · ${r.warn} warn`);
-  lines.push('');
   return lines;
 }
 
@@ -461,7 +447,6 @@ export function formatDashboard(opts: {
   lines.push(...renderCompletedSection(done));
   lines.push(...renderFiledSection(filed));
   lines.push(...renderLedgerOpenSection(findings));
-  if (view?.deny_counts) lines.push(...renderDenyCountsSection(view.deny_counts));
   lines.push(...renderActiveWorkersSection(checkpointBody));
 
   return lines.join('\n').trimEnd();

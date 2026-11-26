@@ -1,15 +1,18 @@
 ---
 type: adr
 summary: "Extend #620's assigned-worktree write containment from `Write`/`Edit` to `Bash` file-write commands (new `bash-write-target-guard.js`, `bash-outside-assigned-worktree` BLOCK / `bash-write-target-unresolvable` WARN) — closes the confirmed mechanism gap behind issue #804's near-miss; unanimous 3/3 Design Track scorer pick, owner-delegated override of a pure dominance-margin block (no disagreement, no breaking consumer); plus a non-bundled Phase 0 dirty-shared-checkout WARN"
-status: accepted
+status: superseded
+superseded_by: ADR-065
 review_trigger: "on protocol change"
 created: 2026-09-03
-last_updated: 2026-09-03
+last_updated: 2026-11-26
 ---
 
 # ADR-029: Extend assigned-worktree write containment to Bash file-write commands
 
 ## Status
+
+Superseded by ADR-065 - 2026-11-26. The guards this ADR describes are removed; the original acceptance follows.
 
 Accepted
 
@@ -140,3 +143,7 @@ edit to `validate-bash-command.js`, doc updates to `hook-schemas.md`'s `pattern_
 `orchestrator-dispatch.md`'s #620 section, and one non-blocking bullet in `orchestrator.md`'s
 Git & Worktree Hygiene list for the secondary WARN layer. Full task breakdown, TDD test list,
 and execution stop conditions: `.blackhole/plans/issue-804-design.md` § Proposed Implementation.
+
+## Post-acceptance amendments
+
+- 2026-11-26 (issue #1645): superseded in full by ADR-065. The code, the ledger codes and the prose this ADR describes were retired in the follow-up slice of issue #1644.

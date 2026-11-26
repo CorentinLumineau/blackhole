@@ -1,10 +1,11 @@
 ---
 type: adr
 summary: "Main-clone git working-tree-mutation guard — a recoverability-graded refusal for `clean`/`checkout -- <path>`/`restore`/`reset --hard`/`apply`/`am` whose effective repo is the main clone, keyed on repo identity (never `BLACKHOLE_ASSIGNED_WORKTREE`) and detected by extending `findRemovalInvocations`' existing clause walk rather than re-deriving it"
-status: accepted
+status: superseded
+superseded_by: ADR-065
 review_trigger: "on protocol change"
 created: 2026-09-06
-last_updated: 2026-09-06
+last_updated: 2026-11-26
 related:
   - documentation/decisions/ADR-029-bash-write-target-worktree-containment.md
   - documentation/decisions/ADR-030-plugin-cache-version-bump-gate.md
@@ -14,6 +15,8 @@ related:
 # ADR-043: Main-clone git working-tree-mutation guard
 
 ## Status
+
+Superseded by ADR-065 - 2026-11-26. The guards this ADR describes are removed; the original acceptance follows.
 
 Accepted — 2026-09-06, by owner ruling on Option A. `design-aggregate.ts` returned `blocked` with
 a unanimous 3/3 winner; the block was procedural (`dominance` — margins 22.6/11.0/16.0 under a
@@ -544,3 +547,7 @@ does not exist (`router-897`'s evidence stood in place of a separate analyze pas
 2/3 (Breadth: governs every agent's Bash surface across the fleet — yes; Enforcement stakes:
 irrecoverable loss of user state, BLOCK-severity — yes; Foreclosure: does not rule out a category of
 future approaches — no).
+
+## Post-acceptance amendments
+
+- 2026-11-26 (issue #1645): superseded in full by ADR-065. The code, the ledger codes and the prose this ADR describes were retired in the follow-up slice of issue #1644.

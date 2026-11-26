@@ -20,7 +20,6 @@ import {
   selectBatch,
   shouldRecheckAfterLock,
   validateAiNotes,
-  verifyWorkflowSucceeded,
   type MergedPr,
 } from './release-cadence.ts';
 
@@ -297,19 +296,6 @@ describe('AI notes validation and prompt-injection safety', () => {
   test('redactSecret never leaves the token in logged text', () => {
     expect(redactSecret('token=abc123 leftover', 'abc123')).toBe('token=[redacted] leftover');
     expect(redactSecret('nothing', undefined)).toBe('nothing');
-  });
-});
-
-describe('verifyWorkflowSucceeded', () => {
-  test('green when any completed Verify run on the SHA succeeded', () => {
-    expect(verifyWorkflowSucceeded([{ conclusion: 'success' }])).toBe(true);
-    expect(verifyWorkflowSucceeded([{ conclusion: 'failure' }, { conclusion: 'success' }])).toBe(true);
-  });
-
-  test('red / missing Verify does not count as success', () => {
-    expect(verifyWorkflowSucceeded([])).toBe(false);
-    expect(verifyWorkflowSucceeded([{ conclusion: 'failure' }])).toBe(false);
-    expect(verifyWorkflowSucceeded([{ conclusion: 'cancelled' }])).toBe(false);
   });
 });
 

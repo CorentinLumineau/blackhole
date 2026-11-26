@@ -58,9 +58,9 @@ instructions: |
      otherwise **stage** (never write directly — no branch exists yet at Phase 2, ADR-021 D1) the
      bullet `- {constraint} (analyze: issue #N)` at
      `.blackhole/staged/<issue>/architecture-active-constraint-{n}.md` via Bash heredoc + atomic
-     `mv` (full-destination-path `.tmp` naming — `blackhole-state.md` § Staging, issue #911), and append a manifest entry (`route: "analyze"`, `sub_mode: "analyze"`, `produced_by:
+     `mv` (full-destination-path `.tmp` naming — `blackhole-state.md` § Staging, issue #911), and append a manifest entry via `bun run --cwd <abs repo-root> scripts/stage-manifest.ts append --manifest <abs repo-root>/.blackhole/staged/<issue>/manifest.json --issue <N> --entry-json '<entry json>'` (atomic `.tmp` + rename, never a shell redirect; exit 1 means refused, fix and re-run; an entry containing an apostrophe goes in a file in the worktree passed as `--entry-file <path>` instead of `--entry-json`) (`route: "analyze"`, `sub_mode: "analyze"`, `produced_by:
      "planner"`, `target_path: "ARCHITECTURE.md"`, `target_kind: "append_row"` —
-     `blackhole-state.md` § Staging) to `.blackhole/staged/<issue>/manifest.json`, gated by
+     `blackhole-state.md` § Staging) to the manifest, gated by
      `docs_governance.enabled`/`docs_governance.write_governance` (absent or `false` ⇒ skip
      entirely, same kill switch as `planner-tracks/04-design-track.md` § 4.8's design-route staging). The implementer's carry-step
      (`implementer.md` § Carry Staged Artifacts) commits the appended bullet inside the issue's own
@@ -122,9 +122,10 @@ instructions: |
         rather than staged as a second `documentation/INDEX.md` row fragment (issue #832, ADR-031
         Phase 2 — supersedes the paired staged `append_row` INDEX-row fragment issue #445
         introduced): the row is reproduced automatically at carry time from this field.
+        When an issue obliges the re-read, write `review_trigger` as `on issue-close #N`
+        (`doc-governance.md` § Lifecycle Frontmatter), not free text.
      3. Append one manifest entry (`route: "plan"`, `produced_by: "planner"`, `sub_mode: null`,
-        `target_kind: "new_file"` for the plan body) to `.blackhole/staged/<issue>/manifest.json`
-        per `blackhole-state.md` § Staging write protocol. Never commit into `documentation/` — the
+        `target_kind: "new_file"` for the plan body) via `bun run --cwd <abs repo-root> scripts/stage-manifest.ts append --manifest <abs repo-root>/.blackhole/staged/<issue>/manifest.json --issue <N> --entry-json '<entry json>'` (atomic `.tmp` + rename, never a shell redirect; exit 1 means refused, fix and re-run; an entry containing an apostrophe goes in a file in the worktree passed as `--entry-file <path>` instead of `--entry-json`). Never commit into `documentation/` — the
         implementer carry-step owns delivery.
      4. **Manifest write is mandatory, not narration** (issue #782): completing step 2 (the plan
         body file) without this manifest append — or describing the staged artifact in the plan
@@ -159,7 +160,9 @@ instructions: |
       which trees a given source compiles to, so a hand enumeration drifts the moment a target is
       added, renamed, or split (`V-INT-02`/`V-DRY-01`: one enumeration, one place). When the
       Touch-Paths are relative to a monorepo sub-package, set the plan's `package_root` frontmatter
-      to that package (`plan-template.md`) and write any repo-root file with a leading `/`.
+      to that package (`plan-template.md`) and write any repo-root file with a leading `/`. When that package owns a `documentation/` tree,
+      stage the plan with `target_path: <package_root>/documentation/plans/...` (the carry step
+      admits it only under `--package-root`).
   *   **Documentation Impact (when `docs_governance.enabled`)**: Companion/consumer docs the
       Touch-Paths affect, or `None — <justification>`. Omit this bullet's output section entirely
       when `docs_governance.enabled` is absent or `false` (see Plan Output File Template below).
