@@ -3,7 +3,6 @@ import { classPreview } from './blocked-classes.ts';
 import { BOARD_COLUMNS } from './board.ts';
 import { budgetRows } from './budget.ts';
 import { runRows } from './run-state.ts';
-import { topDenyCounts } from './deny-counts.ts';
 import { SCOPE_LABELS } from './record.ts';
 import { formatScopeLabel } from './scope-label.ts';
 import { campaignName, elseClasses, inProgressItems, ownerDetail, readyToMergeDetail } from './report.ts';
@@ -278,13 +277,6 @@ function findingsSection(r: StatusReport): string {
   return section('Open findings', `<ul class="lines">${rows.join('')}</ul>`, r.ledger_open.length);
 }
 
-function denySection(r: StatusReport): string {
-  const top = topDenyCounts(r.deny_counts);
-  if (top.length === 0) return section('Hook denials', empty('no hook denials recorded'), 0);
-  const rows = top.map((c) => `<li><code>${escapeHtml(c.pattern_id)}</code> <span class="meta">${escapeHtml(c.deny)} deny · ${escapeHtml(c.warn)} warn</span></li>`);
-  return section('Hook denials', `<ul class="lines">${rows.join('')}</ul>`, r.deny_counts.length);
-}
-
 const STYLE = `
 :root {
   --bg: #f7f7f5; --surface: #ffffff; --text: #1d1d1b; --muted: #5f5f5a; --border: #e2e1dc;
@@ -382,8 +374,7 @@ export function renderStatusHtml(report: StatusReport): string {
     hostSection(report),
     eventsSection(report),
     findingsSection(report),
-    denySection(report),
-    '</details>',
+      '</details>',
     '</main>',
     '</body>',
     '</html>',

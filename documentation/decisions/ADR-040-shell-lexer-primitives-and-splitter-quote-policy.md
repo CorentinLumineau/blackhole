@@ -1,10 +1,11 @@
 ---
 type: adr
 summary: "Extracts the uniform shell-lexer primitives the three PreToolUse guards each reimplement (skipQuotedSpan ×5, isRedirectAmpersand ×3, brace-group predicate ×3) into shell-lexer.js, while deliberately NOT unifying the three clause splitters: bash-write-target-guard's splitter must be quote-AWARE and worktree-removal-guard's must be quote-UNAWARE, and each policy is fail-closed for its own detection semantics — a union splitter (the option the issue itself proposed) reopens the F-00065 eval-wrapped-removal bypass pinned at hooks-validate-bash.test.ts:2367 and, in the other direction, turns a sed script containing a quoted separator from deny into allow against the main clone; both blind critics filed the evaluation's only two CRITICAL findings against that option, design-aggregate.ts returned blocked on dominance+disagreement (critics ranked the minimal option D first), and the owner ruled for A on the same-risk-less-benefit asymmetry"
-status: accepted
+status: superseded
+superseded_by: ADR-065
 review_trigger: "on file change"
 created: 2026-09-06
-last_updated: 2026-09-06
+last_updated: 2026-11-26
 related:
   - documentation/decisions/ADR-029-bash-write-target-worktree-containment.md
   - documentation/decisions/ADR-030-plugin-cache-version-bump-gate.md
@@ -14,6 +15,8 @@ related:
 # ADR-040: Shared shell-lexer primitives, and why the three clause splitters stay divergent
 
 ## Status
+
+Superseded by ADR-065 - 2026-11-26. The guards this ADR describes are removed; the original acceptance follows.
 
 Accepted — 2026-09-06 (issue #863; owner ruling at the design gate, Option A over both blind
 critics' Option D).
@@ -276,3 +279,7 @@ gate, not through a `ready` verdict.
   maintenance-hazardous instance in the catalogue. If a future reader concludes the critics were
   right, the honest revisit condition is a measurement this record does not have: whether the
   11-site migration ever produced a regression the 5-site one would not have.
+
+## Post-acceptance amendments
+
+- 2026-11-26 (issue #1645): superseded in full by ADR-065. The code, the ledger codes and the prose this ADR describes were retired in the follow-up slice of issue #1644.

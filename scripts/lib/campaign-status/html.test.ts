@@ -16,7 +16,7 @@ function report(queue: QueueJson, extra: Partial<Parameters<typeof buildStatusRe
     checkpointBody: `---\norchestrator_turn_id: 7\n---\n\n## Notes\n\nMerged #2 ${HOSTILE}\n`,
     forge: { openIssues: 3, openPrs: 1, ok: true },
     paceLine: 'pace: GO (session 12%)',
-    hostNotes: ['⚠ Plugin cache drift: layer 2'],
+    hostNotes: ['host note'],
     generatedAt: '2026-11-11T12:00:00.000Z',
     ...extra,
   });
@@ -123,7 +123,7 @@ describe('renderStatusHtml — self-contained page', () => {
 
   test('host notes and pace line are shown', () => {
     expect(html).toContain('pace: GO (session 12%)');
-    expect(html).toContain('Plugin cache drift');
+    expect(html).toContain('host note');
   });
 
   test('an unrecorded scope prints the shared label, never "Scope not recorded"', () => {

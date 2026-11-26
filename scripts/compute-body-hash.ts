@@ -5,7 +5,7 @@ import { computeBodyHash } from './lib/body-hash.ts';
 // recompute step. Reads `{"title": "...", "body": "..."}` as JSON from stdin rather
 // than shell-interpolated argv: issue titles/bodies contain quotes, backticks, `$`,
 // and newlines that would break naive `--title "$TITLE"` argv passing. Same
-// CLI/library split convention as `scripts/lib/plugin-drift.ts` / `scripts/plugin-drift-signal.ts`.
+// CLI/library split convention as `scripts/lib/plugin-drift.ts`.
 
 async function readStdin(): Promise<string> {
   const chunks: Buffer[] = [];

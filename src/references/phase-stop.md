@@ -173,7 +173,7 @@ the same drain with no wake, and the list at the end of this section holds for a
 5. **Report** per Exit Invariant 6: the verdict, the 5-hour and weekly %, `wake_at` in local time,
    and that the campaign resumes on its own (or, for `STOP-CAMPAIGN`, on the owner's next `run`).
 6. **Resume** — the wake (or any turn after `wake_at`) runs `orchestrator-runtime.md` § Session
-   resume & recovery step 7: the spawn-round gates run again and the campaign continues from
+   resume & recovery step 5: the spawn-round gates run again and the campaign continues from
    `queue.json` as left. A turn before `wake_at` spawns nothing and ends.
 
 Never on a usage stop:

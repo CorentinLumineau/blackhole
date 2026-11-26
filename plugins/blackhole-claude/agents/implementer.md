@@ -114,8 +114,8 @@ Your work is strictly governed by the 5-field contract delegated to you by the o
         detected the gate degrades to a logged no-op (never a false pass, per § No-runner
         degradation), and the completion note must say plainly that no runner was found.
         Coverage is structurally **unmeasurable** for any file under `templates/hooks/**` — those
-        modules execute only inside a subprocess spawned by `runPreToolUseHook`
-        (`scripts/hooks-validate-file.test.ts`), so `bun test --coverage` never instruments them;
+        modules execute only inside a hook subprocess, so `bun test --coverage` never
+        instruments them;
         when the diff's only changed source lives under that path, this gate MUST be reported as
         `unmeasurable`, never `pass`. An `unmeasurable` report must state what was verified
         instead — e.g. the end-to-end behavioral test-case count for the affected hook before and
@@ -285,8 +285,7 @@ only remedy left is key rotation, not a fix commit.
     2. `templates/hooks/pretooluse/patterns/file-patterns.json`, repo-root-relative (resolves on
        any install that vendors blackhole's full source tree — including this repo's own
        dogfooding install — since it is the hand-authored SSOT, always present there).
-    Read the file's `sensitiveFiles[]` array only (`blockedSystemPaths`/`pathTraversal` belong to
-    #447's own Bash/Write-Edit interception, not this check). Do not restate, paste, or re-derive
+    Read the file's `sensitiveFiles[]` array. Do not restate, paste, or re-derive
     any pattern from that array anywhere in this file.
 *   **Match rule**: for every path about to be staged, test it against every entry in
     `sensitiveFiles[]` by constructing `new RegExp(entry.pattern, entry.flags)` and testing the

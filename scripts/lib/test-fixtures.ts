@@ -1,5 +1,4 @@
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
 import {
@@ -19,7 +18,7 @@ import {
   root,
 } from './build/paths.ts';
 import { finalizeClaudePluginBundle } from './build/claude-plugin-runtime.ts';
-import { makeTempDir, readJsonFile } from './fs.ts';
+import { makeTempDir } from './fs.ts';
 
 // ADR-007 R6 — shared bun:test fixture kit: distribution-tree population, temp-dir lifecycle, and
 // (since #447) the PreToolUse hook subprocess harness. Delegates to lib/build compile/manifest
@@ -88,13 +87,6 @@ export const populateCodexFixtureTree = (destRoot: string): void => {
   );
 };
 
-// PreToolUse hook fixture kit (#447). The two validators under templates/hooks/pretooluse/ ship
-// verbatim (no src/ compile pass), so their behavioral suites exercise the real script through a
-// subprocess with hook-shaped stdin — the idiom already established by validate-worker-json's
-// --hook tests. Both suites share this one spawn/temp-repo path rather than duplicating it.
-
-export const PRETOOLUSE_HOOKS_DIR = path.join(root, 'templates', 'hooks', 'pretooluse');
-
 /** Minimum wall time of `runs` calls after one warm-up call: the minimum damps scheduler noise, so a
  * timing budget measures the code, not a busy CI runner. Shared by every hook timing test. */
 export const minMs = (run: () => unknown, runs = 3, now: () => number = () => performance.now()): number => {
@@ -147,83 +139,12 @@ export const expectLinearTime = <T>(options: {
   );
 };
 
-export type HookRunResult = { exitCode: number; stdout: string; stderr: string };
-
-/** Runs a PreToolUse hook script with `payload` on stdin. `hooksDir` is overridable so a suite can
- * point at a corrupted copy of the tree and exercise the fail-closed pattern-load path.
- * `eventDir`, when passed, is threaded through as `BLACKHOLE_HOOK_EVENT_DIR` so a suite can pin
- * the durable-record sink explicitly instead of relying on `cwd`'s git resolution (#604) —
- * omitted, the spawn's env is built exactly as before, so none of the existing call sites change
- * behavior. `assignedWorktree`, when passed, is threaded as `BLACKHOLE_ASSIGNED_WORKTREE` (#620).
- * `scratchpadDirEnv`, when passed, is threaded as `BLACKHOLE_SCRATCHPAD_DIR` (#729) — the opt-in
- * override that admits the harness's own per-session scratchpad directory as a trusted
- * containment root even when it is not a registered git worktree at all. `claudeProjectDir`, when
- * passed, is threaded as `CLAUDE_PROJECT_DIR` — the git-independent fallback sink `recordEvent`
- * consults on an anomalous `mainCloneRoot` failure; omitted, the spawn's env is built exactly as
- * before, so none of the existing call sites change behavior. `claudeHome`, when passed, is
- * threaded as `BLACKHOLE_CLAUDE_HOME` (issue #870) — points `sibling-plugin-guard.js`'s
- * `installed_plugins.json` read at a fixture directory instead of the real machine's
- * `~/.claude/`.
- *
- * Unlike every other optional parameter above, `BLACKHOLE_CLAUDE_HOME` is set UNCONDITIONALLY —
- * omitted, it defaults to `NO_CLAUDE_HOME_SENTINEL` (a directory guaranteed never to exist)
- * rather than leaving the env var unset. A machine running this suite can genuinely have a
- * sibling mercure plugin registered in its own real `~/.claude/plugins/installed_plugins.json`
- * (this repo's own dogfooding install is exactly that machine) — leaving the var unset would let
- * `sibling-plugin-guard.js` fall through to `os.homedir()` and read that real file, silently
- * flipping every pre-existing hook test that doesn't explicitly exercise issue #870's defer
- * branch into exercising it by accident. Pinning a guaranteed-absent sentinel by default is what
- * keeps every other call site's behavior byte-identical regardless of what is installed on the
- * machine actually running the test. */
-const NO_CLAUDE_HOME_SENTINEL = path.join(os.tmpdir(), 'blackhole-hook-fixtures-no-claude-home');
-
-export const runPreToolUseHook = async (
-  script: string,
-  payload: unknown,
-  cwd: string,
-  hooksDir: string = PRETOOLUSE_HOOKS_DIR,
-  eventDir?: string,
-  assignedWorktree?: string,
-  scratchpadDirEnv?: string,
-  claudeProjectDir?: string,
-  claudeHome?: string,
-): Promise<HookRunResult> => {
-  const extraEnv: Record<string, string> = {};
-  if (eventDir) extraEnv.BLACKHOLE_HOOK_EVENT_DIR = eventDir;
-  if (assignedWorktree) extraEnv.BLACKHOLE_ASSIGNED_WORKTREE = assignedWorktree;
-  if (scratchpadDirEnv) extraEnv.BLACKHOLE_SCRATCHPAD_DIR = scratchpadDirEnv;
-  if (claudeProjectDir) extraEnv.CLAUDE_PROJECT_DIR = claudeProjectDir;
-  extraEnv.BLACKHOLE_CLAUDE_HOME = claudeHome || NO_CLAUDE_HOME_SENTINEL;
-  // The containment guards only act on campaign workers (ADR-047), and these suites exercise
-  // those guards, so a payload is a worker's unless it says otherwise. A payload that carries an
-  // `agent_type` key at all (even `undefined`, which serializes away) is sent as written.
-  const sent =
-    payload && typeof payload === 'object' && !('agent_type' in payload)
-      ? { ...(payload as Record<string, unknown>), agent_type: 'implementer' }
-      : payload;
-  const proc = Bun.spawn({
-    cmd: ['bun', 'run', path.join(hooksDir, script)],
-    stdin: new Blob([JSON.stringify(sent)]),
-    stdout: 'pipe',
-    stderr: 'pipe',
-    cwd,
-    ...(Object.keys(extraEnv).length > 0 ? { env: { ...process.env, ...extraEnv } } : {}),
-  });
-  const [exitCode, stdout, stderr] = await Promise.all([
-    proc.exited,
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
-  return { exitCode, stdout, stderr };
-};
-
 /** Runs a git setup/action step and throws immediately on failure — `result.error` first
  * (spawn-itself failure, e.g. `git` not on PATH), then a non-zero exit `status` (git ran but
  * reported a failure) — so a silently swallowed git failure can no longer leave a fixture
  * proceeding against a repo that isn't in the state the caller believes (#756/#747: a masked
  * `git commit` failure surfaced only as an unrelated downstream `fs.realpathSync` ENOENT).
- * Named, signature and message shape reused verbatim from `hooks-validate-bash.test.ts`'s own
- * `runGit` (V-INT-01/V-INT-02); `encoding: 'utf-8'` makes `stderr` a plain string. */
+ * Named, signature and message shape reused so one `runGit` exists (V-INT-01/V-INT-02); `encoding: 'utf-8'` makes `stderr` a plain string. */
 export const runGit = (cwd: string, args: string[]): void => {
   const result = spawnSync('git', args, { cwd, encoding: 'utf-8' });
   if (result.error) {
@@ -355,73 +276,6 @@ export const writeCampaignConfig = (mainRepo: string, config: Record<string, unk
   fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify(config, null, 2), 'utf-8');
 };
 
-export type WriteInstalledPluginsOptions = {
-  /** When `true`, each plugin key gets a real `installPath` directory (never the literal string
-   * `/fake/path`) containing a valid `hooks/hooks.json` (one `Bash`-matcher `PreToolUse` entry)
-   * plus its referenced, non-empty script — the fixture shape `isPluginHealthy` (issue #969)
-   * reads as healthy. Omitted or `false` (the default) is byte-for-byte identical to this
-   * function's pre-#969 behavior: `installPath: '/fake/path'`, nothing written to disk. */
-  healthy?: boolean;
-};
-
-/** Writes `<claudeHome>/plugins/installed_plugins.json` with a `plugins` map keyed by
- * `pluginKeys` (e.g. `mercure@some-marketplace`), each carrying one placeholder row — the shape
- * `sibling-plugin-guard.js` reads (issue #870) and `hook-sources.ts` already reads for a
- * different purpose (#912). Tests exercising the sibling-plugin-defer guard write a minimal
- * fixture through this one helper rather than hand-rolling the file shape at each call site,
- * mirroring `writeCampaignConfig` above. See `WriteInstalledPluginsOptions.healthy` (issue #969)
- * for the opt-in mode that also populates a real, health-check-passing `installPath` on disk. */
-export const writeInstalledPlugins = (
-  claudeHome: string,
-  pluginKeys: string[],
-  opts: WriteInstalledPluginsOptions = {},
-): void => {
-  const dir = path.join(claudeHome, 'plugins');
-  fs.mkdirSync(dir, { recursive: true });
-  const plugins: Record<string, unknown[]> = {};
-  for (const key of pluginKeys) {
-    if (opts.healthy) {
-      const slug = key.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const installPath = path.join(claudeHome, 'plugin-installs', slug);
-      const hooksDir = path.join(installPath, 'hooks');
-      fs.mkdirSync(hooksDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(hooksDir, 'validate-bash-command.js'),
-        '#!/usr/bin/env bun\n// healthy fixture stub (issue #969) — never executed, only statSync-checked\n',
-        'utf-8',
-      );
-      const hooksManifest = {
-        hooks: {
-          PreToolUse: [
-            {
-              matcher: 'Bash',
-              hooks: [
-                {
-                  type: 'command',
-                  command: 'bun run ${CLAUDE_PLUGIN_ROOT}/hooks/validate-bash-command.js',
-                },
-              ],
-            },
-          ],
-        },
-      };
-      fs.writeFileSync(path.join(hooksDir, 'hooks.json'), JSON.stringify(hooksManifest, null, 2), 'utf-8');
-      plugins[key] = [{ scope: 'user', installPath, version: '0.0.0' }];
-    } else {
-      plugins[key] = [{ scope: 'user', installPath: '/fake/path', version: '0.0.0' }];
-    }
-  }
-  fs.writeFileSync(path.join(dir, 'installed_plugins.json'), JSON.stringify({ plugins }, null, 2), 'utf-8');
-};
-
-export const readHookEvents = (repoRoot: string): Record<string, unknown>[] => {
-  const dir = path.join(repoRoot, '.blackhole', 'hook-events');
-  if (!fs.existsSync(dir)) return [];
-  return fs
-    .readdirSync(dir)
-    .map((f) => readJsonFile(path.join(dir, f), path.join(dir, f)) as Record<string, unknown>);
-};
-
 export const populateClaudeFixtureTree = (destRoot: string): void => {
   compileGeminiTree(
     destRoot,
@@ -439,36 +293,3 @@ export const populateClaudeFixtureTree = (destRoot: string): void => {
   );
 };
 
-// Statements that can rebind what a bare grep/rg/sed word runs: masking must stay off.
-export const REBINDING_ROWS = (t: string) => [
-  `unset PATH; grep '${t}'`,
-  `unset -v PATH; grep '${t}'`,
-  `unset PATH\ngrep '${t}'`,
-  `BASH_CMDS[grep]=./grep; grep '${t}'`,
-  `BASH_CMDS[rg]=./s; rg '${t}'`,
-  `printf -v PATH . ; grep '${t}'`,
-  `read -r PATH < f; grep '${t}'`,
-  `mapfile PATH < f; grep '${t}'`,
-  `shopt -s expand_aliases\nBASH_ALIASES[grep]='tmux new'\ngrep '${t}'`,
-  `BASH_ALIASES[grep]='tmux new' && grep '${t}'`,
-  `PATH=. && grep '${t}'`,
-  `cd sub && grep '${t}'`,
-  `declare PATH=. ; grep '${t}'`,
-  `export PATH=.; grep '${t}'`,
-  `hash -p ./g grep; grep '${t}'`,
-  `enable -f ./x grep; grep '${t}'`,
-  `command -p x; grep '${t}'`,
-  `{ unset PATH; } ; grep '${t}'`,
-  `( unset PATH ) ; grep '${t}'`,
-  `true & unset PATH & grep '${t}'`,
-  `true || unset PATH; grep '${t}'`,
-  `sort -o f x; grep '${t}'`,
-  `cat x > f; grep '${t}'`,
-  `grep () ( awk 'BEGIN{system(ARGV[1])}' "$1" ) ; grep '${t}'`,
-  `grep ()( awk 'BEGIN{system(ARGV[1])}' "$1" ) ; grep '${t}'`,
-  `rg () ( awk 'BEGIN{system(ARGV[1])}' "$1" ) ; grep '${t}'`,
-  `cut () ( x ) ; grep '${t}'`,
-  `head () ( true ) ; grep '${t}'`,
-  `grep ()\n( awk 'BEGIN{system(ARGV[1])}' "$1" )\ngrep '${t}'`,
-  `head () { true; } ; grep '${t}'`,
-];

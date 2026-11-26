@@ -65,9 +65,8 @@ Playbooks: `codex-skills/blackhole/references/phase-*.md`
   plugin. Same-version reinstall's cache-refresh semantics are undocumented by the platform
   (`.blackhole/plans/issue-800-research.md` § Assumption Audit) — when in doubt, use the
   documented unconditional fallback instead: `rm -rf ~/.claude/plugins/cache`, restart Claude
-  Code, then reinstall. See `templates/hooks/pretooluse/README.md` for the hooks-specific version
-  of this same procedure, and `blackhole-state.md` § Plugin-Drift Signal for the advisory
-  detection mechanism that surfaces a stale installed copy. **Local-only**: on a machine the run
+  Code, then reinstall. `pluginVersionWarning` (`scripts/lib/plugin-drift.ts`) surfaces a
+  running plugin older than an installed one. **Local-only**: on a machine the run
   context marks ephemeral (`state_store: branch`), the plugin is installed fresh for each session,
   so there is no stale cache to refresh.
 
