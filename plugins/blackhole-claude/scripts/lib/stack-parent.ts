@@ -3,7 +3,7 @@ import { childBranchFor } from '../stack-repair.ts';
 import { parseFrontmatterFields, parseMdFrontmatter } from './build/content.ts';
 import { headingSectionsOnce } from './markdown-headings.ts';
 import { extractBacktickPaths } from './plan-touch-path-ssot-pairs.ts';
-import { chainTip as graphChainTip, effectiveParent, reachesNode, withoutRegenerated, type StackGraph } from './stack-overlap.ts';
+import { chainTip as graphChainTip, effectiveParent, reachesNode, REGENERATED_PATHS, withoutRegenerated, type StackGraph } from './stack-overlap.ts';
 
 // Dispatch-time stack-parent selection (queue-dag.md § Step 3b). A ready issue whose touch_paths
 // overlap an issue that already has an open, unmerged PR is cut from that PR's branch instead of
@@ -73,6 +73,8 @@ export type StackParentOptions = {
    * clean. Absent or unlisted means unknown, so the file still counts.
    */
   pureAdditions?: Record<string, string[]>;
+  /** True in the repo that owns the build (`ownsBuildOutput`): build-output trees are then no overlap. */
+  buildOutput?: boolean;
 };
 
 const AMENDMENT = /^- .*? — (widen|narrow) — `([^`]+)`/;
@@ -150,12 +152,12 @@ export const withPlanTouchPaths = (
   );
 
 /** Narrowed paths only: each default member, regenerated file and broad/root-only glob is dropped individually. */
-const knownPaths = (paths: string[] | undefined, defaults: string[] | undefined): string[] =>
-  withoutRegenerated(paths ?? []).filter((g) => !defaults?.includes(g) && !isBroad(g));
+const knownPaths = (paths: string[] | undefined, defaults: string[] | undefined, buildOutput = false): string[] =>
+  withoutRegenerated(paths ?? [], REGENERATED_PATHS, buildOutput).filter((g) => !defaults?.includes(g) && !isBroad(g));
 
 /** Paths that may match concrete files: broad globs count here, as real files are evidence; prefixless and regenerated ones never do. */
-const matchablePaths = (paths: string[] | undefined, defaults: string[] | undefined): string[] =>
-  withoutRegenerated(paths ?? []).filter((g) => !defaults?.includes(g) && staticPrefix(g) !== '');
+const matchablePaths = (paths: string[] | undefined, defaults: string[] | undefined, buildOutput = false): string[] =>
+  withoutRegenerated(paths ?? [], REGENERATED_PATHS, buildOutput).filter((g) => !defaults?.includes(g) && staticPrefix(g) !== '');
 
 /** The open-PR issues of a queue as a stack graph: edges are `stacked_on`, nodes are issues with an open PR. */
 const queueGraph = (issues: Record<string, StackCandidate>): StackGraph => ({
@@ -183,8 +185,8 @@ export const pickStackParent = (
 ): StackParentPick | null => {
   const me = issues[String(issue)];
   if (!me || me.stacked_on != null || me.stacked_on_pr != null) return null;
-  const mine = knownPaths(me.touch_paths, opts.defaultTouchPaths);
-  const matchable = matchablePaths(me.touch_paths, opts.defaultTouchPaths);
+  const mine = knownPaths(me.touch_paths, opts.defaultTouchPaths, opts.buildOutput);
+  const matchable = matchablePaths(me.touch_paths, opts.defaultTouchPaths, opts.buildOutput);
   if (!matchable.length) return null;
   const roots = Object.entries(issues)
     .map(([k, v]) => ({ n: Number(k), v }))
@@ -194,9 +196,9 @@ export const pickStackParent = (
       // A list holding only regenerated files filters to empty: a known no-overlap, not unknown.
       if (files?.length) {
         const exempt = new Set(opts.pureAdditions?.[String(n)]);
-        return globsMatchFiles(matchable, withoutRegenerated(files).filter((f) => !exempt.has(f)));
+        return globsMatchFiles(matchable, withoutRegenerated(files, REGENERATED_PATHS, opts.buildOutput).filter((f) => !exempt.has(f)));
       }
-      const theirs = knownPaths(v.touch_paths, opts.defaultTouchPaths);
+      const theirs = knownPaths(v.touch_paths, opts.defaultTouchPaths, opts.buildOutput);
       return mine.length > 0 && theirs.length > 0 && touchPathsOverlap(mine, theirs);
     })
     .sort((x, y) => x.n - y.n);

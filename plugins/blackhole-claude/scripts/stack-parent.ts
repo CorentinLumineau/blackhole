@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { parseFlags, requireFlag } from './lib/argv-flags.ts';
+import { ownsBuildOutput } from './lib/build/paths.ts';
 import { createForgeAdapter } from './lib/forge-adapter/index.ts';
 import type { ForgeType } from './lib/forge-adapter/types.ts';
 import { readJsonFile } from './lib/fs.ts';
@@ -50,6 +51,8 @@ const readPlan = (n: number): string | null => {
 
 const repoRoot = path.resolve(typeof flags['repo-root'] === 'string' ? flags['repo-root'] : process.cwd());
 
+const buildOutput = ownsBuildOutput(repoRoot);
+
 const readSnapshot = async (): Promise<OpenPrSnapshot> => {
   const forge = (typeof flags.forge === 'string' ? flags.forge : 'github') as ForgeType;
   const adapter = createForgeAdapter({ repo: requireFlag(flags, 'repo-slug'), forge });
@@ -62,7 +65,8 @@ const recheck = async (pr: number): Promise<number> => {
   const decision = recheckStack(pr, snapshot, {
     isOwned: (branch) => owned.has(branch),
     conflicts: (me, other) =>
-      verifiedPrMergeTree(git, PR_REF_PREFIX, me, other),
+      verifiedPrMergeTree(git, PR_REF_PREFIX, me, other, buildOutput),
+    buildOutput,
   });
   console.log(JSON.stringify(decision));
   return decision.action === 'unknown' ? 3 : 0;
@@ -99,7 +103,7 @@ const dispatch = async (issue: number): Promise<number> => {
   const planned = withPlanTouchPaths(issues, readPlan);
   // No snapshot and no --parent-files: every open PR's files are unknown, so declared touch_paths decide.
   console.log(
-    JSON.stringify(pickStackParent(planned, issue, { parentFiles: parentFiles ?? {}, pureAdditions: pureAdditions(parentFiles ?? {}), defaultTouchPaths: defaultTouchPaths() })),
+    JSON.stringify(pickStackParent(planned, issue, { parentFiles: parentFiles ?? {}, pureAdditions: pureAdditions(parentFiles ?? {}), defaultTouchPaths: defaultTouchPaths(), buildOutput })),
   );
   return 0;
 };

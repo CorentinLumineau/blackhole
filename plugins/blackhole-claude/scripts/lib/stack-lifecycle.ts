@@ -126,6 +126,8 @@ export type RecheckOptions = {
   conflicts: (me: { number: number; headSha: string }, other: { number: number; headSha: string }) => ConflictVerdict;
   /** True for a head branch the campaign owns and may push to. */
   isOwned: (headRefName: string) => boolean;
+  /** True in the repo that owns the build (`ownsBuildOutput`). */
+  buildOutput?: boolean;
 };
 
 /** The snapshot without PRs younger than `me`: a younger PR stacks on ours, ours never moves for it. */
@@ -156,7 +158,7 @@ export const recheckStack = (meNumber: number, snapshot: OpenPrSnapshot, opts: R
   const me = snapshot.prs.find((p) => p.number === meNumber);
   if (!me) return { action: 'unknown', reason: `PR #${meNumber} is not in the open-PR snapshot` };
   if (!opts.isOwned(me.headRefName)) return { action: 'none' };
-  return toDecision(pickParent(meNumber, olderOnly(meNumber, snapshot), { conflicts: (a, b) => opts.conflicts(a, b) }));
+  return toDecision(pickParent(meNumber, olderOnly(meNumber, snapshot), { conflicts: (a, b) => opts.conflicts(a, b), buildOutput: opts.buildOutput }));
 };
 
 /** Changed files of each queue issue's open PR, read from the snapshot; a PR whose files are unknown stays out. */

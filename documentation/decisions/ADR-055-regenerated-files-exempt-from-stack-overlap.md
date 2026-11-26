@@ -233,3 +233,15 @@ All three scorers pick Option A unanimously, but the two critics' margins are be
   `CLAUDE_NATIVE_GENERATED_DIRS`, the subdirs the build cleans and rewrites, plus the root
   `SKILL.md`; `.claude/settings.json`, `progress.md`, `initiatives/` and maintainer skills are
   hand-maintained and stay overlaps. A conflict in `src/`, `templates/` or any other path still stacks.
+  The exemption is scoped to the repo whose build produces those trees: `ownsBuildOutput`
+  (`scripts/lib/build/paths.ts`) holds only when the target repo root carries `scripts/build.ts`
+  and `scripts/lib/build/paths.ts`, and every overlap site (`stack-check.ts`, `stack-parent.ts`)
+  passes that result as `buildOutput`, which defaults to false. In any other repo, a consumer where
+  `skills/`, `agents/`, `rules/`, `references/`, `.cursor/` and `plugins/` are hand-written, no
+  path is build output and a shared file there is an overlap as before.
+  **Supersedes** two earlier statements of this ADR, for the build-owning repo only: the
+  Alternatives Considered entry "Build target registry (`COMMITTED_TARGET_TREES`)", rejected because
+  those directories are hand-authored source in consumer repos, and the Option B objection built on
+  it. That reason still holds for consumers, which is why the registry is applied only where the
+  repo owns the build; it no longer holds for the build-owning repo, whose conflicts there are
+  resolved by `bun run build`. The decision that `REGENERATED_PATHS` stays a fixed constant is unchanged.

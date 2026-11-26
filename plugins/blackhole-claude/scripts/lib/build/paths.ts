@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import * as path from 'path';
 
 export const root = path.resolve(import.meta.dirname, '../../..');
@@ -95,3 +96,11 @@ const GENERATED_BUILD_PATHS: readonly string[] = [
 /** True when `file` lies in a tree `bun run build` regenerates from `src/` and `templates/`. */
 export const isGeneratedBuildPath = (file: string): boolean =>
   GENERATED_BUILD_PATHS.some((g) => (g.endsWith('/') ? file.startsWith(g) : file === g));
+
+/**
+ * True when `repoRoot` is a checkout whose own build produces the trees `isGeneratedBuildPath`
+ * names: it carries this build (`scripts/build.ts` and `scripts/lib/build/paths.ts`). Any other
+ * repo (a consumer) hand-writes `skills/`, `agents/`, `rules/` and `.cursor/`, so none of its paths is build output.
+ */
+export const ownsBuildOutput = (repoRoot: string): boolean =>
+  ['scripts/build.ts', 'scripts/lib/build/paths.ts'].every((f) => existsSync(path.join(repoRoot, f)));
