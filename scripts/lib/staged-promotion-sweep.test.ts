@@ -86,4 +86,58 @@ describe('sweepStaged', () => {
     sweepStaged(base({ targetExists: (p) => (probed.push(p), false), manifests: [{ issue: 7, manifest: { entries: [entry('package.json')] } }] }));
     expect(probed).toEqual([]);
   });
+
+  describe('append_row entries', () => {
+    const HEADER = '| path | summary | type | status | review_trigger |\n|------|---------|------|--------|----------------|\n';
+    const ROW_A = '| ADR-001-a.md | A | adr | accepted | on ADR acceptance |';
+    const ROW_B = '| ADR-002-b.md | B | adr | accepted | on ADR acceptance |';
+    const BULLET = '- Keep the sweep honest (ADR-099)';
+    const rowEntry = (target_path: string) => ({ ...entry(target_path), target_kind: 'append_row' });
+    const run = (target: string, targetContent: string | null, staged: string | null, status = 'merged') =>
+      stateOf(
+        base({
+          queue: { '7': { status } },
+          targetExists: () => targetContent !== null,
+          readTarget: () => targetContent,
+          readStaged: () => staged,
+          manifests: [{ issue: 7, manifest: { entries: [rowEntry(target)] } }],
+        }),
+      );
+    const DEC = 'documentation/decisions/INDEX.md';
+
+    test('decisions INDEX present but lacking the staged row is unpromoted_merged, not carried', () => {
+      expect(run(DEC, `${HEADER}${ROW_A}\n`, ROW_B)).toEqual(['unpromoted_merged']);
+    });
+
+    test('decisions INDEX already holding the staged row is carried', () => {
+      expect(run(DEC, `${HEADER}${ROW_A}\n${ROW_B}\n`, ROW_B)).toEqual(['carried']);
+    });
+
+    test('ARCHITECTURE.md without the citation suffix is unpromoted_merged; with it, carried', () => {
+      const arch = (b: string) => `# Arch\n\n## Active Constraints\n${b}\n`;
+      expect(run('ARCHITECTURE.md', arch('- Other rule (ADR-001)'), BULLET)).toEqual(['unpromoted_merged']);
+      expect(run('ARCHITECTURE.md', arch(BULLET), BULLET)).toEqual(['carried']);
+    });
+
+    test('an open issue with the row absent is pending_open_issue', () => {
+      expect(run(DEC, `${HEADER}${ROW_A}\n`, ROW_B, 'in-flight')).toEqual(['pending_open_issue']);
+    });
+
+    test('the retired root documentation/INDEX.md append_row stays carried when the target exists', () => {
+      expect(run('documentation/INDEX.md', `${HEADER}${ROW_A}\n`, ROW_B)).toEqual(['carried']);
+    });
+
+    test('target present but staged fragment unreadable is staged_path_missing, never carried', () => {
+      expect(run(DEC, `${HEADER}${ROW_A}\n`, null)).toEqual(['staged_path_missing']);
+    });
+
+    test('a fragment failing the shape check is not carried and does not throw', () => {
+      expect(run(DEC, `${HEADER}${ROW_A}\n`, '| only | two |')).toEqual(['unpromoted_merged']);
+    });
+
+    test('a new_file entry is still judged by target existence alone', () => {
+      const input = base({ targetExists: () => true, readTarget: () => 'x', readStaged: () => null, manifests: [{ issue: 7, manifest: { entries: [entry('documentation/plans/p.md')] } }] });
+      expect(stateOf(input)).toEqual(['carried']);
+    });
+  });
 });
