@@ -7,6 +7,7 @@
 | Roadmap | #110 unscored · #111 unscored · 0 re-scored this run | Workers take ready issues in this order: dependency wave, owner pins, priority, effort, oldest. Stale scores are redone first. |
 | Merge | leave-open · you merge | Every PR is driven to LGTM and left open for you to review and merge. |
 | Pacing | plan max · weekly 30% (resets Mon 16 Nov 09:30 UTC) · floor 45.71% (96 h / 168 h x 80%) · shortfall 15.71% · 5h caps 75/80 · lane unset | Spends about 15.71 points of weekly quota on backlog work and stops at 45.71%; 5h spawns stop at 75%, workers at 80%. |
+| CI capacity | ci_capacity absent | The worker count follows the token budget alone: the CI runner queue is not read. |
 | Budget | GO · 5h 40% (resets Fri 13 Nov 13:30 UTC) · weekly 30% (resets Mon 16 Nov 09:30 UTC) · 1 worker allowed · stops 5h 75/80%, weekly 45.71% · forecast 0.31%/h, weekly stop Sun 15 Nov 11:46 UTC | 1 worker starts now; spawning stops at 5h 75%, the campaign at weekly 45.71%. |
 | Status page | https://claude.ai/code/artifact/abc · reachable (probed 5 min ago) · template v4 | The stored page opens from this account and is refreshed at every checkpoint. |
 | Kaizen and staging | kaizen off · staging carry on | No improvement hunts run; staged docs carry into each PR. |

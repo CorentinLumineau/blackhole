@@ -86,6 +86,8 @@ gate adds two steps of its own:
   re-score (`forge-sync.md` § Score on ingest and re-score). It names the top 5 ready issues in
   `scripts/pareto-order.ts` order and how many scores the re-score wrote this run (scored since the
   sync's `refreshed_at`). It is display-only: no question, and an unscored issue reads `unscored`.
+- The CI capacity row (`ci_capacity`, `config-template.md` § ci_capacity) is display-only: it names whether the CI runner queue
+  lowers the worker count, its lanes and its queue allowance, and reads no forge. It asks no question.
 - The summary carries the same plugin-version warning as a `> ` line under its heading, in every
   mode including print-only; it never becomes a question.
 - Also run `bun run scripts/campaign-status.ts config-summary` once: the coordinator's docs-governance drift guard
@@ -97,7 +99,7 @@ gate adds two steps of its own:
 (`catchup` block, `config-template.md`) pre-fills what the run gate leaves to `usage_budget`:
 
 - Run `bun run scripts/campaign-status.ts --summary --mode catchup [--usage-file <path>] --json` instead of the plain
-  summary. The rows are the run's 14, with the run's Pacing row swapped for the catchup's **Pacing**: the usage reading, the floor (`floor 45.71% (96 h / 168 h x 80%)`: hours elapsed of the week times the weekly target), the shortfall,
+  summary. The rows are the run's 15, with the run's Pacing row swapped for the catchup's **Pacing**: the usage reading, the floor (`floor 45.71% (96 h / 168 h x 80%)`: hours elapsed of the week times the weekly target), the shortfall,
   the 5h caps and the lane. The Budget row judges by the floor budget.
 - Every value stays adjustable for this invocation only, as in a run: re-print the summary with
   `--floor <pct>`, `--no-spawn-at <pct>`, `--stop-workers-at <pct>` or `--lane <name>`. Nothing

@@ -42,7 +42,7 @@ Set `catchup.lane` per account before a second account runs on the same repo (th
    | `PACE-WAIT`, `NO-SPAWN`, `STOP-WORKERS` | Log the reason and exit; the next scheduled start decides again |
 
    No ready work is its own skip reason: log it and exit.
-5. **Launch gate.** Run `launch-gate.md` in its catchup form: the 14 rows with the catchup Pacing row, the
+5. **Launch gate.** Run `launch-gate.md` in its catchup form: the 15 rows with the catchup Pacing row, the
    preset pre-filled, every value adjustable for this invocation through the summary flags. An
    `--unattended` invocation passes `--unattended` to the summary, which makes it print-only.
 6. **Run the normal campaign** with the floor pinned in the orchestrator's spawn text, so every

@@ -1,3 +1,4 @@
+import { resolveCiCapacityConfig } from '../ci-capacity-reader.ts';
 import { DEFAULT_PACE_GATE, resolvePaceGateThresholds, type PaceGateThresholds } from '../pace-gate.ts';
 import { DEFAULT_RESOURCE_GATE, resolveResourceGateThresholds, type ResourceGateThresholds } from '../resource-gate.ts';
 import { resolveBudgetSettings } from './budget.ts';
@@ -23,6 +24,7 @@ export const LAUNCH_ROW_CLAIMS: Record<LaunchRowKey, readonly RowClaim[]> = {
   // `catchup` is claimed whole because the Pacing row is where a catchup's settings are shown: a run names only that the preset
   // exists (its values belong to the catchup form's own Pacing row), so the block is not repeated key by key in Other config.
   pacing: [{ block: 'usage_budget', keys: ['enabled', 'five_hour', 'weekly', 'windows', 'max_workers'] }, 'catchup'],
+  ci_capacity: ['ci_capacity'],
   budget: ['parallel_max'],
   status_page: ['status_page'],
   kaizen_staging: [
@@ -44,6 +46,7 @@ export const LAUNCH_ROW_LABELS: Record<LaunchRowKey, string> = {
   roadmap: 'Roadmap',
   merge: 'Merge',
   pacing: 'Pacing',
+  ci_capacity: 'CI capacity',
   budget: 'Budget',
   status_page: 'Status page',
   kaizen_staging: 'Kaizen and staging',
@@ -116,6 +119,25 @@ export function runPacingRow(config: Obj, budget: BudgetPanel): LaunchRow {
     `windows ${s.windows === null ? 'all' : s.windows.join('+')}`,
     `max ${plural(s.max_workers, 'worker')}`,
   );
+}
+
+/**
+ * The CI capacity row: whether the worker count is lowered from the consumer's own runner queue, and the lanes it reads.
+ * It shows the configuration only, never a live reading (the summary reads no forge). Display-only.
+ */
+export function ciCapacityRow(config: Obj): LaunchRow {
+  const make = (value: string, consequence: string): LaunchRow => row('ci_capacity', 'CI capacity', value, consequence);
+  let resolved;
+  try {
+    resolved = resolveCiCapacityConfig(config);
+  } catch (error) {
+    return make('ci_capacity invalid', `${error instanceof Error ? error.message : String(error)}: the CI reading is ignored, the worker count follows the token budget.`);
+  }
+  if (!resolved.enabled) return make(absent(config, 'ci_capacity') ? 'ci_capacity absent' : 'ci_capacity disabled', 'The worker count follows the token budget alone: the CI runner queue is not read.');
+  const lanes = resolved.lanes.length ? `lanes ${resolved.lanes.join('+')}` : 'no lanes';
+  const value = ['ci_capacity enabled', lanes, `queue allowance ${resolved.queue_allowance}`, 'repo-level runners, admin token'].join(' · ');
+  if (!resolved.lanes.length) return make(value, 'No lane is configured: nothing is read, the worker count follows the token budget alone.');
+  return make(value, `Workers are lowered, never raised, when queued jobs exceed idle runners plus ${resolved.queue_allowance}; a failed read leaves the count as is.`);
 }
 
 /** The Autonomy row: the grant mode and the thresholds a route must clear to proceed without asking. Display-only. */
