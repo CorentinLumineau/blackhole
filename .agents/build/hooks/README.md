@@ -69,8 +69,22 @@ For campaign-scoped callers, both write guards (`validate-file-changes.js` and t
 guard) treat the main clone's `.blackhole/` as a second allowed root, so workers can write
 `plans/`, `staged/<issue>/`, `queue.json`, `findings-ledger.json` and their `.tmp` files from a
 linked worktree. The root (`campaignStateRoot` in `utils/hook-event-log.js`) exists only when the
-main clone resolves, `.blackhole/config.json` exists, and the realpath is not a broad directory;
-it is derived from the main clone, so a link planted inside a worktree cannot mint it.
+anchored main clone resolves, `.blackhole/config.json` exists, and the realpath is not a broad
+directory; it is derived from the main clone, so a link planted inside a worktree cannot mint it.
+
+**Main-clone anchor.** The campaign config, the state dir, the configured `scratchpad_dir` and the
+sibling-plugin defer are read only from the main clone `anchoredMainClone(cwd)` returns: the clone
+the harness project dir (`CLAUDE_PROJECT_DIR`, accepted by `isHarnessProjectDir`) belongs to, and
+only when the git metadata in `cwd` names the same clone. A worker can rewrite that metadata (its
+worktree's `.git` pointer, a planted `.git`, a nested repository), so on its own it is only a claim.
+Without a valid project dir (unset, relative, missing, a linked worktree, or inside the worker's
+worktree or scratchpad) the anchor is `null` and those four sources grant nothing: the payload
+`scratchpad_dir`, `BLACKHOLE_SCRATCHPAD_DIR` and the user settings keep working. A session whose
+project dir is a linked worktree, or that works in another repo's worktree than its project's,
+therefore loses the config scratchpad and the state dir; start the campaign from the main clone.
+The deny record goes to the project dir's `.blackhole/hook-events` even when `cwd` is in a forged
+clone, and the hook-event rotation runs only when the anchor holds. A `cwd` in a repository other
+than the project's clone (a nested repo) is contained to its own root, in the Bash guard too.
 
 Trust is an allow-list of write shapes (`utils/state-dir-write-shape.js`), because the guard
 judges a path while the shell picks the file actually written. In the Bash guard, a target under
@@ -104,7 +118,8 @@ Bash write guard both call it, so a root is never trusted by one tool and refuse
 - **Scratchpad**: the payload's `scratchpad_dir` (the real PreToolUse payload carries it; it has no
   field for additional working directories), the configured `scratchpad_dir`, and
   `BLACKHOLE_SCRATCHPAD_DIR`. Each must be an existing directory that is not broad (never `/`,
-  `$HOME` or a bare temp root, judged on the path and on its realpath).
+  `$HOME` or a bare temp root, judged on the path and on its realpath). The configured one is read
+  from the anchored main clone only (see the main-clone anchor above).
 - **Cross-repo worktrees**: the union of `permissions.additionalDirectories` from two settings
   sources only: the user file `~/.claude/settings.json`, and `.claude/settings.json` plus
   `.claude/settings.local.json` of the harness project dir `CLAUDE_PROJECT_DIR`. The project dir is

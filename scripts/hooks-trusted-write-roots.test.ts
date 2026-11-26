@@ -132,8 +132,9 @@ describe('scratchpad leg: both tools admit the validated scratchpad', () => {
       const assigned = { BLACKHOLE_SCRATCHPAD_DIR: w.scratch, BLACKHOLE_ASSIGNED_WORKTREE: w.wtA };
       expect(await w.both(path.join(w.scratch, 'ea.txt'), { env: assigned })).toBe('allow');
       writeCampaignConfig(w.mainA, { forge: 'github', scratchpad_dir: w.scratch });
-      expect(await w.both(path.join(w.scratch, 'c.txt'))).toBe('allow');
-      expect(await w.both(path.join(w.scratch, 'ca.txt'), { env: { BLACKHOLE_ASSIGNED_WORKTREE: w.wtA } })).toBe('allow');
+      const anchored = { CLAUDE_PROJECT_DIR: w.mainA };
+      expect(await w.both(path.join(w.scratch, 'c.txt'), { env: anchored })).toBe('allow');
+      expect(await w.both(path.join(w.scratch, 'ca.txt'), { env: { ...anchored, BLACKHOLE_ASSIGNED_WORKTREE: w.wtA } })).toBe('allow');
     });
   });
 

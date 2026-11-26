@@ -19,7 +19,16 @@ const withState = async (fn: (state: string, wt: string, run: (command: string) 
     const state = path.join(fs.realpathSync(main), '.blackhole');
     for (const sub of ['staged/1', 'hook-events']) fs.mkdirSync(path.join(state, sub), { recursive: true });
     fs.writeFileSync(path.join(wt, 'x'), 'x');
-    await fn(state, wt, (command) => guardOf(UTILS).evaluateBashWriteTargets(command, wt));
+    // The guard reads the state dir from the clone the harness project dir names, so the in-process
+    // call sets it for the duration of the fixture.
+    const previous = process.env.CLAUDE_PROJECT_DIR;
+    process.env.CLAUDE_PROJECT_DIR = fs.realpathSync(main);
+    try {
+      await fn(state, wt, (command) => guardOf(UTILS).evaluateBashWriteTargets(command, wt));
+    } finally {
+      if (previous === undefined) delete process.env.CLAUDE_PROJECT_DIR;
+      else process.env.CLAUDE_PROJECT_DIR = previous;
+    }
   });
 
 const BLOCK = { tier: 'block', pattern_id: 'bash-outside-assigned-worktree' };

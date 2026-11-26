@@ -200,6 +200,8 @@ parsing it, so it has nothing to extract them from — a permanent, not temporar
 - **Declared (#620, Pattern B / manual use):** `BLACKHOLE_ASSIGNED_WORKTREE` is set to a registered family worktree, and the Write/Edit target resolves outside that single assigned root.
 - **cwd-derived (#907, the mechanism Pattern C actually reaches):** the env var is unset, empty, or not a registered family worktree, and the PreToolUse payload's own `cwd` resolves to a linked (non-main) worktree — that worktree (or the validated scratchpad root it nests under, when one is configured) becomes the sole assigned root automatically, no declaration needed. See `orchestrator-dispatch.md` § Implementer write-root containment for why this is the reachable mechanism under the native `Agent`/`Workflow` tool, where the declared env var never survives to a spawned worker at all.
 
+The campaign config, the state dir and the configured `scratchpad_dir` are read only from the main clone anchored to the harness project dir (`CLAUDE_PROJECT_DIR`) and confirmed against the git metadata in `cwd` (`anchoredMainClone`, `templates/hooks/pretooluse/README.md` § Campaign state dir trust); a clone a worker forges through that metadata is never a source, and with no valid project dir those sources grant nothing. A `cwd` in a repository other than the project's clone counts as a worker worktree (`readLinkedWorktreeRoot`).
+
 Containment falls back to `allWorktreeRoots(cwd)` unchanged (fail-open, the same degradation as an invalid `scratchpad_dir` in #510) only when neither path narrows: `cwd` resolves to the main clone itself (the orchestrator's/`planner`'s/`investigator`'s/`hunter`'s legitimate case), or a validated scratchpad candidate is present but does not nest the resolved worktree — deferred deliberately rather than silently dropped, since a single assigned-root string cannot represent two disjoint trusted roots at once.
 
 **Scope (ADR-047).** The containment checks above (`outside-worktree`,
@@ -224,7 +226,7 @@ resolves to itself, its `.git` file names a directory directly under this reposi
 after registration and a deleted worktree all fail the back-link. Then `scratchpad_dir` itself
 (the campaign's own `.blackhole/config.json` value, breadth-checked and admitted only when
 `isExistingDirectory()` confirms it is still present on disk) — a target sitting directly at the
-scratchpad root is in-bounds; the payload's own `cwd` worktree, always included when not already
+scratchpad root is in-bounds (read from the anchored main clone only); the payload's own `cwd` worktree, always included when not already
 covered above (#729); and, when set and valid (same breadth and existence checks as
 `scratchpad_dir`), an opt-in `BLACKHOLE_SCRATCHPAD_DIR` env var — a distinct mechanism from the
 config `scratchpad_dir` above, naming the harness's own per-session scratchpad directory, which
