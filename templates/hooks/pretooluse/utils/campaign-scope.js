@@ -17,7 +17,7 @@
  *      because workers run in linked worktrees.
  *   3. `BLACKHOLE_HOOK_SCOPE=all` restores the previous behaviour for every session.
  *
- * Path traversal, system paths, destructive-command patterns, worktree-removal safety and
+ * Path traversal, system paths, destructive-command patterns and
  * sensitive-file warnings stay on for every session; only containment is scoped.
  */
 

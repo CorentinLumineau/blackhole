@@ -12,7 +12,7 @@
 
 const { loadBashPatterns } = require('./utils/pattern-loader');
 const { matchFirstIgnoringNonExecutingText } = require('./utils/bash-context');
-const { evaluateWorktreeRemoval, oversizeCommandDecision } = require('./utils/worktree-removal-guard');
+const { oversizeCommandDecision } = require('./utils/oversize-command');
 const { evaluateGitMainCloneMutation } = require('./utils/git-main-clone-guard');
 const { evaluateBashWriteTargets } = require('./utils/bash-write-target-guard');
 const { shouldDeferToMercure } = require('./utils/sibling-plugin-guard');
@@ -93,13 +93,6 @@ const main = () => {
     return;
   }
 
-  // Dynamic check (#532, extended to rm-shaped removal in #803): whether removing a worktree is
-  // safe depends on the pushed state of the target worktree's branch — and, for an `rm`, on
-  // whether the target is a registered worktree at all — neither of which a static pattern can
-  // see. See worktree-removal-guard.js's module docstring.
-  const worktreeRemoval = evaluateWorktreeRemoval(command, cwd);
-  if (handleTieredResult(worktreeRemoval, { tool, command, allowedTiers: BLOCK_ONLY })) return;
-
   // Dynamic check (#897/ADR-043): refuses a working-tree-mutating git subcommand (clean,
   // checkout/restore of a pathspec, reset --hard/--merge, apply/am, a forced checkout/switch)
   // whose effective repository is the main clone — see git-main-clone-guard.js's module
@@ -136,7 +129,7 @@ const main = () => {
 // Top-level catch-all (#580): everything above this point is wrapped in `main()`'s own
 // synchronous call graph, but two `try/catch` blocks only cover JSON-parse and pattern-load
 // failures — an uncaught exception anywhere else (e.g. a non-string `cwd` reaching
-// worktree-removal-guard.js's `path.resolve`) used to fall through to the process boundary,
+// shell-invocation-scan.js's `path.resolve`) used to fall through to the process boundary,
 // which the wrapper (claude-native-settings.ts) treats as "validator could not run" and
 // converts to an ALLOW. Routing every uncaught exception through the same `failClosed()` the
 // two existing checks already use closes that class rather than patching individual crash

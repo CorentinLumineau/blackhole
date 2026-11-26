@@ -10,12 +10,12 @@
  * subcommand). Finding F-00034 is a reviewer running `git checkout <PR-branch> -- .` in the main
  * clone and staging ~60 files over the user's uncommitted work — a shape neither guard sees.
  *
- * Detection is not re-derived here: `findRemovalInvocations` (`worktree-removal-guard.js`) already
+ * Detection is not re-derived here: `findRemovalInvocations` (`shell-invocation-scan.js`) already
  * walks clause starts, simulates `cd` (including `||`-guarded and UNCERTAIN-wrapper unions),
  * normalizes executable spellings, and dispatches on git subcommand at exactly the point
  * `skipGitGlobalOptions` returns. This module only adds POLICY on top of the `kind: 'git-mutation'`
  * invocations that walk already emits — the subcommand→tier table, effective-repo identity, and
- * refusal prose (V-SOLID-01/V-PAT-01: the removal guard does not gain a second policy).
+ * refusal prose.
  *
  * Severity tracks recoverability, not "writes to disk" (design note § Context recoverability
  * table): `clean` (untracked files, no object ever created) and `checkout -- <path>`/`restore`
@@ -41,13 +41,8 @@
  */
 
 const path = require('path');
-const {
-  findRemovalInvocations,
-  extractGitRepoOverride,
-  oversizeCommandDecision,
-  scanBudgetExceededDecision,
-  SCAN_BUDGET_EXCEEDED,
-} = require('./worktree-removal-guard');
+const { findRemovalInvocations, extractGitRepoOverride, SCAN_BUDGET_EXCEEDED } = require('./shell-invocation-scan');
+const { oversizeCommandDecision, scanBudgetExceededDecision } = require('./oversize-command');
 const { worktreeRoot, mainCloneRoot } = require('./hook-event-log');
 
 /** True when `argTokens` carries any of `longNames` verbatim, or a bundled short-option token
@@ -140,7 +135,7 @@ const REASON_BY_PATTERN = {
     'second look before it runs unattended.',
 };
 
-/** Resolves `repoOverride`/`resolutionCwds` (the same candidate set `worktree-removal-guard.js`
+/** Resolves `repoOverride`/`resolutionCwds` (the same candidate set `shell-invocation-scan.js`
  * already computed for this invocation) to the set of directories this command could actually
  * target, in identity-check order. `repoOverride` (a `-C`/`--git-dir`/`--work-tree` value) takes
  * precedence over every `cd`-simulated candidate when present — the campaign's own protocol
@@ -155,8 +150,7 @@ const effectiveDirs = (repoOverride, resolutionCwds) => {
 };
 
 /** Resolves identity for `match` against every effective directory, preferring a CONFIRMED main-
- * clone verdict over a merely-unresolvable one (the same "confirmed beats cannot-verify"
- * precedent `evaluateOneInvocation` already applies in the sibling removal guard) — a `||`-guarded
+ * clone verdict over a merely-unresolvable one — a `||`-guarded
  * `cd` can widen the candidate set to include a directory this command does NOT end up running in,
  * so scanning every candidate and preferring the confirmed-unsafe outcome is what keeps this from
  * denying (or allowing) by coincidence rather than by verification. Returns `null` when no

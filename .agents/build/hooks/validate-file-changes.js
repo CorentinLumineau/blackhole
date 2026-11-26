@@ -133,7 +133,7 @@ const main = () => {
   // Chosen: fall back to the payload's own `cwd` as the allowed root. This never stalls a worker
   // operating within its own working directory (the overwhelmingly common case) while still
   // bounding writes to somewhere the session is actually known to be, closing the "anywhere on
-  // disk" gap — unlike `worktree-removal-guard.js`'s unresolvable-state case (always a git
+  // disk" gap — unlike `shell-invocation-scan.js`'s unresolvable-state case (always a git
   // context by construction, so "can't verify" is the highest-risk case there), a Write/Edit call
   // can legitimately happen outside git entirely, so an unresolvable git root is "no worktree
   // bound available", not "highest risk" — cwd is a real, present bound to fall back to instead of
