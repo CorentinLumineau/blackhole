@@ -300,7 +300,8 @@ Mirror every PR dependency onto the forge and read the forge's back: [§ PR depe
 ### 7. PR cross-reference
 
 If issue body or branch name contains `fixes #N` / `closes #N`, link `pr` on
-queue entry for issue N.
+queue entry for issue N. Linking an own open PR also moves an entry at `handle` or `plan` (not
+`in-flight`) to `phase: review`, so dispatch reviews that PR instead of planning or implementing again.
 
 An open PR that links no queue issue (work opened without one: a trunk fix, a dependency bump, a
 branch sync) is not adopted into `queue.json`, whose entries are issues. `bun run scripts/campaign-status.ts` lists it

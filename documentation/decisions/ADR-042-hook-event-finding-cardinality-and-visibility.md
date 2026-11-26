@@ -1,10 +1,11 @@
 ---
 type: adr
 summary: "Owner-ruled cardinality for hook-event ledger findings: identity per (vcode, pattern_id, worktree) carrying occurrences/last_seen_at, not per-event; closes the invisible-fail-open gap #893 reports by adding turn-start ingestion, open-only dedup for hook rows, occurrences/last_seen_at rendering with severity+recency sort, archive-then-delete of consumed events, and carrying event.detail into an enriched wrapper detail — design-aggregate.ts blocked (dominance, disagreement, breaking-consumer; three scorers, three winners), resolved by owner ruling A′"
-status: accepted
+status: superseded
+superseded_by: ADR-065
 review_trigger: "on a future high-cardinality event stream adopting or diverging from this per-class-with-count identity pattern, or on ledger dedup-key changes"
 created: 2026-09-06
-last_updated: 2026-09-06
+last_updated: 2026-11-26
 related:
   - documentation/decisions/ADR-021-durable-artifact-staging.md
   - documentation/decisions/ADR-030-plugin-cache-version-bump-gate.md
@@ -14,6 +15,8 @@ related:
 # ADR-042: Hook-event ledger finding identity is per-class-with-count, not per-event
 
 ## Status
+
+Superseded by ADR-065 - 2026-11-26. The guards this ADR describes are removed; the original acceptance follows.
 
 Accepted — 2026-09-06 (owner ruling, campaign design-approval gate; issue #893). The
 deterministic `scripts/design-aggregate.ts` verdict was `blocked` (three independent scorers,
@@ -330,3 +333,4 @@ scope, to be filed separately — this ADR is detection-and-visibility only.
   `hook-exec-error-$(date +%s%N).json` output *filename* still uses `%s%N` for uniqueness; on
   BSD/macOS this degrades to a literal trailing `N` rather than nanosecond precision, which is
   harmless for a filename and out of scope for this amendment.)
+- 2026-11-26 (issue #1645): superseded in full by ADR-065. The code, the ledger codes and the prose this ADR describes were retired in the follow-up slice of issue #1644.

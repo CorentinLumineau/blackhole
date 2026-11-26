@@ -42,7 +42,9 @@ flag already handles both shapes generically — `countEntities()` branches on
 (`scripts/lib/state-write-guard.ts`) — so `--entity-key issues` and `--entity-key findings`
 take the identical CLI invocation shape; no separate jq idiom or invocation form is needed
 per file. This note exists only because that generic handling is not obvious from the flag
-name alone.
+name alone. A first write may use either shape, but a rewrite against a live file is refused
+when the container type (`array` vs `object`) differs from the live one, and an `issues` key
+must be a positive issue number.
 
 ### Field rules
 

@@ -24,7 +24,7 @@ describe('status dashboard template — the Data type page contract', () => {
 
   test('carries an integer template version marker', () => {
     expect(TEMPLATE).toMatch(/<meta name="bh-template-version" content="\d+">/);
-    expect(TEMPLATE).toContain('<meta name="bh-template-version" content="9">');
+    expect(TEMPLATE).toContain('<meta name="bh-template-version" content="10">');
   });
 
   test('writes values with textContent only: no innerHTML, no inline handlers', () => {

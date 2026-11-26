@@ -1,6 +1,7 @@
 import { formatMergeNextItem, mergeNextOrder, trunkFixIssues } from '../merge-next.ts';
 import { when } from './budget.ts';
 import { DONE_STATUSES, isSameRepoKey } from './queue.ts';
+import { OWNER_GATE_UNCHECKED } from './owner-gate.ts';
 import type { BudgetPanel, QueueIssue } from './types.ts';
 
 // The decide round's report (`decision-parking.md` § Decide round): what ran since the last round,
@@ -119,7 +120,10 @@ function budgetUsed(b: BudgetPanel, baseline: DecideBaseline | null): string {
   return parts.join(', ') || 'no usage window read';
 }
 
-const waiting = (pending: number): string => (pending ? `${pending}, asked next` : 'none');
+function waiting(pending: number, ownerGateUnchecked?: string): string {
+  if (ownerGateUnchecked === undefined) return pending ? `${pending}, asked next` : 'none';
+  return `${pending ? `${pending}, asked next` : 'none found'}; ${OWNER_GATE_UNCHECKED} (${ownerGateUnchecked})`;
+}
 
 /** The report printed ahead of the decide round: what ran since the last round, then the decisions waiting. */
 export function buildDecideReport(input: {
@@ -127,6 +131,8 @@ export function buildDecideReport(input: {
   issues: Record<string, QueueIssue> | null;
   budget: BudgetPanel;
   pending: number;
+  /** Why the owner-gated PRs could not be read; absent when they were. */
+  ownerGateUnchecked?: string;
 }): string {
   return [
     '## Since the last decide round',
@@ -135,7 +141,7 @@ export function buildDecideReport(input: {
     `- Issues finished: ${workDone(input.baseline, input.issues)}.`,
     `- Open PRs in merge order: ${openPrs(input.issues)}.`,
     `- Weekly points used: ${budgetUsed(input.budget, input.baseline)}.`,
-    `- Decisions waiting for you: ${waiting(input.pending)}.`,
+    `- Decisions waiting for you: ${waiting(input.pending, input.ownerGateUnchecked)}.`,
     '',
   ].join('\n');
 }

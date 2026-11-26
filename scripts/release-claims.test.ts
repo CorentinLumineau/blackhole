@@ -81,6 +81,69 @@ describe('runReleaseClaims', () => {
     ]);
   });
 
+  const L = 'in-progress:claude';
+
+  test('--issues names a ready entry the stop just reset: its claim is released and commented', async () => {
+    write({ claim_labels: [L] }, [12], 'ready');
+    const f = fake({ [L]: [issue(12, L)] }, []);
+    const report = await runReleaseClaims(['--campaign-dir', dir, '--issues', '12'], { adapter: f.adapter });
+    expect(report).toEqual({ released: [{ issue: 12, label: L }], kept: [], failed: [] });
+    expect(f.calls).toEqual([
+      ['labelRemove', { type: 'issue', number: 12 }, [L]],
+      ['issueComment', 12, RELEASE_COMMENT],
+    ]);
+  });
+
+  test('--issues naming an issue with an open linking PR keeps the claim', async () => {
+    write({ claim_labels: [L] }, [12], 'ready');
+    const f = fake({ [L]: [issue(12, L)] }, [pr(50, 'Closes #12')]);
+    const report = await runReleaseClaims(['--campaign-dir', dir, '--issues', '12'], { adapter: f.adapter });
+    expect(report).toEqual({ released: [], kept: [{ issue: 12, label: L, pr: 50 }], failed: [] });
+    expect(f.calls).toEqual([]);
+  });
+
+  test('--issues leaves an unnamed ready or blocked entry untouched', async () => {
+    write({ claim_labels: [L] }, [12, 13], 'ready');
+    const f = fake({ [L]: [issue(12, L), issue(13, L)] }, []);
+    const report = await runReleaseClaims(['--campaign-dir', dir, '--issues', '12'], { adapter: f.adapter });
+    expect(report.released).toEqual([{ issue: 12, label: L }]);
+    expect(f.calls.map((c) => (c[1] as { number?: number }).number ?? c[1])).toEqual([12, 12]);
+  });
+
+  test('--issues unions with the dispatched set without releasing twice', async () => {
+    write({ claim_labels: [L] }, [10], 'in-flight');
+    const f = fake({ [L]: [issue(10, L), issue(12, L)] }, []);
+    const report = await runReleaseClaims(['--campaign-dir', dir, '--issues', '10,12,12'], { adapter: f.adapter });
+    expect(report.released).toEqual([
+      { issue: 10, label: L },
+      { issue: 12, label: L },
+    ]);
+  });
+
+  test('a named issue absent from the queue is still released', async () => {
+    write({ claim_labels: [L] }, [10], 'ready');
+    const f = fake({ [L]: [issue(99, L)] }, []);
+    const report = await runReleaseClaims(['--campaign-dir', dir, '--issues', '99'], { adapter: f.adapter });
+    expect(report.released).toEqual([{ issue: 99, label: L }]);
+  });
+
+  test('--issues with no claim_labels prints empty sets and never reads the forge', async () => {
+    write({}, [12], 'ready');
+    const f = fake({ [L]: [issue(12, L)] }, []);
+    expect(await runReleaseClaims(['--campaign-dir', dir, '--issues', '12'], { adapter: f.adapter })).toEqual({ released: [], kept: [], failed: [] });
+    expect(f.calls).toEqual([]);
+  });
+
+  test.each(['', '0', '1,,2', '1,a', '-3', '1.5', ' 1'])('--issues %p is a UsageError', async (value) => {
+    write({ claim_labels: [L] }, [12]);
+    await expect(runReleaseClaims(['--campaign-dir', dir, '--issues', value], { adapter: fake({}, []).adapter })).rejects.toBeInstanceOf(UsageError);
+  });
+
+  test('--issues without a value is a UsageError', async () => {
+    write({ claim_labels: [L] }, [12]);
+    await expect(runReleaseClaims(['--campaign-dir', dir, '--issues'], { adapter: fake({}, []).adapter })).rejects.toBeInstanceOf(UsageError);
+  });
+
   test('exit code is 1 when any release failed, 0 otherwise', () => {
     expect(reportExitCode({ released: [], kept: [], failed: [{ issue: 1, label: 'l', error: 'e' }] })).toBe(1);
     expect(reportExitCode({ released: [{ issue: 1, label: 'l' }], kept: [], failed: [] })).toBe(0);

@@ -13,7 +13,6 @@ import { buildDocCarry, type DocCarryIssue, type DocCarryRead, type PendingRead 
 import { loadManifest, type Manifest } from './lib/carry-staged-artifacts.ts';
 import { latestRoute, promisedRoutes } from './lib/route-artifacts.ts';
 import { resolveHost, usageSourceFor } from './lib/usage-source.ts';
-import { collectDenyCounts } from './lib/campaign-status/deny-counts.ts';
 import { crossRepoBlockersOf, fetchForgeCounts, fetchMergedPrs, readOpenIssues } from './lib/campaign-status/forge.ts';
 import { readPrLanding } from './lib/forge-adapter/pr-landing.ts';
 import { DONE_STATUSES, isSameRepoKey } from './lib/campaign-status/queue.ts';
@@ -38,7 +37,6 @@ import { isForgeType, readOriginUrl, resolveForgeForRepo } from './lib/forge-det
 import { formatPaceLine, readLatestPaceRecord } from './lib/pace-log.ts';
 import { USAGE_HISTORY_FILE } from './lib/usage-history.ts';
 import { forgeDeclaredCrossRepo } from './lib/pr-dependencies.ts';
-import type { PluginDriftSignal, PluginDriftSource } from './plugin-drift-signal.ts';
 import type { CatchupArgs, StatusReport } from './lib/campaign-status/types.ts';
 import { pluginVersionWarning, readPluginVersion, readPluginVersionCheck } from './lib/plugin-drift.ts';
 import { readWorkerContext } from './lib/worker-context-report.ts';
@@ -76,70 +74,10 @@ export type {
   StatusReport,
 } from './lib/campaign-status/types.ts';
 
-// Issue #912 (ADR-044) — widens dashboard surfacing for the advisory plugin-cache drift signal
-// (mechanism 2 of ADR-030's composite fix; mechanism 1 is `src/agents/reviewer.md`'s V-PLUGIN-01
-// PR gate) from a single hash-match boolean to one line per non-clean registered source, plus a
-// line per `veto_pairs[]` entry. A foreign source of unverifiable provenance is NEVER clean —
-// it renders in the green fixture as well as the red one (ADR-044 § Falsifiability) — so a fully
-// silent render now means "every present source both resolves to a proven identity AND matches
-// origin/main", strictly narrower than the old "hash comparison happened to match" bar.
-function isCleanSource(s: PluginDriftSource): boolean {
-  if (s.outcome === 'no-baseline') return !s.present; // an absent/unregistered layer is not drift
-  if (s.outcome === 'version-differs-unproven') return false;
-  return s.relation_to_origin_main === 'identical';
-}
-
-function describeSourceState(s: PluginDriftSource): string {
-  if (s.outcome === 'no-baseline') return 'baseline: none (foreign or unverifiable provenance)';
-  if (s.outcome === 'version-differs-unproven') return 'version differs from the repo build, ordering unproven';
-  if (s.relation_to_origin_main === 'diverged') return 'diverged from origin/main';
-  if (s.relation_to_origin_main === 'older') return `${s.hook_commits_behind ?? '?'} hook-touching commit(s) behind origin/main`;
-  if (s.relation_to_origin_main === 'newer') return 'ahead of origin/main';
-  return 'ordering unavailable';
-}
-
-// ADR-044 § A-5 — the disclosure is unconditional: it appears whether the render is a warning
-// OR a fully clean signal. A clean render is exactly the case that needs qualifying (a fifth,
-// unscanned enforcement source can still be silently vetoing) — attaching the note only to the
-// warning path would repeat this issue's own founding error, a render asserting more confidence
-// than its evidence supports. `signal.scan_boundary` (not a restated copy) is the one canonical
-// text (`SCAN_BOUNDARY_NOTE`, `plugin-drift-signal.ts`) so the JSON field and this line can never
-// drift apart (V-DOC-05).
-export function renderPluginDriftWarning(signal: PluginDriftSignal | null): string {
-  if (!signal) return '';
-  const nonClean = signal.sources.filter((s) => !isCleanSource(s));
-  const lines: string[] = [];
-
-  if (nonClean.length === 0 && signal.veto_pairs.length === 0) {
-    lines.push('✓ Plugin cache: every registered source within scan boundary is clean.');
-  } else {
-    lines.push(
-      '⚠ Plugin cache drift: at least one registered PreToolUse source is unverified or differs ' +
-        'from this repo\'s build output (.blackhole/plugin-drift.json). See ' +
-        'src/references/blackhole-state.md § Plugin-Drift Signal for the refresh path.',
-    );
-    for (const s of nonClean) {
-      lines.push(`  - layer ${s.layer} (${s.label}): ${describeSourceState(s)}`);
-    }
-    for (const pair of signal.veto_pairs) {
-      lines.push(
-        `  - veto: layer ${pair.older_layer} (${pair.older_label}) is ${pair.hook_commits_behind ?? '?'} hook-touching ` +
-          `commit(s) behind layer ${pair.newer_layer} (${pair.newer_label}) and can still override it (deny-wins)`,
-      );
-    }
-  }
-  lines.push(signal.scan_boundary);
-  return lines.join('\n');
-}
-
-// Pace and plugin-drift lines, read once and shared by the text dashboard and the report modes.
-function readHostLines(campaignDir: string): { pace: string | null; drift: string | null } {
+// Pace line, read once and shared by the text dashboard and the report modes.
+function readHostLines(campaignDir: string): { pace: string | null } {
   const latestPace = readLatestPaceRecord(path.join(campaignDir, 'pace-log.jsonl'));
-  const driftPath = path.join(campaignDir, 'plugin-drift.json');
-  const drift = fs.existsSync(driftPath)
-    ? renderPluginDriftWarning(readJsonFile(driftPath, driftPath) as PluginDriftSignal) || null
-    : null;
-  return { pace: latestPace ? formatPaceLine(latestPace) : null, drift };
+  return { pace: latestPace ? formatPaceLine(latestPace) : null };
 }
 
 /** The open PRs the board shows: those queue entries name while in flight, then the ones no entry names. */
@@ -172,7 +110,7 @@ export async function collectStatusReport(
 ): Promise<{
   report: StatusReport;
   state: ReturnType<typeof loadCampaignState>;
-  host: { pace: string | null; drift: string | null };
+  host: { pace: string | null };
   /** Unmet cross-repo dependencies of open queue issues; undefined when the forge was not read. */
   crossRepoBlockers?: ReturnType<typeof crossRepoBlockersOf>;
 }> {
@@ -202,14 +140,13 @@ export async function collectStatusReport(
     checkpointBody,
     forge,
     paceLine: host.pace,
-    hostNotes: host.drift ? host.drift.split('\n') : [],
+    hostNotes: [],
     generatedAt,
     publish: readPublishState(campaignDir),
     decisions,
     prSignals,
     mergedPrs,
     pluginVersion: readPluginVersion(PLUGIN_ROOT),
-    denyCounts: collectDenyCounts(campaignDir, queue.campaign_started_at ?? null),
     budget: readBudgetPanel(config as Record<string, unknown>, resolveHost(campaignDir, process.env), undefined, path.join(campaignDir, USAGE_HISTORY_FILE)),
     runContext: readJsonOrNull(path.join(campaignDir, 'run-context.json')),
     pending: readPending(campaignDir),
@@ -560,7 +497,6 @@ async function main() {
   for (const alert of readStatusAlerts(campaignDir, state, report.generated_at)) console.log(alert.message);
   console.log(dashboard);
   if (host.pace) console.log(host.pace);
-  if (host.drift) console.log(host.drift);
 }
 
 if (import.meta.main) {

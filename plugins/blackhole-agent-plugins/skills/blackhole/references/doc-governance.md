@@ -53,6 +53,13 @@ Five lifecycle keys (`type`, `status`, `review_trigger`, `created`, `last_update
 required — any absence is `V-DOC-GOV-02`, reported per doc with the missing key names
 (`scripts/checks/doc-health.check.ts`). `summary`, `supersedes` and `related` are optional.
 
+**`review_trigger` grammar (advisory).** The value is free text or the enum above, except one
+machine-readable issue-keyed form, `on issue-close #N`, which a doc written because an issue
+obliges its re-read should use instead of free text such as "when #5228 closes". The grammar's
+SSOT is `scripts/lib/review-trigger-grammar.ts`; `V-DOCHEALTH-03` lists any value that names an
+issue and a close/merge but is not that exact form. Nothing evaluates the trigger against the
+forge, and the lint never blocks.
+
 An instantiated companion-file template — currently only `documentation/reference/journeys.md`
 (`templates/companion-files/journeys.md.template`) — may carry `status: template` instead of
 one of the four values listed above. This is already accepted, not a new exception granted
@@ -163,8 +170,10 @@ step, not a Claude-Code-native hook, achieving the equivalent cadence with a pri
 already has.
 
 Scope boundary restated in one sentence: this channel only ever refreshes blackhole's own
-Scope-1 `documentation/` tree; Scope-2 (a consumer repo's tree) is enforced at review time by
-`reviewer.md` § Doc-Governance Judgment Audit.
+Scope-1 `documentation/` tree by default; run with `--repo-root <consumer root>` it gives a
+consumer tree the same advisory signal (row ceiling, line ceiling, an ADR file with no
+`decisions/INDEX.md` row), skipping the row count for a foreign root INDEX. Judgment-based
+Scope-2 enforcement stays at review time in `reviewer.md` § Doc-Governance Judgment Audit.
 
 ## INDEX.md Maintenance
 

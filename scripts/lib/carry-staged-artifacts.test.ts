@@ -890,6 +890,66 @@ describe('isCarryTargetAllowed — carry target allowlist (issue #784 AC1)', () 
   });
 });
 
+describe('isCarryTargetAllowed — package-scoped targets (monorepo sibling of #1394)', () => {
+  test.each([
+    ['services/clauderr/documentation/plans/p.md', 'services/clauderr', true],
+    ['services/clauderr/ARCHITECTURE.md', 'services/clauderr', true],
+    ['documentation/plans/p.md', 'services/clauderr', true],
+    ['services/clauderr/documentation/plans/p.md', undefined, false],
+    ['services/clauderr/documentation/plans/p.md', '', false],
+    ['services/other/documentation/p.md', 'services/clauderr', false],
+    ['services/clauderr/package.json', 'services/clauderr', false],
+    ['services/clauderr/../../package.json', 'services/clauderr', false],
+    ['services/clauderr/documentation/../../../package.json', 'services/clauderr', false],
+    ['.github/workflows/x.yml', 'services/clauderr', false],
+    ['documentation/plans/p.md', '..', true],
+    ['../documentation/p.md', '..', false],
+    ['etc/documentation/p.md', '/etc', false],
+    ['.github/documentation/x.md', '.github', false],
+    ['.git/documentation/x.md', '.git', false],
+    ['a b/documentation/x.md', 'a b', false],
+    ['x/documentation/y.md', 'x\n..', false],
+    ['/.git/documentation/x.md', './/.git', false],
+    ['/.github/documentation/x.md', './//.github', false],
+    ['/etc/documentation/x.md', './/etc', false],
+    ['.GIT/documentation/x.md', './.GIT', false],
+    ['a//b/documentation/x.md', 'a//b', false],
+    ['a/.git/documentation/x.md', 'a/.git', false],
+    ['a\\b/documentation/x.md', 'a\\b', false],
+  ])('isCarryTargetAllowed(%s, %j) === %s', (targetPath, packageRoot, expected) => {
+    expect(isCarryTargetAllowed(targetPath, packageRoot)).toBe(expected);
+  });
+
+  test('carryManifest carries a package-tree target only with the package root', () => {
+    withTempDir('carry-pkg', (dir) => {
+      const staged = path.join(dir, '.blackhole/staged/5');
+      fs.mkdirSync(staged, { recursive: true });
+      fs.writeFileSync(path.join(staged, 'p.md'), '---\ntype: plan\n---\n# P\n');
+      const manifest: Manifest = {
+        issue: 5,
+        updated_at: '2026-01-01T00:00:00.000Z',
+        entries: [
+          {
+            route: 'plan',
+            sub_mode: null,
+            produced_by: 'planner',
+            declared_at: '2026-01-01T00:00:00.000Z',
+            staged_path: '.blackhole/staged/5/p.md',
+            target_path: 'services/clauderr/documentation/plans/p.md',
+            target_kind: 'new_file',
+          },
+        ],
+      };
+      const without = carryManifest(manifest, dir, { docsGovernanceActive: true });
+      expect(without.carriedPaths).toEqual([]);
+      expect(without.skippedEntries[0].reason).toContain('outside the carry allowlist');
+      const withRoot = carryManifest(manifest, dir, { docsGovernanceActive: true, packageRoot: 'services/clauderr' });
+      expect(withRoot.carriedPaths).toEqual(['services/clauderr/documentation/plans/p.md']);
+      expect(fs.existsSync(path.join(dir, 'services/clauderr/documentation/plans/p.md'))).toBe(true);
+    });
+  });
+});
+
 describe('carryManifest — path containment (issue #752)', () => {
   const baseEntry = {
     route: 'plan',
@@ -1297,5 +1357,147 @@ describe('docs_governance kill switch (issue #1400)', () => {
   test('enabled:true resolves active, write_governance defaulting true when the block is present', () => {
     expect(resolveWith({ docs_governance: { enabled: true } })).toBe(true);
     expect(resolveWith({ docs_governance: { enabled: true, write_governance: true } })).toBe(true);
+  });
+});
+
+describe('carryManifest - symlinked carry targets', () => {
+  const entryFor = (target_path: string, target_kind: 'new_file' = 'new_file') => ({
+    route: 'plan',
+    sub_mode: null,
+    produced_by: 'planner',
+    declared_at: '2026-08-06T17:58:00.000Z',
+    staged_path: '.blackhole/staged/1/plan-x.md',
+    target_path,
+    target_kind,
+  });
+  const manifestFor = (target_path: string): Manifest => ({ issue: 1, updated_at: 'x', entries: [entryFor(target_path)] });
+
+  // A real temp repo whose protected trees exist, so a write through a link is observable.
+  const withRepo = (fn: (repoRoot: string) => void): void =>
+    withTempDir('carry-symlink', (dir) => {
+      const repoRoot = path.join(dir, 'repo');
+      for (const protectedDir of ['.git', '.github', 'hooks', 'pkg']) fs.mkdirSync(path.join(repoRoot, protectedDir), { recursive: true });
+      fs.writeFileSync(path.join(repoRoot, 'package.json'), '{"name":"keep"}\n');
+      const staged = path.join(repoRoot, '.blackhole/staged/1/plan-x.md');
+      fs.mkdirSync(path.dirname(staged), { recursive: true });
+      fs.writeFileSync(staged, '---\ntype: plan\nstatus: current\n---\n# Plan\n');
+      fn(repoRoot);
+    });
+
+  const expectRefused = (outcome: ReturnType<typeof carryManifest>): void => {
+    expect(outcome.carriedPaths).toEqual([]);
+    expect(outcome.skippedEntries).toHaveLength(1);
+    expect(outcome.skippedEntries[0]!.reason).toContain('symlink');
+  };
+
+  // The fail-closed leg's own reason: a bare 'symlink' substring also matches the temp dir name
+  // and the write-failure message, so only this phrase proves the dangling link was refused up front.
+  const expectUnresolvable = (outcome: ReturnType<typeof carryManifest>): void => {
+    expect(outcome.carriedPaths).toEqual([]);
+    expect(outcome.skippedEntries).toHaveLength(1);
+    expect(outcome.skippedEntries[0]!.reason).toContain('cannot be resolved');
+  };
+
+  test('a root documentation dir symlinked to .github is refused and .github stays untouched', () => {
+    withRepo((repoRoot) => {
+      fs.symlinkSync(path.join(repoRoot, '.github'), path.join(repoRoot, 'documentation'));
+      expectRefused(carryManifest(manifestFor('documentation/x.md'), repoRoot));
+      expect(fs.existsSync(path.join(repoRoot, '.github/x.md'))).toBe(false);
+    });
+  });
+
+  test('a package documentation dir symlinked to hooks is refused under --package-root', () => {
+    withRepo((repoRoot) => {
+      fs.symlinkSync(path.join(repoRoot, 'hooks'), path.join(repoRoot, 'pkg/documentation'));
+      expectRefused(carryManifest(manifestFor('pkg/documentation/x.md'), repoRoot, { packageRoot: 'pkg' }));
+      expect(fs.existsSync(path.join(repoRoot, 'hooks/x.md'))).toBe(false);
+    });
+  });
+
+  test('a symlink file onto package.json is refused and its bytes are unchanged', () => {
+    withRepo((repoRoot) => {
+      fs.mkdirSync(path.join(repoRoot, 'documentation'));
+      fs.symlinkSync('../package.json', path.join(repoRoot, 'documentation/y.md'));
+      expectRefused(carryManifest(manifestFor('documentation/y.md'), repoRoot));
+      expect(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf-8')).toBe('{"name":"keep"}\n');
+    });
+  });
+
+  test('a dangling symlink file into .github is refused and its target is not created', () => {
+    withRepo((repoRoot) => {
+      fs.mkdirSync(path.join(repoRoot, 'documentation'));
+      fs.symlinkSync('../.github/z.md', path.join(repoRoot, 'documentation/z.md'));
+      expectRefused(carryManifest(manifestFor('documentation/z.md'), repoRoot));
+      expect(fs.existsSync(path.join(repoRoot, '.github/z.md'))).toBe(false);
+    });
+  });
+
+  test('a dangling symlink file in a subdirectory into .github/workflows is refused and its target is not created', () => {
+    withRepo((repoRoot) => {
+      fs.mkdirSync(path.join(repoRoot, 'documentation/sub'), { recursive: true });
+      fs.mkdirSync(path.join(repoRoot, '.github/workflows'), { recursive: true });
+      fs.symlinkSync('../../.github/workflows/z.yml', path.join(repoRoot, 'documentation/sub/z.md'));
+      expectUnresolvable(carryManifest(manifestFor('documentation/sub/z.md'), repoRoot));
+      expect(fs.existsSync(path.join(repoRoot, '.github/workflows/z.yml'))).toBe(false);
+    });
+  });
+
+  test('a dangling directory symlink with a deep tail into .github/workflows is refused and nothing is created', () => {
+    withRepo((repoRoot) => {
+      fs.mkdirSync(path.join(repoRoot, 'documentation'));
+      fs.mkdirSync(path.join(repoRoot, '.github/workflows'), { recursive: true });
+      fs.symlinkSync('../.github/workflows/newdir', path.join(repoRoot, 'documentation/d'));
+      expectUnresolvable(carryManifest(manifestFor('documentation/d/a/b/x.yml'), repoRoot));
+      expect(fs.existsSync(path.join(repoRoot, '.github/workflows/newdir'))).toBe(false);
+    });
+  });
+
+  test('a dangling documentation/INDEX.md symlink into .github is not created by index regeneration', () => {
+    withRepo((repoRoot) => {
+      fs.mkdirSync(path.join(repoRoot, 'documentation'));
+      fs.symlinkSync('../.github/INDEX.md', path.join(repoRoot, 'documentation/INDEX.md'));
+      const outcome = carryManifest(manifestFor('documentation/plans/x.md'), repoRoot);
+      expect(fs.existsSync(path.join(repoRoot, '.github/INDEX.md'))).toBe(false);
+      expect(outcome.carriedPaths).not.toContain('documentation/INDEX.md');
+      expect(outcome.skippedEntries.some((s) => s.index === -1 && s.reason.includes('symlink'))).toBe(true);
+    });
+  });
+
+  test('an existing documentation/INDEX.md symlink into hooks is not overwritten by index regeneration', () => {
+    withRepo((repoRoot) => {
+      fs.mkdirSync(path.join(repoRoot, 'documentation'));
+      fs.writeFileSync(path.join(repoRoot, 'hooks/INDEX.md'), 'keep\n');
+      fs.symlinkSync('../hooks/INDEX.md', path.join(repoRoot, 'documentation/INDEX.md'));
+      const outcome = carryManifest(manifestFor('documentation/plans/x.md'), repoRoot);
+      expect(fs.readFileSync(path.join(repoRoot, 'hooks/INDEX.md'), 'utf-8')).toBe('keep\n');
+      expect(outcome.carriedPaths).not.toContain('documentation/INDEX.md');
+      expect(outcome.skippedEntries.some((s) => s.index === -1 && s.reason.includes('symlink'))).toBe(true);
+    });
+  });
+
+  test('a package root named hooks cannot carry into the protected hooks tree', () => {
+    withRepo((repoRoot) => {
+      const outcome = carryManifest(manifestFor('hooks/documentation/x.md'), repoRoot, { packageRoot: 'hooks' });
+      expect(outcome.carriedPaths).toEqual([]);
+      expect(outcome.skippedEntries[0]!.reason).toContain('protected');
+      expect(fs.existsSync(path.join(repoRoot, 'hooks/documentation/x.md'))).toBe(false);
+    });
+  });
+
+  test('plain (non-symlink) targets still carry, including through a symlinked repo parent', () => {
+    withRepo((repoRoot) => {
+      const link = `${repoRoot}-link`;
+      fs.symlinkSync(repoRoot, link);
+      for (const [root, target, packageRoot] of [
+        [repoRoot, 'documentation/plans/a.md', undefined],
+        [repoRoot, 'pkg/documentation/b.md', 'pkg'],
+        [link, 'documentation/plans/c.md', undefined],
+      ] as const) {
+        const outcome = carryManifest(manifestFor(target), root, { packageRoot, stagingRoot: repoRoot });
+        expect(outcome.skippedEntries).toEqual([]);
+        expect(outcome.carriedPaths).toContain(target);
+        expect(fs.existsSync(path.join(repoRoot, target))).toBe(true);
+      }
+    });
   });
 });

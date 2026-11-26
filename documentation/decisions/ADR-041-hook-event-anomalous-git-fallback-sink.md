@@ -1,10 +1,11 @@
 ---
 type: adr
 summary: "recordEvent gains a CLAUDE_PROJECT_DIR-derived fallback sink for the anomalous branch of mainCloneRoot's new routine/anomalous git-failure discrimination (mirrors #864/PR #888's hasGitMarkerInAncestry pattern), with an unconditional distinguishing stderr line naming the sink tier used; Option B (fail-closed) rejected by both blind critics as CRITICAL — it can convert a PreToolUse deny into an allow; critic B's CRITICAL on Option C (CLAUDE_PROJECT_DIR may resolve to a worker's worktree, not the main clone) accepted as a residual risk by owner ruling, mitigated but not eliminated by the unconditional-stderr amendment"
-status: accepted
+status: superseded
+superseded_by: ADR-065
 review_trigger: "on #893 hardening CLAUDE_PROJECT_DIR resolution, or on a new git-shelling resolver adopting the routine/anomalous discrimination pattern"
 created: 2026-09-06
-last_updated: 2026-09-06
+last_updated: 2026-11-26
 related:
   - documentation/decisions/ADR-029-bash-write-target-worktree-containment.md
   - documentation/decisions/ADR-030-plugin-cache-version-bump-gate.md
@@ -13,6 +14,8 @@ related:
 # ADR-041: Discriminate anomalous git failures in `mainCloneRoot` and add a `CLAUDE_PROJECT_DIR` fallback sink for hook-event records
 
 ## Status
+
+Superseded by ADR-065 - 2026-11-26. The guards this ADR describes are removed; the original acceptance follows.
 
 Accepted — 2026-09-06 (owner ruling, campaign design-approval gate; issue #889). The
 deterministic `scripts/design-aggregate.ts` verdict was `blocked`; see § Gate for the verdict,
@@ -313,3 +316,7 @@ reference rather than restatement (`V-DOC-05`); `recordEvent`'s docstring gains 
 sink precedence and the unconditional-stderr contract. `V-PLUGIN-01` (ADR-030) applies: the same
 diff must bump `package.json`'s version. Full task breakdown and per-task TDD acceptance
 criteria: `.blackhole/plans/issue-889.md` § Task Breakdown.
+
+## Post-acceptance amendments
+
+- 2026-11-26 (issue #1645): superseded in full by ADR-065. The code, the ledger codes and the prose this ADR describes were retired in the follow-up slice of issue #1644.

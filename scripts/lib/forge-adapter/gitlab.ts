@@ -17,6 +17,7 @@ import type {
   IssueEditParams,
   IssueListFilter,
   PrChangeBaseResult,
+  PrUpdateBranchResult,
   PrCreateParams,
 } from './types.ts';
 
@@ -139,6 +140,10 @@ export class GitLabForgeAdapter implements ForgeAdapter {
 
   async prChangeBase(_number: number, _base: string): Promise<PrChangeBaseResult> {
     throw new Error('not-supported: prChangeBase on the gitlab forge');
+  }
+
+  async prUpdateBranch(_number: number, _expectedHeadSha: string): Promise<PrUpdateBranchResult> {
+    return { verdict: 'UNSUPPORTED', detail: 'gitlab merge_requests/{iid}/rebase rewrites history and force-pushes' };
   }
 
   async getDependencies(target: DependencyTarget): Promise<ForgeDependencies> {

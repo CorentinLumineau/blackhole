@@ -15,6 +15,10 @@ with the authoritative **Touch-Paths** and **Codebase Conventions** from the
 issue plan. Use both when auditing `V-SCOPE-02` (touch-path boundary) and
 conventions compliance (`V-INT-01/03/04`).
 
+### No-Checkout Rule
+
+Read a PR head with `gh pr diff`, `gh api` contents, `git show <sha>:<path>`, or a throwaway `git worktree add --detach` you create and remove yourself. Never `git checkout` or `git switch` in an existing checkout, and never `git checkout --`, `restore`, `reset`, `clean` or `stash` anywhere: they discard uncommitted work another session holds.
+
 ## Audit Checklist
 
 Perform a systematic check on the PR diff and return findings mapped to V-codes:

@@ -33,6 +33,14 @@ import {
   type DecideBaseline,
 } from './lib/campaign-status/decide-round.ts';
 import { reconcileHold, resolveStateStore, systemHoldDeps, type HoldDeps } from './lib/campaign-status/keep-awake.ts';
+import {
+  blockedReturnDecisions,
+  ownerGateConfig,
+  ownerGateDecisions,
+  systemOwnerGateReader,
+  type OwnerGateRead,
+  type OwnerGateReader,
+} from './lib/campaign-status/owner-gate.ts';
 import { resolveHost } from './lib/usage-source.ts';
 import { resolveUsageBudget } from './lib/usage-budget.ts';
 
@@ -46,7 +54,8 @@ import { resolveUsageBudget } from './lib/usage-budget.ts';
 //   park     --question "<q>" --options "A: why|B|C" --recommended A [--evidence "<text>"]
 //            [--refs 12,14] [--gate <name>]                      → pending-decisions.json
 //   ask                                                          → prints `ask` or `park` (askOrPark)
-//   decide                                                       → prints the report since the last round and the batched round as JSON;
+//   decide                                                       → prints the report since the last round and the batched round as JSON
+//                                                                  (parked decisions, owner-gated PRs, blocked owner questions);
 //                                                                  records this round's baseline in decide-baseline.json
 //   keep-awake --workers <n> [--wake-armed]                      → takes the local hold while n > 0 or a wake is armed, releases it otherwise
 //                                                                  (.tmp/keep-awake-hold.json)
@@ -175,7 +184,12 @@ function coordinationRole(config: Record<string, unknown>): string {
  * Runs one record command and returns the line to print. Throws on bad input; writes nothing then.
  * `hold` makes the keep-awake inhibitor's process calls (`keep-awake.ts`); tests pass a fake.
  */
-export function runRecord(argv: string[], now: Date = new Date(), hold: HoldDeps = systemHoldDeps): string {
+export function runRecord(
+  argv: string[],
+  now: Date = new Date(),
+  hold: HoldDeps = systemHoldDeps,
+  ownerGate: OwnerGateReader = systemOwnerGateReader,
+): string {
   const [sub, ...rest] = argv;
   if (sub !== undefined && Object.hasOwn(RETIRED, sub)) throw new Error(RETIRED[sub]);
   const flags = parseFlags(rest);
@@ -241,11 +255,30 @@ export function runRecord(argv: string[], now: Date = new Date(), hold: HoldDeps
   if (sub === 'decide') {
     // The round is the answer channel, not a gate: its cards ask directly, so parking is left as it
     // was. It records its own baseline so the next round reports what ran since this one.
+    // Owner-gated PRs and blocked owner questions join the parked ones in the same sort; they are
+    // never parked, so their answers go to the orchestrator, not to `resolve`.
     const config = readConfig(flags.campaignDir);
-    const batch = wakeBatch(readPendingDecisions(flags.campaignDir).decisions);
+    const parked = readPendingDecisions(flags.campaignDir).decisions;
     const issues = readQueueIssues(flags.campaignDir);
+    // An absent `decisions.owner_gate` block is inert: no forge read, and nothing said about it.
+    const gateConfig = ownerGateConfig(config);
+    const usableGate = gateConfig && !('invalid' in gateConfig) ? gateConfig : null;
+    const gate: OwnerGateRead | null = usableGate
+      ? ownerGate(config, usableGate)
+      : gateConfig
+        ? { status: 'unavailable', reason: (gateConfig as { invalid: string }).invalid }
+        : null;
+    const gated = usableGate && gate?.status === 'ok' ? ownerGateDecisions(gate.prs, usableGate, issues, now.toISOString()) : [];
+    const asked = [...parked, ...gated];
+    const batch = wakeBatch([...asked, ...blockedReturnDecisions(issues, asked, now.toISOString())]);
     const budget = readBudget(flags.campaignDir, config, now);
-    const report = buildDecideReport({ baseline: readDecideBaseline(flags.campaignDir, config), issues, budget, pending: batch.total });
+    const report = buildDecideReport({
+      baseline: readDecideBaseline(flags.campaignDir, config),
+      issues,
+      budget,
+      pending: batch.total,
+      ...(gate?.status === 'unavailable' ? { ownerGateUnchecked: gate.reason } : {}),
+    });
     const next: DecideBaseline = { at: now.toISOString(), done: issues ? doneIssues(issues) : null, weekly_pct: budget.weekly_pct };
     writeJsonAtomic(path.join(flags.campaignDir, DECIDE_BASELINE_FILE), next);
     const warning = retiredSleepModeWarning(config);

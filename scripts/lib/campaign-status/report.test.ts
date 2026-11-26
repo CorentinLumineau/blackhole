@@ -167,7 +167,7 @@ describe('buildStatusReport — wait-reason grouping', () => {
     checkpointBody: '',
     forge: FORGE_OK,
     paceLine: 'pace: GO',
-    hostNotes: ['drift line'],
+    hostNotes: ['host note'],
     generatedAt: GENERATED_AT,
   });
 
@@ -190,7 +190,7 @@ describe('buildStatusReport — wait-reason grouping', () => {
   test('in-flight next step names the PR; ready set and host lines', () => {
     expect(report.in_flight.map((i) => [i.issue, i.next_step])).toEqual([[14, 'Implement: update PR #7']]);
     expect(report.ready.map((i) => i.issue)).toEqual([17]);
-    expect(report.host).toEqual({ pace: 'pace: GO', notes: ['drift line'] });
+    expect(report.host).toEqual({ pace: 'pace: GO', notes: ['host note'] });
   });
 });
 

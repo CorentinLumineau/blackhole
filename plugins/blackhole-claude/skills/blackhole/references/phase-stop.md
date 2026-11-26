@@ -35,8 +35,8 @@ normal turn is step 3.
 3. **Do not spawn the next wave** — the entire behavioral change. Triage every completed worker
    exactly as `orchestrator-runtime.md` § Background worker barrier § Triage already specifies.
    Release a claim that has no open own PR (`orchestrator-dispatch.md` § Lane claim and release),
-   and with `claim_labels` configured run `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/release-claims.ts --campaign-dir .blackhole`
-   (`orchestrator-dispatch.md` § Contract claim labels); its `released`/`kept` sets go in the report.
+   and with `claim_labels` configured run `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/release-claims.ts --campaign-dir .blackhole
+   --issues <issues of the workers triaged>` (`orchestrator-dispatch.md` § Contract claim labels; the value is a comma list with no spaces such as `12,15`, and the flag is left out when no worker was triaged); its `released`/`kept` sets go in the report.
 4. **Run the Exit Invariants checklist** (below) before reporting.
 5. **Checkpoint**: `stopped_by: user`, `stop_kind: drained` (`checkpoint-protocol.md` §
    Checkpoint template).
@@ -133,8 +133,8 @@ them.
    remove its row from `## In-flight workers`. This is a direct action the stop procedure
    performs itself — the orchestrator already knows no worker is running. Release each reset
    issue's claim (`orchestrator-dispatch.md` § Lane claim and release), then run
-   `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/release-claims.ts --campaign-dir .blackhole` for the contract claim labels
-   (§ Contract claim labels there). It is not the
+   `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/release-claims.ts --campaign-dir .blackhole --issues <just-reset issues>` for the
+   contract claim labels (§ Contract claim labels there; a comma list with no spaces, and the flag is left out when no issue was reset). It is not the
    `recovery-protocol.md` §9 drift-detection case: §9 detects a worker that finished silently and
    left an artifact; an abandoned worker leaves no artifact to detect.
 3. **Worktree dirty-check** — for every affected worktree, run `recovery-protocol.md` §2
@@ -173,7 +173,7 @@ the same drain with no wake, and the list at the end of this section holds for a
 5. **Report** per Exit Invariant 6: the verdict, the 5-hour and weekly %, `wake_at` in local time,
    and that the campaign resumes on its own (or, for `STOP-CAMPAIGN`, on the owner's next `run`).
 6. **Resume** — the wake (or any turn after `wake_at`) runs `orchestrator-runtime.md` § Session
-   resume & recovery step 7: the spawn-round gates run again and the campaign continues from
+   resume & recovery step 5: the spawn-round gates run again and the campaign continues from
    `queue.json` as left. A turn before `wake_at` spawns nothing and ends.
 
 Never on a usage stop:

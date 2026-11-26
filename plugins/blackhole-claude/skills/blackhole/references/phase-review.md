@@ -44,6 +44,7 @@ Binding: [review-core.md](review-core.md), [reviewer-schemas.md](reviewer-schema
 - Model: use the designated worker agent (`reviewer`)
 - Output format: `reviewer-schemas.md` reviewer contract
 - Route check: when the recheck-mode trigger is satisfied, see `review-core.md` § Recheck mode for the exact trigger conditions and scoped-audit mechanism (not restated here)
+- No-Checkout Rule: tell the reviewer to read the PR head via `gh pr diff` / `gh api` / `git show <sha>:<path>` / a throwaway `git worktree add --detach`, never `git checkout`/`git switch`/`restore`/`reset`/`clean`/`stash` (`reviewer.md` § No-Checkout Rule)
 
 ## Audit Checklist Extensions
 

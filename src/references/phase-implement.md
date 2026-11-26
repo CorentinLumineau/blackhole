@@ -12,6 +12,7 @@
 - [ ] git worktree add --no-track <scratchpad>/wt-<issue> -b blackhole/issue-<issue> origin/main (V-BRANCH-03, issue #516)
 - [ ] git -C <scratchpad>/wt-<issue> config extensions.worktreeConfig true (one-time per repo, idempotent; issue #516 — required before `--worktree`-scoped config below can confine anything)
 - [ ] git -C <scratchpad>/wt-<issue> config --worktree push.default nothing (issue #516 — scoped to this worktree only; no bare `git push` can silently succeed here)
+- [ ] Contract claim labels: `bun run scripts/claim-labels.ts --issue <issue> --campaign-dir .blackhole` before spawning the implementer; exit 1 = warn in the turn notes, never block → orchestrator-dispatch.md § Contract claim labels
 - [ ] Branch Tracking Sweep clean before this wave's dispatch → orchestrator-dispatch.md § Branch Tracking Sweep (issue #516)
 - [ ] install dependencies in worktree (e.g. `npm install`, `bun install`, etc.)
 - [ ] Target-repo setup (existence-gated allowlist — first present wins; see § Target-repo setup below)

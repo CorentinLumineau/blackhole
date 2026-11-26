@@ -1,7 +1,13 @@
 import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
-import { computeDocHealthSignal, writeDocHealthSignalAtomic, type DocHealthSignal } from './doc-health-signal.ts';
+import {
+  computeDocHealthSignal,
+  resolveRepoRoot,
+  runDocHealthSignal,
+  writeDocHealthSignalAtomic,
+  type DocHealthSignal,
+} from './doc-health-signal.ts';
 import { DOC_HEALTH_THRESHOLDS } from './lib/build/facts.ts';
 import { makeTempDir } from './lib/fs.ts';
 
@@ -97,6 +103,15 @@ describe('computeDocHealthSignal', () => {
   // (doc-health.check.ts's evaluateIndexDangling/evaluateOrphanFiles idiom). evaluateDocTreeHealth
   // already handles a missing docsDir via walkFilesAbs's "[] for a directory that does not
   // exist" contract — this test only confirms that behavior passes through this wrapper intact.
+  test('a clean tree with a foreign root INDEX keeps the note visible but is not doc_debt', () => {
+    withFixtureDir((dir) => {
+      write(dir, 'INDEX.md', '# Docs\n\n| doc | owner |\n|---|---|\n| a.md | me |\n');
+      const signal = computeDocHealthSignal(dir);
+      expect(signal.doc_debt).toBe('no');
+      expect(signal.detail).toContain('foreign root INDEX, row ceiling not evaluated');
+    });
+  });
+
   test('a docs directory that does not exist yields doc_debt: no without throwing', () => {
     const missingDir = path.join(makeTempDir('doc-health-signal-missing'), 'documentation');
     expect(fs.existsSync(missingDir)).toBe(false);
@@ -158,6 +173,37 @@ describe('writeDocHealthSignalAtomic', () => {
         decision_log_silent_prs: 0,
       });
       expect(fs.existsSync(path.join(campaignDir, 'doc-health.json'))).toBe(true);
+    });
+  });
+});
+
+describe('resolveRepoRoot', () => {
+  test('defaults to blackhole\'s own root when --repo-root is absent', () => {
+    expect(resolveRepoRoot([], '/own/root')).toBe('/own/root');
+  });
+
+  test('returns the resolved --repo-root when it is an existing directory', () => {
+    withFixtureDir((dir) => {
+      expect(resolveRepoRoot(['--repo-root', dir], '/own/root')).toBe(path.resolve(dir));
+    });
+  });
+
+  test('throws for a missing directory or a valueless flag', () => {
+    expect(() => resolveRepoRoot(['--repo-root', '/definitely/not/here'], '/own/root')).toThrow(/--repo-root/);
+    expect(() => resolveRepoRoot(['--repo-root'], '/own/root')).toThrow(/--repo-root/);
+  });
+});
+
+describe('runDocHealthSignal against a consumer root', () => {
+  test('writes <repo-root>/.blackhole/doc-health.json with doc_debt yes for an over-ceiling tree', () => {
+    withFixtureDir((dir) => {
+      const lineCount = DOC_HEALTH_THRESHOLDS.singleDocLineCeiling + 5;
+      write(dir, 'documentation/audits/big.md', Array.from({ length: lineCount }, (_, i) => `line ${i}`).join('\n'));
+      const signal = runDocHealthSignal(dir);
+      expect(signal.doc_debt).toBe('yes');
+      const written = JSON.parse(fs.readFileSync(path.join(dir, '.blackhole', 'doc-health.json'), 'utf-8'));
+      expect(written.doc_debt).toBe('yes');
+      expect(written.detail).toContain('audits/big.md');
     });
   });
 });

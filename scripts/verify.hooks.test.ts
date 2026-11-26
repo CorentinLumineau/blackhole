@@ -2,304 +2,105 @@ import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
 import { root } from './checks/check-utils.ts';
-import {
-  HOOK_BUNDLE_ROOTS,
-  PRETOOLUSE_HOOKS_SSOT,
-  REQUIRED_PATTERN_KEYS,
-  REQUIRED_PRETOOLUSE_MATCHERS,
-  REQUIRED_PRETOOLUSE_ON_FAILURE,
-  REQUIRED_PRETOOLUSE_TIMEOUT,
-  evaluateHookPatterns,
-  evaluateHooksSsotMatch,
-  evaluateHooksWiring,
-  hookCommandScriptName,
-  runChecks,
-} from './checks/hooks.check.ts';
-import { CLAUDE_DISTRIBUTION_ROOT } from './lib/build/paths.ts';
-import { PRETOOLUSE_HOOKS_DIR, runPreToolUseHook, withTempDir, withTempGitRepo } from './lib/test-fixtures.ts';
+import { RETIRED_GUARD_SCRIPTS, evaluateNoBlockingHooks, evaluateSensitiveFilePatterns } from './checks/hooks.check.ts';
+import { CLAUDE_DISTRIBUTION_ROOT, CLAUDE_NATIVE_ROOT } from './lib/build/paths.ts';
+import { withTempDir } from './lib/test-fixtures.ts';
 
-// Build-pipeline contract for the PreToolUse safety gate (#447). Both redistributable plugin
-// bundles must ship a hooks/ tree — a bundle without it installs with zero interception, which is
-// exactly the gap this issue closes. Modeled on verify.gemini-build.test.ts / verify.claude-dist
-// .test.ts: assert the generated tree on disk, since `bun run build` output is git-tracked.
+// ADR-065 contract: no built tree registers a deny-capable hook. The first describe pins the
+// evaluator against synthetic trees (it must fail when a guard comes back); the second pins the
+// committed build output the evaluator reads.
 
-const readJson = (abs: string): Record<string, unknown> =>
-  JSON.parse(fs.readFileSync(abs, 'utf-8')) as Record<string, unknown>;
+const write = (dir: string, rel: string, content: string) => {
+  fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+  fs.writeFileSync(path.join(dir, rel), content);
+};
 
-describe('shipped hooks/ tree in both plugin bundles', () => {
-  for (const bundle of HOOK_BUNDLE_ROOTS) {
-    test(`${bundle}/hooks/hooks.json wires PreToolUse for Bash and Write|Edit`, () => {
-      const hooksJson = path.join(root, bundle, 'hooks', 'hooks.json');
-      expect(fs.existsSync(hooksJson)).toBe(true);
-
-      const parsed = readJson(hooksJson);
-      const preToolUse = (parsed.hooks as Record<string, unknown>)?.PreToolUse as
-        | { matcher?: string; hooks?: { type?: string; command?: string; onFailure?: string; timeout?: number }[] }[]
-        | undefined;
-      expect(Array.isArray(preToolUse)).toBe(true);
-
-      const matchers = (preToolUse ?? []).map((entry) => entry.matcher);
-      expect(matchers).toContain('Bash');
-      expect(matchers).toContain('Write|Edit');
-
-      // Every matcher must actually dispatch to a command that resolves inside the bundle —
-      // a matcher with an empty hooks array passes a naive "matcher present" assertion while
-      // intercepting nothing. onFailure: "block" (Claude Code ≥2.1.295) is what makes a
-      // missing bun, a crash, or the 15s timeout refuse the tool call instead of failing open.
-      for (const entry of preToolUse ?? []) {
-        expect(entry.hooks?.length).toBeGreaterThan(0);
-        for (const h of entry.hooks ?? []) {
-          expect(h.type).toBe('command');
-          expect(h.onFailure).toBe(REQUIRED_PRETOOLUSE_ON_FAILURE);
-          expect(h.timeout).toBe(REQUIRED_PRETOOLUSE_TIMEOUT);
-          const scriptName = hookCommandScriptName(h.command ?? '');
-          expect(fs.existsSync(path.join(root, bundle, 'hooks', scriptName))).toBe(true);
-        }
-      }
-    });
-
-    test(`${bundle}/hooks/patterns/*.json parse and every entry compiles as a RegExp`, () => {
-      const patternsDir = path.join(root, bundle, 'hooks', 'patterns');
-      for (const file of ['bash-patterns.json', 'file-patterns.json']) {
-        const abs = path.join(patternsDir, file);
-        expect(fs.existsSync(abs)).toBe(true);
-
-        const parsed = readJson(abs);
-        expect(parsed.version).toBe(1);
-
-        const entries = Object.values(parsed).filter(Array.isArray).flat() as {
-          id?: string;
-          pattern?: string;
-          flags?: string;
-          reason?: string;
-        }[];
-        expect(entries.length).toBeGreaterThan(0);
-        for (const entry of entries) {
-          expect(typeof entry.id).toBe('string');
-          expect(typeof entry.reason).toBe('string');
-          expect(() => new RegExp(entry.pattern as string, entry.flags ?? '')).not.toThrow();
-        }
-      }
-    });
-  }
-});
-
-// The assertions above pin the shipped trees; these pin the check module that guards them. A
-// check whose evaluator silently returns [] for a broken tree passes every green-tree assertion
-// while enforcing nothing — so each evaluator is exercised against a deliberately damaged copy.
-
-const withDamagedBundle = (fn: (bundleRoot: string) => void) =>
-  withTempDir('blackhole-hooks-check-', (dir) => {
-    fs.cpSync(path.join(root, HOOK_BUNDLE_ROOTS[0], 'hooks'), path.join(dir, 'hooks'), {
-      recursive: true,
-    });
-    fn(dir);
-  });
-
-describe('hooks.check.ts evaluators', () => {
-  test('hookCommandScriptName strips trailing quotes from a quoted plugin-root path', () => {
-    expect(hookCommandScriptName('bun run "${CLAUDE_PLUGIN_ROOT}/hooks/validate-bash-command.js"')).toBe(
-      'validate-bash-command.js',
-    );
-    expect(hookCommandScriptName('bun run ${CLAUDE_PLUGIN_ROOT}/hooks/validate-file-changes.js')).toBe(
-      'validate-file-changes.js',
-    );
-  });
-
-  test('a correctly built bundle produces no errors from either evaluator', () => {
-    const bundle = path.join(root, HOOK_BUNDLE_ROOTS[0]);
-    expect(evaluateHooksWiring(bundle, 'fixture')).toEqual([]);
-    expect(evaluateHookPatterns(bundle, 'fixture')).toEqual([]);
-  });
-
-  test('a missing hooks.json is reported, not silently tolerated', () => {
-    withDamagedBundle((bundle) => {
-      fs.unlinkSync(path.join(bundle, 'hooks', 'hooks.json'));
-      expect(evaluateHooksWiring(bundle, 'fixture')).toEqual(['fixture: missing hooks/hooks.json']);
-    });
-  });
-
-  test('a hooks.json that drops a required matcher is reported', () => {
-    withDamagedBundle((bundle) => {
-      const abs = path.join(bundle, 'hooks', 'hooks.json');
-      const parsed = JSON.parse(fs.readFileSync(abs, 'utf-8'));
-      parsed.hooks.PreToolUse = parsed.hooks.PreToolUse.filter(
-        (e: { matcher: string }) => e.matcher !== REQUIRED_PRETOOLUSE_MATCHERS[0],
-      );
-      fs.writeFileSync(abs, JSON.stringify(parsed));
-      const errors = evaluateHooksWiring(bundle, 'fixture');
+describe('evaluateNoBlockingHooks', () => {
+  test('a hooks.json registering PreToolUse in a built tree is reported', () => {
+    withTempDir('noguard-pre', (dir) => {
+      write(dir, '.agents/build/hooks/hooks.json', JSON.stringify({ hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [] }] } }));
+      const errors = evaluateNoBlockingHooks(dir);
       expect(errors).toHaveLength(1);
-      expect(errors[0]).toContain(REQUIRED_PRETOOLUSE_MATCHERS[0]);
+      expect(errors[0]).toContain('.agents/build/hooks/hooks.json');
+      expect(errors[0]).toContain('PreToolUse');
     });
   });
 
-  test('a PreToolUse command hook missing onFailure: block is reported', () => {
-    withDamagedBundle((bundle) => {
-      const abs = path.join(bundle, 'hooks', 'hooks.json');
-      const parsed = JSON.parse(fs.readFileSync(abs, 'utf-8'));
-      for (const entry of parsed.hooks.PreToolUse) {
-        for (const h of entry.hooks) delete h.onFailure;
-      }
-      fs.writeFileSync(abs, JSON.stringify(parsed));
-      const errors = evaluateHooksWiring(bundle, 'fixture');
-      expect(errors.some((e) => e.includes('onFailure'))).toBe(true);
+  test('a native-tree hooks.json registering PreToolUse is reported, case-insensitively', () => {
+    withTempDir('noguard-native', (dir) => {
+      write(dir, `${CLAUDE_NATIVE_ROOT}/hooks/hooks.json`, JSON.stringify({ hooks: { preToolUse: [{}] } }));
+      expect(evaluateNoBlockingHooks(dir)).toHaveLength(1);
     });
   });
 
-  test('a PreToolUse command hook with the wrong timeout is reported', () => {
-    withDamagedBundle((bundle) => {
-      const abs = path.join(bundle, 'hooks', 'hooks.json');
-      const parsed = JSON.parse(fs.readFileSync(abs, 'utf-8'));
-      for (const entry of parsed.hooks.PreToolUse) {
-        for (const h of entry.hooks) h.timeout = 5;
-      }
-      fs.writeFileSync(abs, JSON.stringify(parsed));
-      const errors = evaluateHooksWiring(bundle, 'fixture');
-      expect(errors.some((e) => e.includes('timeout'))).toBe(true);
+  test('maintainer state under .claude/ outside the generated dirs is not walked', () => {
+    withTempDir('noguard-state', (dir) => {
+      write(dir, `${CLAUDE_NATIVE_ROOT}/worktrees/old/hooks/hooks.json`, JSON.stringify({ hooks: { PreToolUse: [{}] } }));
+      write(dir, `${CLAUDE_NATIVE_ROOT}/settings.json`, JSON.stringify({ hooks: { PreToolUse: [{}] } }));
+      expect(evaluateNoBlockingHooks(dir)).toEqual([]);
     });
   });
 
-  test('a matcher wired to a nonexistent script is reported', () => {
-    withDamagedBundle((bundle) => {
-      fs.unlinkSync(path.join(bundle, 'hooks', 'validate-bash-command.js'));
-      const errors = evaluateHooksWiring(bundle, 'fixture');
-      expect(errors.some((e) => e.includes('validate-bash-command.js'))).toBe(true);
+  test('a retired validator script anywhere in a built tree is reported', () => {
+    withTempDir('noguard-script', (dir) => {
+      for (const script of RETIRED_GUARD_SCRIPTS) write(dir, `${CLAUDE_DISTRIBUTION_ROOT}/hooks/${script}`, '// guard');
+      expect(evaluateNoBlockingHooks(dir)).toHaveLength(RETIRED_GUARD_SCRIPTS.length);
     });
   });
 
-  test('an uncompilable pattern is reported with the offending entry id', () => {
-    withDamagedBundle((bundle) => {
-      const abs = path.join(bundle, 'hooks', 'patterns', 'bash-patterns.json');
-      const parsed = JSON.parse(fs.readFileSync(abs, 'utf-8'));
-      parsed.blockPatterns[0].pattern = '([unclosed';
-      fs.writeFileSync(abs, JSON.stringify(parsed));
-      const errors = evaluateHookPatterns(bundle, 'fixture');
-      expect(errors).toHaveLength(1);
-      expect(errors[0]).toContain(parsed.blockPatterns[0].id);
+  test('a SessionStart-only hooks.json passes', () => {
+    withTempDir('noguard-clean', (dir) => {
+      write(dir, `${CLAUDE_DISTRIBUTION_ROOT}/hooks/hooks.json`, JSON.stringify({ hooks: { SessionStart: [{ hooks: [] }] } }));
+      expect(evaluateNoBlockingHooks(dir)).toEqual([]);
     });
   });
 
-  test('an unparseable pattern file is reported rather than throwing', () => {
-    withDamagedBundle((bundle) => {
-      fs.writeFileSync(path.join(bundle, 'hooks', 'patterns', 'file-patterns.json'), '{ not json');
-      const errors = evaluateHookPatterns(bundle, 'fixture');
-      expect(errors.some((e) => e.includes('file-patterns.json'))).toBe(true);
+  test('an unparseable registry file is an error, never a silent pass', () => {
+    withTempDir('noguard-bad-json', (dir) => {
+      write(dir, `${CLAUDE_DISTRIBUTION_ROOT}/hooks/hooks.json`, '{ not json');
+      expect(evaluateNoBlockingHooks(dir)[0]).toContain('invalid JSON');
     });
-  });
-
-  // F-00050 (review round 1): the pre-fix evaluator flattened `Object.values().filter(Array
-  // .isArray)` — any array-valued top-level key, not specifically the required ones — so renaming
-  // or dropping a required key (e.g. `blockPatterns` -> `blockedPatterns`) still found *some*
-  // array to validate and reported zero errors on a bundle whose loader would actually throw at
-  // runtime.
-  test('a pattern file with a renamed required key is reported, not silently skipped', () => {
-    withDamagedBundle((bundle) => {
-      const abs = path.join(bundle, 'hooks', 'patterns', 'bash-patterns.json');
-      const parsed = JSON.parse(fs.readFileSync(abs, 'utf-8'));
-      parsed.blockedPatterns = parsed.blockPatterns;
-      delete parsed.blockPatterns;
-      fs.writeFileSync(abs, JSON.stringify(parsed));
-      const errors = evaluateHookPatterns(bundle, 'fixture');
-      expect(errors.some((e) => e.includes('blockPatterns'))).toBe(true);
-    });
-  });
-
-  // F-00050 (review round 1): `new RegExp(entry.pattern as string, ...)` lied to the type checker
-  // — at runtime, `new RegExp(undefined)` compiles to `/(?:)/` (matches everything) without
-  // throwing, so an entry missing `pattern` entirely passed with zero static errors.
-  test('a pattern entry missing "pattern" is reported, not silently compiled as match-all', () => {
-    withDamagedBundle((bundle) => {
-      const abs = path.join(bundle, 'hooks', 'patterns', 'bash-patterns.json');
-      const parsed = JSON.parse(fs.readFileSync(abs, 'utf-8'));
-      delete parsed.blockPatterns[0].pattern;
-      fs.writeFileSync(abs, JSON.stringify(parsed));
-      const errors = evaluateHookPatterns(bundle, 'fixture');
-      expect(errors.some((e) => e.includes(parsed.blockPatterns[0].id) && e.includes('pattern'))).toBe(true);
-    });
-  });
-
-  test('REQUIRED_PATTERN_KEYS covers both shipped pattern files', () => {
-    expect(Object.keys(REQUIRED_PATTERN_KEYS).sort()).toEqual(['bash-patterns.json', 'file-patterns.json']);
   });
 });
 
-describe('hooks runChecks() against the real bundles', () => {
-  test('returns exactly the two hook check results, both passing', () => {
-    const results = runChecks();
-    expect(results.map((r) => r.id)).toEqual(['V-HOOKWIRE-01', 'V-HOOKPAT-01']);
-    for (const result of results) {
-      // Surface which bundle/marker failed rather than a bare `false`.
-      expect(result.detail ?? '').toBe('');
-      expect(result.ok).toBe(true);
-    }
+describe('evaluateSensitiveFilePatterns', () => {
+  const patternsAt = (dir: string, body: unknown) =>
+    write(dir, `${CLAUDE_DISTRIBUTION_ROOT}/hooks/patterns/file-patterns.json`, JSON.stringify(body));
+
+  test('a well-formed file passes', () => {
+    withTempDir('patterns-ok', (dir) => {
+      patternsAt(dir, { version: 1, sensitiveFiles: [{ id: 'env', pattern: '(^|/)\\.env$', flags: 'i', reason: 'env file' }] });
+      expect(evaluateSensitiveFilePatterns(dir)).toEqual([]);
+    });
+  });
+
+  test('a pattern that does not compile, a wrong version and an empty list are each reported', () => {
+    withTempDir('patterns-bad', (dir) => {
+      patternsAt(dir, { version: 2, sensitiveFiles: [{ id: 'x', pattern: '(', reason: 'r' }] });
+      const errors = evaluateSensitiveFilePatterns(dir);
+      expect(errors.some((e) => e.includes('does not compile'))).toBe(true);
+      expect(errors.some((e) => e.includes('unsupported schema version'))).toBe(true);
+      patternsAt(dir, { version: 1, sensitiveFiles: [] });
+      expect(evaluateSensitiveFilePatterns(dir).some((e) => e.includes('sensitiveFiles'))).toBe(true);
+    });
   });
 });
 
-describe('PreToolUse fail-closed contract (onFailure: block)', () => {
-  const templateHooks = JSON.parse(
-    fs.readFileSync(path.join(root, PRETOOLUSE_HOOKS_SSOT), 'utf-8'),
-  ) as {
-    hooks: { PreToolUse: { matcher: string; hooks: { timeout?: number; onFailure?: string }[] }[] };
-  };
-
-  test('SSOT template pins timeout: 15 and onFailure: block on every PreToolUse command hook', () => {
-    expect(templateHooks.hooks.PreToolUse.length).toBeGreaterThan(0);
-    for (const entry of templateHooks.hooks.PreToolUse) {
-      for (const h of entry.hooks) {
-        expect(h.timeout).toBe(REQUIRED_PRETOOLUSE_TIMEOUT);
-        expect(h.onFailure).toBe(REQUIRED_PRETOOLUSE_ON_FAILURE);
-      }
-    }
+describe('committed build output', () => {
+  test('no built tree registers PreToolUse or ships a retired guard validator', () => {
+    expect(evaluateNoBlockingHooks(root)).toEqual([]);
   });
 
-  test('HOOK_BUNDLE_ROOTS names four copies including .agents/build', () => {
-    expect(HOOK_BUNDLE_ROOTS).toHaveLength(4);
-    expect(HOOK_BUNDLE_ROOTS).toContain('.agents/build');
-    expect(HOOK_BUNDLE_ROOTS).toContain(CLAUDE_DISTRIBUTION_ROOT);
+  test('the shipped sensitive-filename pattern data parses and compiles in every tree that carries it', () => {
+    expect(evaluateSensitiveFilePatterns(root)).toEqual([]);
+    expect(fs.existsSync(path.join(root, CLAUDE_DISTRIBUTION_ROOT, 'hooks', 'patterns', 'file-patterns.json'))).toBe(true);
   });
 
-  test('verbatim copies match SSOT byte-for-byte; blackhole-claude is PreToolUse-only', () => {
-    for (const bundle of HOOK_BUNDLE_ROOTS) {
-      const preToolUseOnly = bundle === CLAUDE_DISTRIBUTION_ROOT;
-      expect(evaluateHooksSsotMatch(path.join(root, bundle), bundle, preToolUseOnly)).toEqual([]);
-    }
-  });
-
-  test('a copy that diverges from SSOT is reported; SessionStart extras are ignored when PreToolUse-only', () => {
-    withDamagedBundle((bundle) => {
-      const abs = path.join(bundle, 'hooks', 'hooks.json');
-      const parsed = JSON.parse(fs.readFileSync(abs, 'utf-8'));
-      parsed.hooks.SessionStart = [{ hooks: [{ type: 'command', command: 'true', timeout: 5 }] }];
-      fs.writeFileSync(abs, `${JSON.stringify(parsed, null, 2)}\n`);
-      expect(evaluateHooksSsotMatch(bundle, 'fixture', true)).toEqual([]);
-      expect(evaluateHooksSsotMatch(bundle, 'fixture', false).some((e) => e.includes('byte-for-byte'))).toBe(true);
-      parsed.hooks.PreToolUse[0].hooks[0].timeout = 5;
-      fs.writeFileSync(abs, `${JSON.stringify(parsed, null, 2)}\n`);
-      expect(evaluateHooksSsotMatch(bundle, 'fixture', true).some((e) => e.includes('PreToolUse'))).toBe(true);
-    });
-  });
-
-  test('validator exit 2 (deliberate deny) is a blocking PreToolUse outcome', async () => {
-    await withTempGitRepo('blackhole-hook-onfailure-', async (repo) => {
-      const result = await runPreToolUseHook(
-        'validate-bash-command.js',
-        { tool_name: 'Bash', tool_input: { command: 'rm -rf /' }, tool_use_id: 'toolu_onfailure' },
-        repo,
-        PRETOOLUSE_HOOKS_DIR,
-      );
-      expect(result.exitCode).toBe(2);
-    });
-  });
-
-  test('timeout is a blocking outcome via the same onFailure: block + timeout: 15 pair', () => {
-    // Claude Code's harness (v2.1.295+) treats a timed-out command hook as a failure, then
-    // applies onFailure. We cannot spawn that harness here; the pair above is the shipped
-    // contract that makes a 15s stall refuse the tool call instead of failing open.
-    for (const entry of templateHooks.hooks.PreToolUse) {
-      for (const h of entry.hooks) {
-        expect(h.timeout).toBe(REQUIRED_PRETOOLUSE_TIMEOUT);
-        expect(h.onFailure).toBe('block');
-      }
-    }
+  test('the Claude marketplace bundle keeps the SessionStart plugin-root export and nothing else', () => {
+    const hooks = JSON.parse(fs.readFileSync(path.join(root, CLAUDE_DISTRIBUTION_ROOT, 'hooks', 'hooks.json'), 'utf-8')) as {
+      hooks: Record<string, unknown[]>;
+    };
+    expect(Object.keys(hooks.hooks)).toEqual(['SessionStart']);
+    expect(JSON.stringify(hooks.hooks.SessionStart)).toContain('BLACKHOLE_PLUGIN_ROOT');
   });
 });

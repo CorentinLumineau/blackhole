@@ -3,6 +3,8 @@ import {
   PHASE_IMPLEMENT_REQUIRED_MARKERS,
   IMPLEMENTER_REQUIRED_MARKERS,
   ORCHESTRATOR_DISPATCH_REQUIRED_MARKERS,
+  REVIEWER_REQUIRED_MARKERS,
+  PHASE_REVIEW_REQUIRED_MARKERS,
   runChecks,
 } from './checks/worker-git-safety.check.ts';
 import { expectMarkersPresent, expectMarkersMissing } from './lib/marker-fixture-test.ts';
@@ -61,6 +63,27 @@ const ORCHESTRATOR_DISPATCH_FIXTURE_STALE = `
 ADR-006's proactive counterpart to § Continuous Discovery above.
 `;
 
+const REVIEWER_FIXTURE_FIXED = `
+### No-Checkout Rule
+
+Read a PR head with \`gh pr diff\` or a throwaway \`git worktree add --detach\`. Never \`git checkout\` or \`git switch\` in an existing checkout.
+`;
+
+const REVIEWER_FIXTURE_STALE = `
+## Audit Checklist
+
+Review the diff for quality, security and plan compliance.
+`;
+
+const PHASE_REVIEW_FIXTURE_FIXED = `
+- No-Checkout Rule: read the PR head via a throwaway \`git worktree add --detach\`.
+`;
+
+const PHASE_REVIEW_FIXTURE_STALE = `
+- PR number + diff summary
+- Model: use the designated worker agent (\`reviewer\`)
+`;
+
 describe('PHASE_IMPLEMENT_REQUIRED_MARKERS', () => {
   test('fixed phase-implement.md fixture has all markers present', () => {
     expectMarkersPresent(PHASE_IMPLEMENT_FIXTURE_FIXED, PHASE_IMPLEMENT_REQUIRED_MARKERS);
@@ -88,6 +111,26 @@ describe('ORCHESTRATOR_DISPATCH_REQUIRED_MARKERS', () => {
 
   test('stale orchestrator-dispatch.md fixture (pre-fix, no sweep) is missing all markers', () => {
     expectMarkersMissing(ORCHESTRATOR_DISPATCH_FIXTURE_STALE, ORCHESTRATOR_DISPATCH_REQUIRED_MARKERS);
+  });
+});
+
+describe('REVIEWER_REQUIRED_MARKERS', () => {
+  test('fixed reviewer.md fixture has all markers present', () => {
+    expectMarkersPresent(REVIEWER_FIXTURE_FIXED, REVIEWER_REQUIRED_MARKERS);
+  });
+
+  test('stale reviewer.md fixture (no no-checkout rule) is missing all markers', () => {
+    expectMarkersMissing(REVIEWER_FIXTURE_STALE, REVIEWER_REQUIRED_MARKERS);
+  });
+});
+
+describe('PHASE_REVIEW_REQUIRED_MARKERS', () => {
+  test('fixed phase-review.md fixture has all markers present', () => {
+    expectMarkersPresent(PHASE_REVIEW_FIXTURE_FIXED, PHASE_REVIEW_REQUIRED_MARKERS);
+  });
+
+  test('stale phase-review.md fixture (no no-checkout rule) is missing all markers', () => {
+    expectMarkersMissing(PHASE_REVIEW_FIXTURE_STALE, PHASE_REVIEW_REQUIRED_MARKERS);
   });
 });
 

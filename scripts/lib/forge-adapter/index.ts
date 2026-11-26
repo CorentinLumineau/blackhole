@@ -10,6 +10,7 @@ export type {
   IssueEditParams,
   IssueListFilter,
   PrCreateParams,
+  PrUpdateBranchResult,
 } from './types.ts';
 
 export { runGh, runGhJson, runGhText, runGhApiJson, runGhApiText } from './cli.ts';

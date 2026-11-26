@@ -2,245 +2,100 @@ import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
 import { withTempDir } from '../test-fixtures.ts';
-import { computeMergedSettings, mergeClaudeSettingsHooks } from './claude-native-settings.ts';
-import {
-  assertFailOpenRecord,
-  bashCommand,
-  fileChangesCommand,
-  hookEventFiles,
-  initGitRepo,
-  runWrapperWithStubExit,
-} from './claude-native-settings.fixtures.ts';
+import { stripBlackholeGuardHooks, stripBlackholeGuardHooksFrom } from './claude-native-settings.ts';
 
-// Issue #472 — the .claude/settings.json read-modify-write merge contract. This is the file this
-// plan's highest-severity risk (Tampering/Elevation of Privilege) centers on: a bug here is data
-// loss on the maintainer's own machine, not a test failure. See § Database/API Schema Changes in
-// .blackhole/plans/issue-472.md for the full merge contract this test file pins.
+// ADR-065: the build removes the guard registrations earlier builds merged into
+// `.claude/settings.json`. A bug here is data loss on the maintainer's own machine, so the contract
+// is pinned from both sides: the retired entries go, everything else survives byte-for-byte.
 
-const readSettings = (claudeRoot: string): Record<string, unknown> =>
-  JSON.parse(fs.readFileSync(path.join(claudeRoot, 'settings.json'), 'utf-8'));
+const guard = (matcher: string, script: string) => ({
+  matcher,
+  hooks: [{ type: 'command', command: `stderr_tmp="$(mktemp)"\nbun run "$CLAUDE_PROJECT_DIR/.claude/hooks/${script}"`, timeout: 5 }],
+});
+const bashGuard = guard('Bash', 'validate-bash-command.js');
+const fileGuard = guard('Write|Edit', 'validate-file-changes.js');
+const foreign = { matcher: 'Bash', hooks: [{ type: 'command', command: 'echo maintainer-hook' }] };
 
-describe('computeMergedSettings — pure merge logic', () => {
-  test('empty existing settings produces both blackhole PreToolUse matchers', () => {
-    const merged = computeMergedSettings({}) as { hooks: { PreToolUse: { matcher: string }[] } };
-    const matchers = merged.hooks.PreToolUse.map((e) => e.matcher);
-    expect(matchers).toContain('Bash');
-    expect(matchers).toContain('Write|Edit');
+const readSettings = (dir: string): Record<string, unknown> =>
+  JSON.parse(fs.readFileSync(path.join(dir, 'settings.json'), 'utf-8'));
+
+describe('stripBlackholeGuardHooksFrom — pure removal', () => {
+  test('a file that carried only the two guards ends with no hooks key', () => {
+    expect(stripBlackholeGuardHooksFrom({ hooks: { PreToolUse: [bashGuard, fileGuard] } })).toEqual({});
   });
 
-  test('null/undefined existing settings are treated as empty, not thrown', () => {
-    expect(() => computeMergedSettings(null)).not.toThrow();
-    expect(() => computeMergedSettings(undefined)).not.toThrow();
+  test('empty, null and undefined input stay empty', () => {
+    expect(stripBlackholeGuardHooksFrom({})).toEqual({});
+    expect(stripBlackholeGuardHooksFrom(null)).toEqual({});
+    expect(stripBlackholeGuardHooksFrom(undefined)).toEqual({});
   });
 
-  test('a non-object existing value (array, string) is rejected rather than guessed at', () => {
-    expect(() => computeMergedSettings([])).toThrow();
-    expect(() => computeMergedSettings('not an object')).toThrow();
+  test('a non-object existing value is rejected rather than guessed at', () => {
+    expect(() => stripBlackholeGuardHooksFrom([])).toThrow();
+    expect(() => stripBlackholeGuardHooksFrom('x')).toThrow();
   });
 
-  test('AC-4a — running the merge twice on identical input is byte-identical the second time', () => {
-    const once = computeMergedSettings({});
-    const twice = computeMergedSettings(once);
-    expect(JSON.stringify(twice, null, 2)).toBe(JSON.stringify(once, null, 2));
-  });
-
-  test('AC-4b — an unrelated top-level key (permissions) survives the merge byte-for-byte', () => {
-    const input = { permissions: { foo: 'bar' } };
-    const merged = computeMergedSettings(input) as { permissions: unknown };
-    expect(merged.permissions).toEqual({ foo: 'bar' });
-  });
-
-  test('AC-4c — a foreign PreToolUse entry survives untouched, position preserved', () => {
-    const foreign = { matcher: 'Grep', hooks: [{ type: 'command', command: 'echo grep-hook' }] };
-    const input = { hooks: { PreToolUse: [foreign] } };
-    const merged = computeMergedSettings(input) as {
-      hooks: { PreToolUse: { matcher: string }[] };
+  test('a foreign PreToolUse entry survives in place, even with the same matcher as a guard', () => {
+    const out = stripBlackholeGuardHooksFrom({ hooks: { PreToolUse: [foreign, bashGuard, fileGuard] } }) as {
+      hooks: { PreToolUse: unknown[] };
     };
-    expect(merged.hooks.PreToolUse[0]).toEqual(foreign);
-    // and the two blackhole matchers are appended after it, not replacing it
-    const matchers = merged.hooks.PreToolUse.map((e) => e.matcher);
-    expect(matchers).toEqual(['Grep', 'Bash', 'Write|Edit']);
+    expect(out.hooks.PreToolUse).toEqual([foreign]);
   });
 
-  test('re-running the merge replaces the blackhole entry in place (fingerprint match), not append', () => {
-    const once = computeMergedSettings({}) as { hooks: { PreToolUse: unknown[] } };
-    const twice = computeMergedSettings(once) as { hooks: { PreToolUse: unknown[] } };
-    expect(twice.hooks.PreToolUse).toHaveLength(once.hooks.PreToolUse.length);
-  });
-
-  test('other hooks.* event types (e.g. Stop) pass through untouched', () => {
-    const input = { hooks: { Stop: [{ matcher: '*', hooks: [] }] } };
-    const merged = computeMergedSettings(input) as { hooks: { Stop: unknown } };
-    expect(merged.hooks.Stop).toEqual(input.hooks.Stop);
-  });
-
-  test('every blackhole command references $CLAUDE_PROJECT_DIR, never ${CLAUDE_PLUGIN_ROOT}', () => {
-    const merged = computeMergedSettings({}) as {
-      hooks: { PreToolUse: { hooks: { command: string }[] }[] };
+  test('unrelated top-level keys and other hook events pass through untouched', () => {
+    const input = {
+      permissions: { allow: ['Bash(git *)'] },
+      env: { FOO: 'bar' },
+      hooks: { Stop: [{ hooks: [{ type: 'command', command: 'echo stop' }] }], PreToolUse: [bashGuard] },
     };
-    for (const entry of merged.hooks.PreToolUse) {
-      for (const h of entry.hooks) {
-        expect(h.command).toContain('$CLAUDE_PROJECT_DIR');
-        expect(h.command).not.toContain('${CLAUDE_PLUGIN_ROOT}');
-      }
-    }
+    expect(stripBlackholeGuardHooksFrom(input)).toEqual({
+      permissions: input.permissions,
+      env: input.env,
+      hooks: { Stop: input.hooks.Stop },
+    });
   });
 
-  test('AC-4d contract — the command exits the stub code verbatim for 0/2, and 0 for anything else', () => {
-    // Static assertion of the shell contract's shape, complementing the real subprocess
-    // AC-4d/4e test below: the exit-code capture line must appear verbatim, since a naive
-    // `command1 || fallback` would convert every legitimate deny (exit 2) into an allow.
-    const merged = computeMergedSettings({}) as {
-      hooks: { PreToolUse: { hooks: { command: string }[] }[] };
-    };
-    for (const entry of merged.hooks.PreToolUse) {
-      const command = entry.hooks[0].command;
-      expect(command).toContain('code=$?');
-      expect(command).toContain('if [ "$code" = "0" ] || [ "$code" = "2" ]; then exit "$code"; fi');
-    }
+  test('running the removal twice is byte-identical the second time', () => {
+    const once = stripBlackholeGuardHooksFrom({ a: 1, hooks: { PreToolUse: [foreign, bashGuard] } });
+    expect(JSON.stringify(stripBlackholeGuardHooksFrom(once))).toBe(JSON.stringify(once));
+  });
+
+  test('a settings object with no hooks key is returned without adding one', () => {
+    expect(stripBlackholeGuardHooksFrom({ env: { A: '1' } })).toEqual({ env: { A: '1' } });
   });
 });
 
-describe('mergeClaudeSettingsHooks — file I/O contract', () => {
-  test('case 1 — .claude/settings.json does not exist: writes a fresh file with both matchers', () => {
+describe('stripBlackholeGuardHooks — file I/O contract', () => {
+  test('an absent settings.json stays absent', () => {
     withTempDir('blackhole-claude-settings-', (dir) => {
-      mergeClaudeSettingsHooks(dir);
-      const settings = readSettings(dir);
-      const preToolUse = (settings.hooks as { PreToolUse: { matcher: string }[] }).PreToolUse;
-      expect(preToolUse.map((e) => e.matcher)).toEqual(['Bash', 'Write|Edit']);
+      stripBlackholeGuardHooks(dir);
+      expect(fs.existsSync(path.join(dir, 'settings.json'))).toBe(false);
     });
   });
 
-  test('case 2 — running the merge twice produces a byte-identical file (idempotency)', () => {
+  test('guards are removed from the file, unrelated keys survive, and no .tmp is left behind', () => {
     withTempDir('blackhole-claude-settings-', (dir) => {
-      mergeClaudeSettingsHooks(dir);
-      const first = fs.readFileSync(path.join(dir, 'settings.json'), 'utf-8');
-      mergeClaudeSettingsHooks(dir);
-      const second = fs.readFileSync(path.join(dir, 'settings.json'), 'utf-8');
-      expect(second).toBe(first);
-    });
-  });
-
-  test('case 3 — an existing file with unrelated keys survives the merge byte-for-byte', () => {
-    withTempDir('blackhole-claude-settings-', (dir) => {
-      fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(
         path.join(dir, 'settings.json'),
-        JSON.stringify({ permissions: { allow: ['Bash(git *)'] }, env: { FOO: 'bar' } }, null, 2),
+        JSON.stringify({ permissions: { allow: ['Bash(git *)'] }, hooks: { PreToolUse: [bashGuard, fileGuard] } }, null, 2),
       );
-      mergeClaudeSettingsHooks(dir);
-      const settings = readSettings(dir);
-      expect(settings.permissions).toEqual({ allow: ['Bash(git *)'] });
-      expect(settings.env).toEqual({ FOO: 'bar' });
-    });
-  });
-
-  test('writes atomically via tmp + rename — no .tmp file left behind on success', () => {
-    withTempDir('blackhole-claude-settings-', (dir) => {
-      mergeClaudeSettingsHooks(dir);
+      stripBlackholeGuardHooks(dir);
+      expect(readSettings(dir)).toEqual({ permissions: { allow: ['Bash(git *)'] } });
       expect(fs.existsSync(path.join(dir, 'settings.json.tmp'))).toBe(false);
-      expect(fs.existsSync(path.join(dir, 'settings.json'))).toBe(true);
     });
   });
 
-  test('a malformed existing settings.json throws rather than silently discarding it', () => {
+  test('a malformed existing settings.json throws rather than being discarded', () => {
     withTempDir('blackhole-claude-settings-', (dir) => {
-      fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(path.join(dir, 'settings.json'), '{ not json');
-      expect(() => mergeClaudeSettingsHooks(dir)).toThrow();
+      expect(() => stripBlackholeGuardHooks(dir)).toThrow();
     });
   });
 
   test('a zero-byte existing settings.json throws rather than being treated as empty', () => {
     withTempDir('blackhole-claude-settings-', (dir) => {
-      fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(path.join(dir, 'settings.json'), '');
-      expect(() => mergeClaudeSettingsHooks(dir)).toThrow();
-    });
-  });
-});
-
-describe('AC-4d/4e — exit-code discrimination through the real generated command', () => {
-  test('stub exit 0 (allow): wrapper exits 0, no hook-exec-error record, no fail-open notice on stderr', () => {
-    withTempDir('blackhole-claude-wrapper-', (dir) => {
-      const { exitCode, stderr } = runWrapperWithStubExit(dir, 0);
-      expect(exitCode).toBe(0);
-      expect(hookEventFiles(dir)).toEqual([]);
-      expect(stderr).not.toMatch(/fail-open/i);
-    });
-  });
-
-  test('stub exit 2 (deliberate deny): wrapper exits 2 verbatim, no hook-exec-error record, no fail-open notice on stderr', () => {
-    withTempDir('blackhole-claude-wrapper-', (dir) => {
-      const { exitCode, stderr } = runWrapperWithStubExit(dir, 2);
-      expect(exitCode).toBe(2);
-      expect(hookEventFiles(dir)).toEqual([]);
-      expect(stderr).not.toMatch(/fail-open/i);
-    });
-  });
-
-  test('stub exit 1 or 127: fail-open with schema-complete error record', () => {
-    for (const code of [1, 127]) {
-      withTempDir('blackhole-claude-wrapper-', (dir) => {
-        const { exitCode, stderr } = runWrapperWithStubExit(dir, code);
-        expect(exitCode).toBe(0);
-        assertFailOpenRecord(dir, hookEventFiles(dir), 'validate-bash-command', 'Bash');
-        expect(JSON.stringify(hookEventFiles(dir)[0])).not.toMatch(/stdin|password|secret/i);
-        expect(stderr).toMatch(/fail-open/i);
-      });
-    }
-  });
-
-  test('file-changes hook stub exit 1: error record has tool null, worktree, and detail', () => {
-    withTempDir('blackhole-claude-wrapper-', (dir) => {
-      const { exitCode } = runWrapperWithStubExit(
-        dir,
-        1,
-        fileChangesCommand(),
-        'validate-file-changes.js',
-      );
-      expect(exitCode).toBe(0);
-      assertFailOpenRecord(dir, hookEventFiles(dir), 'validate-file-changes', null);
-    });
-  });
-  // #1197: the harness's own 5 s timeout fails OPEN, so the wrapper enforces a shorter deadline of
-  // its own and denies when the validator has not decided by then; a crash stays fail-open.
-  const runSlowStub = (dir: string) => {
-    initGitRepo(dir);
-    const hooksDir = path.join(dir, '.claude', 'hooks');
-    fs.mkdirSync(hooksDir, { recursive: true });
-    fs.writeFileSync(path.join(hooksDir, 'validate-bash-command.js'), 'setTimeout(() => {}, 60000);\n');
-    const start = performance.now();
-    const proc = Bun.spawnSync({
-      cmd: ['bash', '-c', bashCommand()],
-      env: { ...process.env, CLAUDE_PROJECT_DIR: dir, BLACKHOLE_HOOK_DEADLINE_S: '1' },
-      stdin: new Blob(['{}']),
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
-    return { proc, elapsed: performance.now() - start };
-  };
-
-  test('a validator that outruns its deadline is denied (exit 2) well under 5 s, with a Remedy and a block record', () => {
-    withTempDir('blackhole-claude-wrapper-', (dir) => {
-      const { proc, elapsed } = runSlowStub(dir);
-      expect(proc.exitCode).toBe(2);
-      expect(elapsed).toBeLessThan(4000);
-      const out = JSON.parse(proc.stdout.toString());
-      expect(out.hookSpecificOutput.permissionDecision).toBe('deny');
-      expect(proc.stderr.toString()).toMatch(/Remedy: split/);
-      const events = hookEventFiles(dir);
-      expect(events).toHaveLength(1);
-      expect(events[0]).toMatchObject({ decision: 'deny', tier: 'block', pattern_id: 'hook-verification-timeout' });
-    });
-  });
-
-  test('a crashing validator is still allowed (fail-open) even with the deadline in place', () => {
-    withTempDir('blackhole-claude-wrapper-', (dir) => {
-      const { exitCode } = runWrapperWithStubExit(dir, 1, bashCommand(), 'validate-bash-command.js', {
-        BLACKHOLE_HOOK_DEADLINE_S: '1',
-      });
-      expect(exitCode).toBe(0);
+      expect(() => stripBlackholeGuardHooks(dir)).toThrow();
     });
   });
 });
