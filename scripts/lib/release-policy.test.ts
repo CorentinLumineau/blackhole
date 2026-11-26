@@ -7,6 +7,9 @@ import {
   evaluateFreshness,
   nextCutVersion,
   parseFirstParentLog,
+  type CutDecision,
+  type CutInput,
+  type Freshness,
   type PendingCommit,
 } from './release-policy.ts';
 
@@ -80,51 +83,89 @@ describe('parseFirstParentLog', () => {
   });
 });
 
+const FRESH: Freshness = { ok: true, sha: 'v'.padEnd(40, '0'), reason: 'newest verify run is green and an ancestor of the tip' };
+const STALE: Freshness = { ok: false, sha: null, reason: 'newest verify run concluded failure' };
+const allVerified = (): boolean => true;
+
 describe('decideCut', () => {
   const lastTagAt = new Date(NOW.getTime() - 48 * HOURS);
+  const decide = (over: Partial<CutInput> & Pick<CutInput, 'commits'>): CutDecision =>
+    decideCut({ now: NOW, lastTagAt, freshness: FRESH, isVerified: allVerified, ...over });
 
   test('nothing pending is none', () => {
-    expect(decideCut({ commits: [], now: NOW, lastTagAt })).toMatchObject({ class: 'none', cut: false });
+    expect(decide({ commits: [] })).toMatchObject({ class: 'none', cut: false });
   });
 
   test('a batch with no shipped path never cuts, whatever its size', () => {
-    const d = decideCut({ commits: batchOf(30, { touchesShipped: false }), now: NOW, lastTagAt });
+    const d = decide({ commits: batchOf(30, { touchesShipped: false }) });
     expect(d).toMatchObject({ class: 'none', cut: false, reason: 'no shipped path changed' });
   });
 
   test('the batch class cuts at the threshold and not one PR below', () => {
-    expect(decideCut({ commits: batchOf(10), now: NOW, lastTagAt })).toMatchObject({ class: 'batch', cut: true, pending: 10 });
-    expect(decideCut({ commits: batchOf(9), now: NOW, lastTagAt })).toMatchObject({ class: 'none', cut: false, pending: 9 });
+    expect(decide({ commits: batchOf(10) })).toMatchObject({ class: 'batch', cut: true, pending: 10 });
+    expect(decide({ commits: batchOf(9) })).toMatchObject({ class: 'none', cut: false, pending: 9 });
   });
 
   test('the age flush cuts one old PR, and waits when the oldest is young', () => {
-    const old = [commit(1, { committedAt: ago(25) })];
-    expect(decideCut({ commits: old, now: NOW, lastTagAt })).toMatchObject({ class: 'age', cut: true });
-    expect(decideCut({ commits: [commit(1, { committedAt: ago(23) })], now: NOW, lastTagAt })).toMatchObject({ class: 'none', cut: false });
+    expect(decide({ commits: [commit(1, { committedAt: ago(25) })] })).toMatchObject({ class: 'age', cut: true });
+    expect(decide({ commits: [commit(1, { committedAt: ago(23) })] })).toMatchObject({ class: 'none', cut: false });
   });
 
   test('the cooldown holds batch and age but not immediate', () => {
     const recent = new Date(NOW.getTime() - 2 * HOURS);
-    expect(decideCut({ commits: batchOf(10), now: NOW, lastTagAt: recent })).toMatchObject({ class: 'cooldown', cut: false });
-    expect(decideCut({ commits: [commit(1, { committedAt: ago(30) })], now: NOW, lastTagAt: recent })).toMatchObject({ class: 'cooldown', cut: false });
-    expect(decideCut({ commits: [commit(1, { immediate: true })], now: NOW, lastTagAt: recent })).toMatchObject({ class: 'immediate', cut: true });
+    expect(decide({ commits: batchOf(10), lastTagAt: recent })).toMatchObject({ class: 'cooldown', cut: false });
+    expect(decide({ commits: [commit(1, { committedAt: ago(30) })], lastTagAt: recent })).toMatchObject({ class: 'cooldown', cut: false });
+    expect(decide({ commits: [commit(1, { immediate: true })], lastTagAt: recent })).toMatchObject({ class: 'immediate', cut: true });
   });
 
   test('an immediate commit that main CI has not verified does not cut at once', () => {
     const commits = [commit(1, { immediate: true })];
-    expect(decideCut({ commits, now: NOW, lastTagAt, isVerified: () => false })).toMatchObject({ class: 'none', cut: false });
-    expect(decideCut({ commits, now: NOW, lastTagAt, isVerified: (s) => s === commits[0].sha })).toMatchObject({ class: 'immediate', cut: true });
+    expect(decide({ commits, isVerified: () => false })).toMatchObject({ class: 'none', cut: false });
+    expect(decide({ commits, isVerified: (s) => s === commits[0].sha })).toMatchObject({ class: 'immediate', cut: true });
+  });
+
+  test('without a fresh green run no class cuts, and the reason is the freshness reason', () => {
+    for (const commits of [batchOf(10), [commit(1, { committedAt: ago(30) })], [commit(1, { immediate: true })]]) {
+      expect(decide({ commits, freshness: STALE })).toMatchObject({ class: 'none', cut: false, reason: STALE.reason });
+    }
+  });
+
+  test('force is the emergency button: it cuts without a fresh green run', () => {
+    expect(decide({ commits: batchOf(1), freshness: STALE, isVerified: () => false, force: true })).toMatchObject({ class: 'force', cut: true });
   });
 
   test('force cuts any pending work; release commits alone are not pending', () => {
-    expect(decideCut({ commits: batchOf(1), now: NOW, lastTagAt, force: true })).toMatchObject({ class: 'force', cut: true });
+    expect(decide({ commits: batchOf(1), force: true })).toMatchObject({ class: 'force', cut: true });
     const release = [commit(0, { isReleaseCommit: true, prNumber: null })];
-    expect(decideCut({ commits: release, now: NOW, lastTagAt, force: true })).toMatchObject({ class: 'none', cut: false });
+    expect(decide({ commits: release, force: true })).toMatchObject({ class: 'none', cut: false });
   });
 
   test('a direct commit to a shipped path is relevant but is not counted as a PR', () => {
     const direct = commit(1, { prNumber: null, committedAt: ago(40) });
-    expect(decideCut({ commits: [direct], now: NOW, lastTagAt })).toMatchObject({ class: 'none', cut: false, pending: 0 });
+    expect(decide({ commits: [direct] })).toMatchObject({ class: 'none', cut: false, pending: 0 });
+  });
+
+  test('an invalid commit date refuses the age flush instead of skipping it', () => {
+    const d = decide({ commits: [commit(1, { committedAt: 'not-a-date' })] });
+    expect(d).toMatchObject({ class: 'none', cut: false });
+    expect(d.reason).toContain('invalid commit date');
+  });
+
+  test('an invalid last-tag date refuses the cut instead of skipping the cooldown', () => {
+    const d = decide({ commits: batchOf(10), lastTagAt: new Date('nope') });
+    expect(d).toMatchObject({ class: 'none', cut: false });
+    expect(d.reason).toContain('invalid last tag date');
+  });
+
+  test('an invalid clock refuses the cut', () => {
+    const d = decide({ commits: batchOf(10), now: new Date('nope') });
+    expect(d).toMatchObject({ class: 'none', cut: false });
+    expect(d.reason).toContain('invalid current time');
+  });
+
+  test('an invalid date on an immediate cut or a force dispatch does not block it', () => {
+    expect(decide({ commits: [commit(1, { immediate: true, committedAt: 'x' })] })).toMatchObject({ class: 'immediate', cut: true });
+    expect(decide({ commits: [commit(1, { committedAt: 'x' })], force: true })).toMatchObject({ class: 'force', cut: true });
   });
 });
 
