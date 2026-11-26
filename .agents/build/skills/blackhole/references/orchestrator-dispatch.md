@@ -400,7 +400,7 @@ the contract labels), run `bun run scripts/claim-labels.ts --issue <N> --campaig
 every `claim_labels` entry to the issue through the forge adapter and prints one JSON line `{claimed,
 failed}`; with `claim_labels` unset it writes nothing. It fails open: exit 1 or a non-empty `failed`
 is logged as a warning in the turn notes and never blocks dispatch (the merge then needs the label by
-hand). A label the consumer repo lacks is not created.
+hand). The campaign never pre-creates a label by hand: the GitHub and GitLab adapters add the label through the forge API, which creates a missing one with a default colour, and the Gitea adapter creates it first. Spell `claim_labels` exactly as the consumer's existing label so its colour and description are kept.
 
 `bun run scripts/release-claims.ts --campaign-dir .blackhole` reads the forge: for every `queue.json`
 issue the campaign dispatched (status `in-flight`, `merged` or `closed`, never `ready` or `blocked`,
