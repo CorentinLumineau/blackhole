@@ -9,6 +9,7 @@ import {
   OWNER_GATE_UNCHECKED,
   ownerGateConfig,
   ownerGateDecisions,
+  oneLine,
   ownerGateReaderWith,
   systemOwnerGateReader,
   type OwnerGatePr,
@@ -185,6 +186,60 @@ describe('ownerGateReaderWith', () => {
     const seen: string[] = [];
     ownerGateReaderWith((repo) => (seen.push(repo), []))(config, GATE);
     expect(seen).toEqual(['acme/app']);
+  });
+});
+
+describe('ownerGateReaderWith cap', () => {
+  const config = { repo: 'acme/app' };
+  const many = (n: number): ForgePr[] => Array.from({ length: n }, (_, i) => fpr(i + 1, ['gate:pending']));
+  test('1000 open PRs is unavailable, never a silent truncation', () => {
+    expect(ownerGateReaderWith(() => many(1000))(config, GATE)).toEqual({ status: 'unavailable', reason: '1000 or more open PRs' });
+  });
+  test('999 open PRs is read in full', () => {
+    const read = ownerGateReaderWith(() => many(999))(config, GATE);
+    expect(read.status).toBe('ok');
+    if (read.status === 'ok') expect(read.prs).toHaveLength(999);
+  });
+  test('a multi-line lister error and an unknown forge name reach the report as one clean line', () => {
+    const err = ownerGateReaderWith(() => {
+      throw new Error('\u202e boom\u001b[31m\u2028x');
+    })(config, GATE);
+    expect(err).toEqual({ status: 'unavailable', reason: 'boom [31m x' });
+    expect(ownerGateReaderWith(() => [])({ repo: 'acme/app', forge: 'a\u001bb\nc' }, GATE)).toEqual({ status: 'unavailable', reason: 'not read on a b c' });
+  });
+});
+
+describe('oneLine', () => {
+  const cases: Array<[string, string]> = [
+    ['CR', '\r'],
+    ['VT', '\v'],
+    ['FF', '\f'],
+    ['NBSP', '\u00a0'],
+    ['LS U+2028', '\u2028'],
+    ['PS U+2029', '\u2029'],
+    ['NEL U+0085', '\u0085'],
+    ['ESC', '\u001b'],
+    ['RLO U+202E', '\u202e'],
+    ['ZWSP U+200B', '\u200b'],
+  ];
+  for (const [name, ch] of cases) {
+    test(`${name} between words collapses to one space`, () => {
+      expect(oneLine(`a${ch}${ch}b`)).toBe('a b');
+    });
+  }
+  test('a 10k-character title is cut to exactly 120 characters ending in an ellipsis', () => {
+    const out = oneLine('a'.repeat(10000));
+    expect(out).toBe(`${'a'.repeat(119)}…`);
+    expect(out.length).toBe(120);
+  });
+  test('an emoji straddling the cut is dropped whole, leaving a well-formed string', () => {
+    const out = oneLine(`${'a'.repeat(118)}\u{1F600}${'b'.repeat(50)}`);
+    expect(out).toBe(`${'a'.repeat(118)}…`);
+    expect(out.isWellFormed()).toBe(true);
+    expect(out.length).toBeLessThanOrEqual(120);
+  });
+  test('a title of exactly 120 characters is returned whole', () => {
+    expect(oneLine('a'.repeat(120))).toBe('a'.repeat(120));
   });
 });
 

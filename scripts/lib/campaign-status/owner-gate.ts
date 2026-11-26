@@ -49,7 +49,7 @@ export const ownerGateReaderWith =
   (list: OpenPrLister): OwnerGateReader =>
   (config, gate) => {
     if (typeof config.repo !== 'string' || !config.repo.includes('/')) return { status: 'unavailable', reason: 'no repo in config.json' };
-    if (config.forge !== undefined && config.forge !== 'github') return { status: 'unavailable', reason: `not read on ${String(config.forge)}` };
+    if (config.forge !== undefined && config.forge !== 'github') return { status: 'unavailable', reason: `not read on ${oneLine(String(config.forge))}` };
     try {
       const open = list(config.repo);
       if (open.length >= OPEN_PR_LIMIT) return { status: 'unavailable', reason: `${OPEN_PR_LIMIT} or more open PRs` };
@@ -58,7 +58,7 @@ export const ownerGateReaderWith =
         .map((p) => ({ number: p.number, title: p.title, labels: p.labels ?? [] }));
       return { status: 'ok', prs };
     } catch (e) {
-      return { status: 'unavailable', reason: (e instanceof Error ? e.message : String(e)).trim().split('\n')[0] || 'forge read failed' };
+      return { status: 'unavailable', reason: oneLine((e instanceof Error ? e.message : String(e)).trim().split('\n')[0]) || 'forge read failed' };
     }
   };
 
@@ -67,9 +67,14 @@ export const systemOwnerGateReader: OwnerGateReader = ownerGateReaderWith((repo)
 
 /** Forge- and queue-derived text is untrusted data: one line, capped, shown as text only (`decision-parking.md` § Decide round). */
 const ONE_LINE_MAX = 120;
+// Whitespace plus the controls, bidi marks and zero-width characters `\s` misses (NEL, C0/C1, ZW*, LRM/RLM, bidi overrides, BOM).
+const LINE_BREAKERS = /[\s\u0085\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2060\u2066-\u2069\u202a-\u202e\u180e\ufeff]+/g;
 export const oneLine = (s: string): string => {
-  const t = s.replace(/\s+/g, ' ').trim();
-  return t.length > ONE_LINE_MAX ? `${t.slice(0, ONE_LINE_MAX - 1)}…` : t;
+  const t = s.replace(LINE_BREAKERS, ' ').trim();
+  if (t.length <= ONE_LINE_MAX) return t;
+  const cut = t.slice(0, ONE_LINE_MAX - 1);
+  // A cut through a surrogate pair leaves a lone high surrogate; drop it so the text stays well-formed.
+  return `${cut.isWellFormed() ? cut : cut.slice(0, -1)}…`;
 };
 
 /**
