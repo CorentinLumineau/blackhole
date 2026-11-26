@@ -4,7 +4,7 @@ import * as path from 'path';
 import { describe, expect, test } from 'bun:test';
 import { withTempDir } from './test-fixtures.ts';
 import { parseCiCapacity } from './ci-capacity.ts';
-import { countQueuedJobs, countRunners, MAX_RUNS_INSPECTED, readCiCapacity, resolveCiCapacityConfig, type CiCapacityConfig } from './ci-capacity-reader.ts';
+import { countQueuedJobs, countRunners, MAX_RUNS_INSPECTED, readCiCapacity, resolveCiCapacityConfig, withDeadline, type CiCapacityConfig } from './ci-capacity-reader.ts';
 
 const runner = (status: string, busy: boolean, ...labels: string[]) => ({ id: 1, status, busy, labels: labels.map((name) => ({ id: 1, name, type: 'custom' })) });
 const job = (status: string, ...labels: string[]) => ({ status, labels });
@@ -127,6 +127,26 @@ describe('readCiCapacity', () => {
   });
 });
 
+describe('withDeadline', () => {
+  test('hands each call the time left and refuses a call started past the deadline, which readCiCapacity reports as no reading', () => {
+    let clock = 0;
+    const seen: number[] = [];
+    const get = withDeadline((_endpoint, left) => {
+      seen.push(left);
+      clock += 40;
+      return { runners: [] };
+    }, 100, () => clock);
+    get('a');
+    get('b');
+    get('c');
+    expect(seen).toEqual([100, 60, 20]);
+    expect(() => get('d')).toThrow('deadline');
+    const r = readCiCapacity('o/r', config, withDeadline(() => ({}), 100, () => 1000 + (clock += 200)));
+    expect(r.capacity).toBeNull();
+    expect(r.warning).toContain('ci capacity unread, workers unchanged');
+  });
+});
+
 describe('ci-capacity-read CLI', () => {
   const cli = path.resolve(import.meta.dir, '..', 'ci-capacity-read.ts');
   const run = (config: unknown) =>
@@ -173,6 +193,29 @@ console.log(JSON.stringify(answers[key]));
       expect(r.stderr).toBe('');
       expect(parseCiCapacity(r.stdout.trim())).toEqual({ idle_runners: 1, busy_runners: 1, queued_jobs: 2, queue_allowance: 2 });
     });
+  });
+
+  test('a gh that outlives --timeout-ms is no reading: a warning, no stdout, exit 0, well before gh would finish', () => {
+    withTempDir('ci-capacity-slow-gh', (dir) => {
+      const bin = path.join(dir, 'bin');
+      fs.mkdirSync(bin);
+      fs.writeFileSync(path.join(bin, 'gh'), '#!/bin/sh\nsleep 20\necho \'{"runners":[]}\'\n', { mode: 0o755 });
+      const configPath = path.join(dir, 'config.json');
+      fs.writeFileSync(configPath, JSON.stringify({ repo: 'o/r', forge: 'github', ci_capacity: { enabled: true, lanes: ['ci'] } }));
+      const started = Date.now();
+      const r = spawnSync('bun', ['run', cli, '--config', configPath, '--timeout-ms', '500'], { encoding: 'utf-8', env: { PATH: `${bin}:${process.env.PATH ?? ''}` } });
+      expect(Date.now() - started).toBeLessThan(10_000);
+      expect(r.status).toBe(0);
+      expect(r.stdout).toBe('');
+      expect(r.stderr).toContain('ci capacity unread, workers unchanged');
+      expect(r.stderr).toContain('timed out');
+    });
+  });
+
+  test('a non-numeric --timeout-ms is a usage error', () => {
+    const r = spawnSync('bun', ['run', cli, '--timeout-ms', 'soon'], { encoding: 'utf-8' });
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain('--timeout-ms');
   });
 
   test('a malformed ci_capacity block is a usage error naming the key', () => {

@@ -53,6 +53,23 @@ const RUN_STATUSES = ['queued', 'in_progress'] as const;
 
 export type ForgeGet = (endpoint: string) => unknown;
 
+/** Total time the whole reading may take; it makes up to 13 sequential forge calls. */
+export const CI_CAPACITY_DEADLINE_MS = 60_000;
+
+/**
+ * Bounds a forge call with one shared deadline: each call gets the time left as its own timeout, and a
+ * call started past the deadline throws without running. Lives in the script, not at the call site, so
+ * it holds on platforms without GNU `timeout`.
+ */
+export const withDeadline = (call: (endpoint: string, timeoutMs: number) => unknown, budgetMs: number, now: () => number = Date.now): ForgeGet => {
+  const deadline = now() + budgetMs;
+  return (endpoint) => {
+    const left = deadline - now();
+    if (left <= 0) throw new Error(`forge reading exceeded its ${budgetMs}ms deadline`);
+    return call(endpoint, left);
+  };
+};
+
 /**
  * Reads `{idle_runners, busy_runners, queued_jobs, queue_allowance}` for the lanes from GitHub's REST
  * API: one call for the runners, one per run status (queued, then in progress: a running run can still

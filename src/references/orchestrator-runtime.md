@@ -31,8 +31,7 @@ step 8), so a long turn keeps its claims live.
    which reads the cached statusline `rate_limits`, and
    `bun run scripts/usage-budget.ts --parallel-max <parallel_max> [--usage '<usage-probe JSON>']`,
    whose `--usage` is the harness usage probe's output (#1201; without it the same cache is read).
-   When `ci_capacity.enabled` is `true`, first run `timeout 60 bun run scripts/ci-capacity-read.ts` (the reader makes up to 13 sequential forge calls with no
-   timeout of its own) and pass its
+   When `ci_capacity.enabled` is `true`, first run `bun run scripts/ci-capacity-read.ts` (it bounds its own forge calls to 60 s) and pass its
    stdout, when it printed any, as `usage-budget.ts --ci-capacity '<reading JSON>'`. It reads the consumer's
    runners and queued jobs in the configured `ci_capacity.lanes`; no output, a non-zero exit or a warning
    means no reading, so log the warning and keep the usage `workers` (fail-open, never a pause). A CI cap
