@@ -280,6 +280,27 @@ describe('cross-repo leg: declared linked worktrees of blackhole repos', () => {
 });
 
 describe('settings files that hold the roots are never written by a worker', () => {
+  test('a campaign-scoped session whose cwd is the main clone is denied a Bash write to a settings file', async () => {
+    await withWorld(async (w) => {
+      const files = [path.join(w.home, '.claude', 'settings.json'), path.join(w.mainA, '.claude', 'settings.json'), path.join(w.mainA, '.claude', 'settings.local.json')];
+      for (const file of files) {
+        expect((await w.write(file, { cwd: w.mainA })).verdict).toBe('deny');
+        const bash = await w.bash(`echo '{}' > ${file}`, { cwd: w.mainA });
+        expect(bash.verdict).toBe('deny');
+        expect(bash.patternId).toBe('bash-settings-roots-write');
+      }
+    });
+  });
+
+  test('from the main clone, other Bash writes stay allowed, and a non-campaign session is not guarded', async () => {
+    await withWorld(async (w) => {
+      expect((await w.bash(`echo x > ${path.join(w.mainA, 'notes.txt')}`, { cwd: w.mainA })).verdict).toBe('allow');
+      expect((await w.bash(`echo x > ${path.join(w.scratch, 'out.txt')}`, { cwd: w.mainA })).verdict).toBe('allow');
+      const plain = { cwd: w.mainA, payload: { agent_type: undefined } };
+      expect((await w.bash(`echo '{}' > ${path.join(w.mainA, '.claude', 'settings.local.json')}`, plain)).verdict).toBe('allow');
+    });
+  });
+
   test('home, project and local settings files are denied to both tools', async () => {
     await withWorld(async (w) => {
       const files = [

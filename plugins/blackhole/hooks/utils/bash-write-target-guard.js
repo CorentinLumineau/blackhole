@@ -39,6 +39,7 @@
  */
 
 const path = require('path');
+const { isCampaignScoped } = require('./campaign-scope');
 const { computeMaskedSpans, computeHeredocBodyMask } = require('./bash-context');
 const { skipQuotedSpan, isRedirectAmpersand, decodeAnsiC, shellWordEnd } = require('./shell-lexer');
 const {
@@ -1942,7 +1943,7 @@ const collectWriteSignals = (visible, heredocText, cwd, initialState, onSubstitu
 
 /**
  * Entry point for `validate-bash-command.js`. Returns null when neither `readAssignedWorktreeRoot(cwd)`
- * nor the linked worktree `cwd` sits in resolves a root (cwd is the main clone or outside git) or when nothing
+ * nor the linked worktree `cwd` sits in resolves a root and the call is not campaign-scoped, or when nothing
  * write-shaped is found. Otherwise returns `{ tier: 'block', pattern_id, reason }` for the first
  * resolvable target found outside the assigned root, or `{ tier: 'warn', pattern_id, reason }`
  * when every resolvable target is in-bounds but a dynamic target or an unresolvable command was
@@ -1952,7 +1953,11 @@ const collectWriteSignals = (visible, heredocText, cwd, initialState, onSubstitu
 const evaluateBashWriteTargets = (command, cwd, input = {}) => {
   // A disjoint scratchpad makes the cwd-derived tier defer; the linked worktree stays the root.
   const assignedRoot = readAssignedWorktreeRoot(cwd) || readLinkedWorktreeRoot(cwd);
-  if (!assignedRoot) return null;
+  // No root (cwd is the main clone or outside git): only a campaign-scoped call is guarded, and
+  // only for the settings-file rule, matching the Write/Edit hook, which has no assigned-root
+  // containment there either (`settingsOnly`).
+  const settingsOnly = !assignedRoot;
+  if (settingsOnly && !isCampaignScoped(input, null)) return null;
   const stateRoot = campaignStateRoot(cwd);
   const mainClone = mainCloneRoot(cwd);
   const extraRoots = trustedWriteRoots(cwd, input, { mainClone, assignedRoot });
@@ -2005,6 +2010,7 @@ const evaluateBashWriteTargets = (command, cwd, input = {}) => {
           'Remedy: ask the owner to change it; a worker never edits it.',
       };
     }
+    if (settingsOnly) continue;
     if (
       (!isUnderRoot(resolvedPath, assignedRoot) || escapesRootLexically(resolvedPath, assignedRoot)) &&
       !isTrustedStateWrite({ target, shape }, resolvedPath, dir, stateRoot) &&
@@ -2027,7 +2033,7 @@ const evaluateBashWriteTargets = (command, cwd, input = {}) => {
     if (/['"]/.test(target)) unresolvable = true;
   }
 
-  if (unresolvable) {
+  if (unresolvable && !settingsOnly) {
     return {
       tier: 'warn',
       pattern_id: 'bash-write-target-unresolvable',
