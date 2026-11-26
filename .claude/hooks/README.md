@@ -120,6 +120,11 @@ Bash write guard both call it, so a root is never trusted by one tool and refuse
   `--add-dir` are in neither the payload nor a settings file, so they stay uncovered: persist the
   directory in a settings file, or work from the repo's own worktree.
 
+- **Harness auto-memory**: `~/.claude/projects/<project>/memory/<name>.md`, Claude Code's own memory
+  directory (harness state, not repository content). Judged by path, not by root
+  (`isHarnessMemoryPath`): exactly that depth once symlinks are resolved, a `.md` leaf, a plain file.
+  Settings, plugins, rules and `CLAUDE.md` under `~/.claude` stay denied.
+
 A root that spans a main clone, a campaign state dir or a settings file, or lies inside a state dir
 or a `.git` dir, is dropped. `mainCloneRoot` refuses a main clone
 that resolves inside the worktree pointing at it (a forged `.git` pointer). Settings file names are
