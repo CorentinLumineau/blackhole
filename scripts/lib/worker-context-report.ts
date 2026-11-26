@@ -16,7 +16,7 @@ export type WorkerContextRecord = WorkerContextReport & { recorded_at: string };
 export type WorkerContextReport = {
   /** Transcripts read. */
   workers: number;
-  /** Workers whose file name carries no `<role>-<issue>`; counted, never joined to an issue by guessing. */
+  /** Workers with no `<role>-<issue>` in their file name, `.meta.json` name or description; counted, never joined to an issue by guessing. */
   unattributed: number;
   median_first_turn_tokens: number | null;
   roles: Record<string, { spawns: number; median_first_turn_tokens: number | null }>;
@@ -31,21 +31,37 @@ export type WorkerContextReport = {
 // A subagent transcript is `agent-a<name>-<16 hex>.jsonl` when the spawn was named, else `agent-a<17 hex>.jsonl`.
 const NAMED = /^agent-a(.+)-[0-9a-f]{16}\.jsonl$/;
 const ROLE_ISSUE = /^(.+)-(\d+)$/;
+// The harness records a spawn's `name` and `description` in `.meta.json` even though it names the file by hash.
+const NAME_ISSUE = /-(\d+)(?![0-9])/;
+const DESCRIPTION_ISSUE = /\bissue\s+#?(\d+)/i;
 
-/** Role and issue of a worker: its `<role>-<issue>` file name, else the role of the `.meta.json` `agentType`. Null when neither names a role. */
-export const roleAndIssue = (fileName: string, agentType: string | null): { role: string; issue: number | null } | null => {
-  const name = NAMED.exec(fileName)?.[1];
-  if (name) {
-    const m = ROLE_ISSUE.exec(name);
-    return m ? { role: m[1], issue: Number(m[2]) } : { role: name, issue: null };
+/** The `.meta.json` fields that identify a worker; each is null when absent. */
+export type WorkerMeta = { agentType: string | null; name: string | null; description: string | null };
+
+const NO_META: WorkerMeta = { agentType: null, name: null, description: null };
+
+const issueOf = (m: RegExpExecArray | null): number | null => (m ? Number(m[1]) : null);
+
+/**
+ * Role and issue of a worker. Sources in order: the `<role>-<issue>` file name, the spawn `name` in `.meta.json`
+ * (first `-<digits>` segment is the issue), the `description` ("... issue N ..."). The role is the `agentType`'s
+ * when the meta has one. A bare PR number in a description is never read as an issue. Null when nothing names a role.
+ */
+export const roleAndIssue = (fileName: string, meta: WorkerMeta = NO_META): { role: string; issue: number | null } | null => {
+  const fileRole = NAMED.exec(fileName)?.[1];
+  if (fileRole) {
+    const m = ROLE_ISSUE.exec(fileRole);
+    return m ? { role: m[1], issue: Number(m[2]) } : { role: fileRole, issue: null };
   }
-  const role = agentType?.split(':').pop();
-  return role ? { role, issue: null } : null;
+  const typeRole = meta.agentType?.split(':').pop() || null;
+  const role = typeRole ?? meta.name?.split('-')[0] ?? null;
+  if (!role) return null;
+  return { role, issue: issueOf(NAME_ISSUE.exec(meta.name ?? '')) ?? issueOf(DESCRIPTION_ISSUE.exec(meta.description ?? '')) };
 };
 
 /** One transcript to one row: the first assistant turn's `cache_creation_input_tokens` and the first and last timestamps. Null when it has no such turn or no role. */
-export const parseWorkerRow = (fileName: string, agentType: string | null, text: string): WorkerRow | null => {
-  const who = roleAndIssue(fileName, agentType);
+export const parseWorkerRow = (fileName: string, meta: WorkerMeta, text: string): WorkerRow | null => {
+  const who = roleAndIssue(fileName, meta);
   if (!who) return null;
   let first: number | null = null;
   let started = Number.POSITIVE_INFINITY;
@@ -103,13 +119,14 @@ export const buildWorkerContextReport = (rows: WorkerRow[], mergedIssues: number
   };
 };
 
-const agentTypeOf = (transcript: string): string | null => {
-  const meta = transcript.replace(/\.jsonl$/, '.meta.json');
+const metaOf = (transcript: string): WorkerMeta => {
+  const file = transcript.replace(/\.jsonl$/, '.meta.json');
   try {
-    const t = (readJsonFile(meta, meta) as { agentType?: unknown }).agentType;
-    return typeof t === 'string' ? t : null;
+    const m = readJsonFile(file, file) as Record<string, unknown>;
+    const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null);
+    return { agentType: str(m.agentType), name: str(m.name), description: str(m.description) };
   } catch {
-    return null;
+    return NO_META;
   }
 };
 
@@ -120,7 +137,7 @@ export const collectWorkerRows = (dir: string, sinceMs: number = Number.NEGATIVE
     .flatMap((f) => {
       try {
         if (fs.statSync(f).mtimeMs < sinceMs) return [];
-        const row = parseWorkerRow(path.basename(f), agentTypeOf(f), fs.readFileSync(f, 'utf8'));
+        const row = parseWorkerRow(path.basename(f), metaOf(f), fs.readFileSync(f, 'utf8'));
         return row && row.started_ms >= sinceMs ? [row] : [];
       } catch {
         return [];
