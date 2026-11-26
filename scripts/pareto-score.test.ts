@@ -65,7 +65,7 @@ describe('pareto-score', () => {
     fs.writeFileSync(path.join(dir, 'queue.json'), JSON.stringify({ issues: { '4': { status: 'ready', pareto: { gain: 8, effort: 4, priority: 56 } } } }));
     const f = forge([issue(4, 'x\n\nPareto: gain=8 effort=4 priority=56')]);
     expect(await runApply(dir, scores, { adapter: f.adapter, now: new Date('2026-11-26T12:00:00Z') })).toEqual([{ number: 4, result: 'rescored' }]);
-    expect(queueOnDisk().issues['4'].pareto).toEqual({ gain: 3, effort: 2, priority: 27, scored_at: '2026-11-26T12:00:00.000Z', rationale: 'cheaper now' });
+    expect(queueOnDisk().issues['4'].pareto).toEqual({ gain: 3, effort: 2, priority: 27, scored_at: '2026-11-26T12:00:00.000Z', rationale: 'cheaper now', basis: { deps: {}, pr: null } });
   });
 
   test('apply writes the forge and the queue, and a re-run changes nothing further', async () => {
@@ -120,10 +120,36 @@ describe('pareto-score detect --max-age-days', () => {
     expect(r.stderr.toString()).toContain('Usage:');
   });
 
+  test('names the invalid value instead of reporting an unknown flag', () => {
+    const r = detect('--max-age-days', 'abc');
+    expect(r.stderr.toString()).toContain('Invalid --max-age-days: abc');
+    expect(r.stderr.toString()).not.toContain('Unknown flag');
+  });
+
   test('accepts a non-negative number and exits 0', () => {
     const r = detect('--max-age-days', '3');
     expect(r.stderr.toString()).not.toContain('Usage:');
     expect(r.exitCode).toBe(0);
+  });
+});
+
+describe('pareto-score config pareto_max_age_days', () => {
+  const withConfig = (value: unknown) => {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'pareto-score-cfg-'));
+    try {
+      fs.writeFileSync(path.join(d, 'queue.json'), JSON.stringify({ issues: {} }));
+      fs.writeFileSync(path.join(d, 'config.json'), JSON.stringify({ repo: 'o/r', pareto_max_age_days: value }));
+      return runDetect(d, { adapter: { issueList: async () => [] } as unknown as ForgeAdapter });
+    } finally {
+      fs.rmSync(d, { recursive: true, force: true });
+    }
+  };
+
+  test.each([[-1], ['7'], [null]])('rejects %j', async (value) => {
+    await expect(withConfig(value)).rejects.toThrow('pareto_max_age_days');
+  });
+  test('accepts zero', async () => {
+    await expect(withConfig(0)).resolves.toEqual([]);
   });
 });
 

@@ -1,5 +1,5 @@
 import { read, type CheckResult } from './check-utils.ts';
-import { findMissingGateMarkers } from '../lib/check-common.ts';
+import { findMissingGateMarkers, PLANNER_TRACK_MODULE_DIR } from '../lib/check-common.ts';
 import { ADR_SHAPES } from '../lib/build/facts.ts';
 
 // ADR-007 T5/R2' — design-track.check.ts: matches verify.design-track.test.ts.
@@ -30,7 +30,7 @@ const checkDesignTrackTemplate = (): CheckResult => {
   return { id: 'V-DESIGN-01', ok: true };
 };
 
-// V-DESIGN-02 (ADR-010 M2): the gated-verdict markers Task 5/6 wrote into planner.md §4.8 and
+// V-DESIGN-02 (ADR-010 M2): the gated-verdict markers Task 5/6 wrote into planner-tracks/04-design-track.md §4.8 and
 // orchestrator.md's Route-derived dispatch must stay present — if a future edit strips them,
 // §4.8 could silently revert to always-blocked (harmless) or, worse, drift toward a path where
 // the planner substitutes its own judgment for scripts/design-aggregate.ts's verdict. Sibling
@@ -47,7 +47,7 @@ export const ORCHESTRATOR_DESIGN_GATE_REQUIRED_MARKERS = [
 ];
 
 const checkDesignAutonomyGateGrounding = (): CheckResult => {
-  const plannerContent = read('src/agents/planner.md');
+  const plannerContent = read(`${PLANNER_TRACK_MODULE_DIR}/04-design-track.md`);
   const orchestratorDispatchContent = read('src/references/orchestrator-dispatch.md');
 
   const plannerMissing = findMissingGateMarkers(plannerContent, PLANNER_DESIGN_GATE_REQUIRED_MARKERS);
@@ -57,7 +57,7 @@ const checkDesignAutonomyGateGrounding = (): CheckResult => {
   );
 
   const errors = [
-    ...plannerMissing.map((m) => `planner.md missing "${m}"`),
+    ...plannerMissing.map((m) => `planner-tracks/04-design-track.md missing "${m}"`),
     ...orchestratorMissing.map((m) => `orchestrator-dispatch.md missing "${m}"`),
   ];
 

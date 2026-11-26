@@ -28,7 +28,7 @@ export const PHASE_PLAYBOOK_FILES = ['phase-handle.md', 'phase-plan.md', 'phase-
 export const REQUIRED_REFERENCES = ['review-core.md', 'worker-schemas.md', 'checkpoint-protocol.md'];
 
 /** Row count of `src/references/blackhole-vcodes.md`'s `| V-...` table (V-GROUND-01). */
-export const VCODE_TABLE_ROW_COUNT = 139;
+export const VCODE_TABLE_ROW_COUNT = 140;
 
 /** Vendored mercure V-code snapshot staleness window in days (V-MPARITY-02, issue #869). */
 export const MERCURE_VCODE_SNAPSHOT_STALE_DAYS = 90;
@@ -66,7 +66,15 @@ export const INCLUDE_MARKER_SITES: string[] = ['src/agents/reviewer.md', 'src/ag
  * is the shape a reviewer checks. Declared side of a V-GROUND-01 pair; scan side is an
  * independent `listFiles` of the directory, never derived from this constant.
  */
-export const IMPLEMENTER_GATE_MODULE_COUNT = 16;
+export const IMPLEMENTER_GATE_MODULE_COUNT = 11;
+
+/**
+ * `.md` module count of `src/references/gate-modules/`: the implementer gates whose first clause is
+ * mechanical (plan `task_type`, spawn mode, config key, `components.json`). They ship as reference
+ * files like `audit-modules/`, and `implementer.md` carries one stub each (V-GATE-01 stub drift).
+ * Independent scan side: `scripts/checks/ground-truth.check.ts` listing the directory.
+ */
+export const IMPLEMENTER_ONDEMAND_GATE_MODULE_COUNT = 6;
 
 /**
  * Number of reviewer audit modules under `src/references/audits/` (V-AUDIT-01), the ones inlined
@@ -88,6 +96,13 @@ export const REVIEWER_AUDIT_MODULE_COUNT = 19;
  * `scripts/checks/audit-modules.check.ts` listing the directory.
  */
 export const REVIEWER_ONDEMAND_AUDIT_MODULE_COUNT = 14;
+
+/**
+ * Number of planner track modules under `src/references/planner-tracks/` (V-AUDIT-02): the four
+ * mutually exclusive tracks `src/agents/planner.md` stubs and loads on demand. Declared side of
+ * the pair; the scanned side is `scripts/checks/audit-modules.check.ts` listing the directory.
+ */
+export const PLANNER_TRACK_MODULE_COUNT = 4;
 
 // § facts — ADR revisit watch items (issue #710). A declared-fact / independent-scan pair, the
 // same shape `VCODE_TABLE_ROW_COUNT`/`CONTENT_GATE_BUDGETS`/`DOC_HEALTH_THRESHOLDS` already use:
@@ -202,7 +217,7 @@ export const DOC_HEALTH_THRESHOLDS: DocHealthThresholds = {
  * `DESIGN_TRACK_REQUIRED_HEADINGS`) and `scripts/checks/adr-shape.check.ts` (both shapes, for its
  * advisory heading-conformance scan over `documentation/decisions/ADR-*.md`). `classic` is
  * `src/references/adr-template.md`'s 5-heading narrative-decision skeleton; `designTrack` is
- * `planner.md` §4.8's 8-heading plan-track-gated design-note skeleton. Never restate either list
+ * `planner-tracks/04-design-track.md` §4.8's 8-heading plan-track-gated design-note skeleton. Never restate either list
  * as an inline literal at a consumption site.
  */
 export type AdrShapes = { classic: string[]; designTrack: string[] };

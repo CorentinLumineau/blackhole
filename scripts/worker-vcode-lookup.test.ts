@@ -53,7 +53,7 @@ describe('worker V-code lookup', () => {
       for (const r of rows.filter((x) => x.includes(`:| V-`))) expect(r).toMatch(/\| (BLOCK|WARN|INFO) \|/);
     }
     const yagni = run(lookupCommand(line, 'YAGNI'));
-    expect(yagni).toContain('V-KISS-01 / V-YAGNI-01');
+    expect(yagni).toMatch(/^\S*\| V-KISS-01 \/ V-YAGNI-01 \|/m);
     expect(yagni).toMatch(/\| BLOCK \|/);
   });
 });

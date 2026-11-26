@@ -27,8 +27,12 @@ function load(campaignDir: string, adapter?: ForgeAdapter): { queue: QueueJson; 
   const configPath = path.join(campaignDir, 'config.json');
   const config = (fs.existsSync(configPath) ? readJsonFile(configPath, configPath) : {}) as Config;
   if (!adapter && !config.repo) throw new Error(`${configPath} has no "repo": the forge cannot be read.`);
+  const configured = config.pareto_max_age_days;
+  if (configured !== undefined && !(typeof configured === 'number' && Number.isFinite(configured) && configured >= 0)) {
+    throw new Error(`${configPath}: pareto_max_age_days must be a finite non-negative number, got ${JSON.stringify(configured)}`);
+  }
   return {
-    maxAgeDays: config.pareto_max_age_days ?? DEFAULT_MAX_AGE_DAYS,
+    maxAgeDays: configured ?? DEFAULT_MAX_AGE_DAYS,
     queue: readJsonFile(queuePath, queuePath) as QueueJson,
     adapter: adapter ?? adapterForCampaign(campaignDir, { repo: config.repo as string, forge: config.forge }),
   };
@@ -63,12 +67,13 @@ async function main(): Promise<void> {
   const [command, ...rest] = process.argv.slice(2);
   const flags = parseFlags(rest);
   const unknown = unknownFlagKeys(flags, ['campaign-dir', 'scores-file', 'max-age-days']);
+  const problems = unknown.length ? [`Unknown flag(s): ${unknown.join(', ')}`] : [];
   const scoresFile = flags['scores-file'];
   const maxAgeFlag = flags['max-age-days'];
   const maxAge = typeof maxAgeFlag === 'string' ? Number(maxAgeFlag) : undefined;
-  if (maxAgeFlag !== undefined && !(maxAge !== undefined && maxAge >= 0)) unknown.push(`--max-age-days ${String(maxAgeFlag)}`);
-  if (unknown.length || !['detect', 'apply', 'verify'].includes(command ?? '') || (command === 'apply' && typeof scoresFile !== 'string')) {
-    console.error(`${unknown.length ? `Unknown flag(s): ${unknown.join(', ')}\n` : ''}${USAGE}`);
+  if (maxAgeFlag !== undefined && !(maxAge !== undefined && Number.isFinite(maxAge) && maxAge >= 0)) problems.push(`Invalid --max-age-days: ${String(maxAgeFlag)}`);
+  if (problems.length || !['detect', 'apply', 'verify'].includes(command ?? '') || (command === 'apply' && typeof scoresFile !== 'string')) {
+    console.error(`${problems.length ? `${problems.join('\n')}\n` : ''}${USAGE}`);
     process.exit(2);
   }
   const dir = path.resolve(process.cwd(), typeof flags['campaign-dir'] === 'string' ? flags['campaign-dir'] : '.blackhole');

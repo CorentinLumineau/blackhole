@@ -28,17 +28,16 @@ const collectDocFiles = (docsDir: string): DocFile[] =>
 export type FrontmatterPresence = {
   relPath: string;
   hasType: boolean;
-  hasSummary: boolean;
   hasStatus: boolean;
   hasReviewTrigger: boolean;
   hasCreated: boolean;
   hasLastUpdated: boolean;
 };
 
-// The six required keys of doc-governance.md § Lifecycle Frontmatter, each paired with its presence flag.
+// The five required keys (`summary` is optional; the root index falls back to the doc's H1) of doc-governance.md § Lifecycle Frontmatter, each paired with its presence flag.
 type PresenceFlag = Exclude<keyof FrontmatterPresence, 'relPath'>;
 const LIFECYCLE_KEYS: ReadonlyArray<[string, PresenceFlag]> = Object.entries({
-  type: 'hasType', summary: 'hasSummary', status: 'hasStatus',
+  type: 'hasType', status: 'hasStatus',
   review_trigger: 'hasReviewTrigger', created: 'hasCreated', last_updated: 'hasLastUpdated',
 } as const);
 

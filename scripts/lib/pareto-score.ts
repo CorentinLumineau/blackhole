@@ -1,13 +1,13 @@
-import type { QueueJson } from './campaign-status/types.ts';
+import type { QueueIssue, QueueJson, ScoreBasis } from './campaign-status/types.ts';
 import { rescoreIssue } from './forge-adapter/pareto-filing.ts';
 import type { ForgeAdapter, ForgeIssue } from './forge-adapter/types.ts';
-import { paretoLabel, paretoPriority, parseParetoLine, reconcileParetoLabels, type Pareto } from './pareto.ts';
+import { paretoLabel, paretoPriority, parseParetoLine, reconcileParetoLabels, upsertRationaleLine, type Pareto } from './pareto.ts';
 
 // Mechanical side of score-on-ingest (`forge-sync.md` § Score on ingest): finds the ready queue
 // entries whose issue has no valid `Pareto:` line, and applies the scores the orchestrator's LLM
 // judgement returns. The judgement itself is not here. No process or filesystem access.
 
-export type StaleReason = 'unrecorded' | 'edited' | 'aged';
+export type StaleReason = 'unrecorded' | 'edited' | 'dependency' | 'linked-pr' | 'aged';
 /** A scored issue due a new score: gain/effort/priority are the score it carries, `reason` why it is due. */
 export type Rescore = { gain: number; effort: number; priority: number; reason: StaleReason };
 export type ScoreRequest = { number: number; title: string; labels: string[]; body: string; rescore?: Rescore };
@@ -26,19 +26,34 @@ export const DEFAULT_MAX_AGE_DAYS = 7;
 export const ISSUE_LIMIT = 1000;
 const DAY_MS = 86_400_000;
 const BODY_EXCERPT = 4000;
-const RATIONALE_MAX = 200;
-const RATIONALE_LINE = /^[ \t]*Pareto rationale:[^\r\n]*$/im;
+
+type QueueIssues = Record<string, QueueIssue>;
+
+/** The queue state a score is made against: each dependency's status (`absent` when it left the queue) and the linked PR. */
+export function scoreBasis(entry: Pick<QueueIssue, 'depends_on' | 'pr'>, issues: QueueIssues): ScoreBasis {
+  return { deps: Object.fromEntries((entry.depends_on ?? []).map((d) => [String(d), issues[String(d)]?.status ?? 'absent'])), pr: entry.pr ?? null };
+}
+
+const sameDeps = (a: ScoreBasis['deps'], b: ScoreBasis['deps']): boolean => JSON.stringify(Object.entries(a).sort()) === JSON.stringify(Object.entries(b).sort());
 
 /**
  * Why a stored score is due a new one, or null when it is current: it has no `scored_at` (scored by
- * hand or before the score recorded its time), the issue was updated after `scored_at`, or the score
- * is older than `maxAgeDays`. Dependency and linked-PR changes are not read here.
+ * hand or before the score recorded its time), the issue was updated after `scored_at`, a
+ * dependency changed status or the linked PR changed since the score's `basis`, or the score is
+ * older than `maxAgeDays`. The `basis` checks need `queue` and run only for a score that carries
+ * one, so a score stored before the basis was recorded is not flagged for it.
  */
-export function staleness(entry: { pareto?: Partial<Pareto> & { scored_at?: string } }, issue: Pick<ForgeIssue, 'updatedAt'>, now: Date, maxAgeDays = DEFAULT_MAX_AGE_DAYS): StaleReason | null {
+export function staleness(entry: Pick<QueueIssue, 'depends_on' | 'pr'> & { pareto?: Partial<Pareto> & { scored_at?: string; basis?: ScoreBasis } }, issue: Pick<ForgeIssue, 'updatedAt'>, now: Date, maxAgeDays = DEFAULT_MAX_AGE_DAYS, queue?: QueueIssues): StaleReason | null {
   const scoredAt = Date.parse(entry.pareto?.scored_at ?? '');
   if (Number.isNaN(scoredAt)) return 'unrecorded';
   const updatedAt = Date.parse(issue.updatedAt ?? '');
   if (!Number.isNaN(updatedAt) && updatedAt > scoredAt) return 'edited';
+  const basis = entry.pareto?.basis;
+  if (basis && queue) {
+    const current = scoreBasis(entry, queue);
+    if (!sameDeps(basis.deps, current.deps)) return 'dependency';
+    if (basis.pr !== current.pr) return 'linked-pr';
+  }
   return now.getTime() - scoredAt > maxAgeDays * DAY_MS ? 'aged' : null;
 }
 
@@ -58,7 +73,7 @@ export function scoreRequests(queue: QueueJson | null, issues: ForgeIssue[], opt
       const issue = byNumber.get(n)!;
       const current = e.pareto ?? parseParetoLine(issue.body ?? '');
       if (!current) return [toRequest(issue)];
-      const reason = opts && staleness({ pareto: e.pareto }, issue, opts.now, opts.maxAgeDays);
+      const reason = opts && staleness(e, issue, opts.now, opts.maxAgeDays, queue?.issues);
       return reason ? [toRequest(issue, { gain: current.gain, effort: current.effort, priority: current.priority, reason })] : [];
     })
     .sort((a, b) => a.number - b.number);
@@ -78,12 +93,7 @@ export function parseScores(raw: unknown): Score[] {
   });
 }
 
-/** Writes the one `Pareto rationale:` line: replaces an existing one in place, else appends. Single line, capped. */
-export function upsertRationaleLine(body: string, rationale: string): string {
-  const flat = rationale.replace(/\s+/g, ' ').trim();
-  const line = `Pareto rationale: ${flat.length > RATIONALE_MAX ? `${flat.slice(0, RATIONALE_MAX - 1)}…` : flat}`;
-  return RATIONALE_LINE.test(body) ? body.replace(RATIONALE_LINE, line) : `${body}\n\n${line}`;
-}
+export { upsertRationaleLine };
 
 /**
  * Moves `scored_at` of every issue this run wrote to past that write: a forge write bumps the
@@ -114,7 +124,7 @@ export async function applyScores(adapter: ForgeAdapter, queue: QueueJson, issue
   const next: QueueJson = { ...queue, issues: { ...(queue.issues ?? {}) } };
   const outcomes: ApplyOutcome[] = [];
   const store = (n: number, pareto: Pareto, rationale?: string): void => {
-    next.issues![String(n)] = { ...next.issues![String(n)]!, pareto: { ...pareto, scored_at: now.toISOString(), ...(rationale ? { rationale } : {}) } };
+    next.issues![String(n)] = { ...next.issues![String(n)]!, pareto: { ...pareto, scored_at: now.toISOString(), ...(rationale ? { rationale } : {}), basis: scoreBasis(next.issues![String(n)]!, next.issues!) } };
   };
   const handled = new Set<number>();
   const written = new Set<number>();
@@ -131,15 +141,15 @@ export async function applyScores(adapter: ForgeAdapter, queue: QueueJson, issue
       continue;
     }
     const existing = parseParetoLine(issue.body ?? '');
-    const due = existing && opts.rescore && staleness(entry, issue, now, opts.rescore.maxAgeDays);
+    const due = existing && opts.rescore && staleness(entry, issue, now, opts.rescore.maxAgeDays, next.issues);
     if (existing && !due) {
       if (await rescoreIssue(adapter, issue, existing)) written.add(score.number);
       const kept = entry.pareto?.priority === existing.priority ? entry.pareto : undefined;
-      next.issues![String(score.number)] = { ...entry, pareto: { ...existing, ...(kept?.scored_at ? { scored_at: kept.scored_at } : {}), ...(kept?.rationale ? { rationale: kept.rationale } : {}) } };
+      next.issues![String(score.number)] = { ...entry, pareto: { ...existing, ...(kept?.scored_at ? { scored_at: kept.scored_at } : {}), ...(kept?.rationale ? { rationale: kept.rationale } : {}), ...(kept?.basis ? { basis: kept.basis } : {}) } };
       outcomes.push({ number: score.number, result: 'already-scored' });
       continue;
     }
-    if (await rescoreIssue(adapter, { ...issue, body: upsertRationaleLine(issue.body ?? '', score.rationale) }, score)) written.add(score.number);
+    if (await rescoreIssue(adapter, { ...issue, body: issue.body ?? '' }, score)) written.add(score.number);
     store(score.number, { gain: score.gain, effort: score.effort, priority: paretoPriority(score.gain, score.effort) }, score.rationale);
     outcomes.push({ number: score.number, result: due ? 'rescored' : 'scored' });
   }

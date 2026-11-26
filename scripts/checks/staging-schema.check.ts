@@ -1,5 +1,5 @@
 import { read, type CheckResult } from './check-utils.ts';
-import { readComposedAgentDoc, splitUnescapedPipes } from '../lib/check-common.ts';
+import { readComposedAgentDoc, readPlannerWithTracks, splitUnescapedPipes } from '../lib/check-common.ts';
 
 // Issue #482: pins the ADR-021 D1 durable-artifact staging contract —
 // `.blackhole/staged/<issue>/manifest.json`'s field names and enum values, documented in
@@ -157,7 +157,7 @@ export const findProducerEnumViolations = (literals: ProducerLiteral[], rows: Ma
 // Used by V-STAGE-02 — scans the 3 producer docs for literal declarations.
 const collectProducerLiterals = (): ProducerLiteral[] =>
   [plannerDoc, investigatorDoc, implementerDoc].flatMap((source) =>
-    extractProducerFieldValueLiterals(readComposedAgentDoc(source)).map((l) => ({ ...l, source })),
+    extractProducerFieldValueLiterals(source === plannerDoc ? readPlannerWithTracks() : readComposedAgentDoc(source)).map((l) => ({ ...l, source })),
   );
 
 const checkProducerConformance = (): CheckResult => {
@@ -193,7 +193,7 @@ export const findMissingMandatoryPairing = (content: string, anchors: string[], 
 };
 
 const checkStagingInstructionPairing = (): CheckResult => {
-  const missing = findMissingMandatoryPairing(read(plannerDoc), STAGING_OBLIGATION_ANCHORS, MANDATORY_PAIRING_PHRASE);
+  const missing = findMissingMandatoryPairing(readPlannerWithTracks(), STAGING_OBLIGATION_ANCHORS, MANDATORY_PAIRING_PHRASE);
   return missing.length ? { id: 'V-STAGE-03', ok: false, detail: missing.join('; ') } : { id: 'V-STAGE-03', ok: true };
 };
 

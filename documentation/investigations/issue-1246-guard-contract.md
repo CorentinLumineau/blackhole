@@ -320,3 +320,24 @@ Estimate: on everyday agent commands, Tier 2 fires on fewer than 1 in 700. The o
 hits are dotenv-into-`export`/`env` idioms, which are genuinely unresolvable. Triage load is
 negligible.
 
+
+## Residuals closed by #1342
+
+Silent allows left by the closure table: a `GIT_TRACE*` slot word (a quoted or exact word the
+shell or `env` reads as `NAME=VALUE`, or a declarer operand) is judged only when the scan knows
+which word is the command. Each row below resolved to no verdict before and now resolves by the
+contract tier shown (`M` is a path outside the assigned root).
+
+| Command | Before | Now |
+|---|---|---|
+| `2> ./log env "GIT_TRACE=M/x" git status` (leading redirect) | silent | BLOCK (T1) |
+| `< /dev/null export "GIT_TRACE=M/x"; git status` | silent | BLOCK (T1) |
+| `< /dev/null export GIT_TRACE; git status` | silent | WARN (T2) |
+| `$(true) 2> ./log env "GIT_TRACE=M/x" git status` (substitution that may expand to nothing, then a redirect) | silent | BLOCK (T1) |
+| `case x in a)env "GIT_TRACE=M/x" git status;; esac` (label glued to the command) | silent | BLOCK (T1) |
+| `case ${x:-a b} in a)env "GIT_TRACE=M/x" git status;; esac` (case word split on a space) | silent | BLOCK (T1) |
+| `set -a; cat <<EOF` with `GIT_TRACE` only in the heredoc body or a comment | silent | WARN (T2-8) |
+
+The allexport mention test (T2-8) now reads the whole command rather than the heredoc-masked
+view of one text. A value inside the assigned root, a relative value and a non-file value such as
+`GIT_TRACE=1` stay allowed in every row.

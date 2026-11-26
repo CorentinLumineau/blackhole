@@ -9,7 +9,7 @@ import {
   findMissingEnforcementSites,
   runChecks,
 } from './checks/ground-truth.check.ts';
-import { AGENT_NAMES, IMPLEMENTER_GATE_MODULE_COUNT, VCODE_TABLE_ROW_COUNT } from './lib/build/facts.ts';
+import { AGENT_NAMES, IMPLEMENTER_GATE_MODULE_COUNT, IMPLEMENTER_ONDEMAND_GATE_MODULE_COUNT, VCODE_TABLE_ROW_COUNT } from './lib/build/facts.ts';
 import { read } from './checks/check-utils.ts';
 import { listFiles } from './lib/check-common.ts';
 
@@ -227,5 +227,9 @@ describe('runChecks live tree', () => {
 
   test('IMPLEMENTER_GATE_MODULE_COUNT matches the live src/references/gates/ directory scan', () => {
     expect(listFiles('src/references/gates').length).toBe(IMPLEMENTER_GATE_MODULE_COUNT);
+  });
+
+  test('IMPLEMENTER_ONDEMAND_GATE_MODULE_COUNT matches the live src/references/gate-modules/ directory scan', () => {
+    expect(listFiles('src/references/gate-modules').length).toBe(IMPLEMENTER_ONDEMAND_GATE_MODULE_COUNT);
   });
 });

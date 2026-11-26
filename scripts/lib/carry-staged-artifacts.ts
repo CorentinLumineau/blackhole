@@ -165,7 +165,7 @@ export const rewriteInvestigatorFrontmatter = (
 };
 
 // --- append_row dedup, bullet-list discriminator (`target_path === "ARCHITECTURE.md"`) ---
-// Ported verbatim from planner.md's own near-duplicate check (§4.8 Trigger A / Step 4 Trigger
+// Ported verbatim from the planner near-duplicate check (planner-tracks/04-design-track.md §4.8 Trigger A / planner.md Step 4 Trigger
 // B) — the mandatory trailing `(ADR-{NNN})` / `(analyze: issue #N)` citation suffix — reused
 // rather than a second mechanism (V-INT-02, issue #557).
 
