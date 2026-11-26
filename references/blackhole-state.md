@@ -31,7 +31,7 @@ Mutations to `.blackhole/queue.json` and
 | `plans/<issue>.md` | Plan artifacts (gitignored) |
 | `staged/<issue>/manifest.json` | Durable artifact staging manifest (gitignored, see § Staging (ADR-021 D1)) |
 | `archive/` | Rotated ledger snapshots and pre-mutation `queue.json` snapshots (gitignored) |
-| `doc-health.json` | Doc-tree health signal, Scope-1 only (gitignored, see § Doc-Health Signal) |
+| `doc-health.json` | Doc-tree health signal, own tree or a consumer `--repo-root` (gitignored, see § Doc-Health Signal) |
 | `pace-log.jsonl` | Per-spawn-round pace/resource verdicts, planned batch and effective concurrency, newest 200 lines (gitignored, written by `scripts/pace-log.ts`, diagnostic only) |
 | `usage-history.jsonl` | Weekly usage readings (`observed_at`, `used_percentage`, `resets_at`), one per `observed_at`, newest 200 lines (gitignored, appended by `scripts/usage-probe.ts`, read by the status page's Pace row) |
 | `worker-context.json` | Runtime worker cost: median first-turn cache creation per role, spawns per merged PR, fix-round respawns split cache-warm/cold (gitignored, per machine, written by `scripts/worker-context-report.ts --record`, read by `campaign-status.ts`) |
@@ -346,14 +346,17 @@ Fix drift before spawning workers.
 
 ## Doc-Health Signal
 
-Same cadence as § Sync above — start of every orchestrator turn. Scope-1 only
-(`doc-governance.md` § Doc-Tree Health Signal): blackhole's own `documentation/` tree, not a
-consumer repo's.
+Same cadence as § Sync above — start of every orchestrator turn (`doc-governance.md` §
+Doc-Tree Health Signal).
 
-Existence-gated: when `scripts/checks/doc-health.check.ts` exists at repo root (blackhole
-self-hosting its own campaign), refresh `.blackhole/doc-health.json` via
-`bun run scripts/doc-health-signal.ts`; absent, this step is inert — no error, no attempted
-invocation. Scope-2 (a consumer repo's tree) is enforced at review time by `reviewer.md` § Doc-Governance Judgment Audit.
+Self-hosting: when `scripts/checks/doc-health.check.ts` exists at repo root, refresh
+`.blackhole/doc-health.json` via `bun run scripts/doc-health-signal.ts`. Consumer repo: when
+`docs_governance.enabled` resolves `true` and the repo has a `documentation/` directory, run
+`bun run --cwd "$BLACKHOLE_PLUGIN_ROOT" scripts/doc-health-signal.ts --repo-root <abs consumer root>`;
+it reads the consumer tree and writes only that repo's `.blackhole/doc-health.json`. Otherwise
+the step is inert — no error, no attempted invocation. The consumer pass is advisory and
+read-only; the blocking `V-DOCHEALTH-01/02/04` stay Scope-1, and `reviewer.md` §
+Doc-Governance Judgment Audit still judges a consumer tree at review time.
 
 `doc_debt: "yes"` is visibility only: no ledger append, no phase gate. `V-DOCHEALTH-03` stays
 advisory. Full rationale for this turn-start mechanism over a literal `SessionStart` hook:

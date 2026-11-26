@@ -95,6 +95,9 @@ export const renderRootIndexFile = (existing: string | null, docsDir: string): s
   return `${titleBlock}${renderFullIndexFile(docsDir)}`;
 };
 
+// Informational detail for a foreign root INDEX; doc-health-signal.ts excludes it from the doc_debt decision.
+export const FOREIGN_INDEX_NOTE = 'foreign root INDEX, row ceiling not evaluated';
+
 /**
  * Whether `renderRootIndexFile` may overwrite `existing` without destroying content it cannot
  * reproduce. `renderRootIndexFile` keeps only the first two lines (the title block) and rebuilds
