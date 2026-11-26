@@ -1,6 +1,7 @@
 import { formatMergeNextItem, mergeNextOrder, trunkFixIssues } from '../merge-next.ts';
 import { when } from './budget.ts';
 import { DONE_STATUSES, isSameRepoKey } from './queue.ts';
+import { renderOwnerNeeds, type OwnerNeeds } from './owner-needs.ts';
 import type { BudgetPanel, QueueIssue } from './types.ts';
 
 // The decide round's report (`decision-parking.md` § Decide round): what ran since the last round,
@@ -127,6 +128,7 @@ export function buildDecideReport(input: {
   issues: Record<string, QueueIssue> | null;
   budget: BudgetPanel;
   pending: number;
+  ownerNeeds?: OwnerNeeds;
 }): string {
   return [
     '## Since the last decide round',
@@ -136,6 +138,7 @@ export function buildDecideReport(input: {
     `- Open PRs in merge order: ${openPrs(input.issues)}.`,
     `- Weekly points used: ${budgetUsed(input.budget, input.baseline)}.`,
     `- Decisions waiting for you: ${waiting(input.pending)}.`,
+    ...(input.ownerNeeds ? [renderOwnerNeeds(input.ownerNeeds)] : []),
     '',
   ].join('\n');
 }

@@ -357,3 +357,27 @@ describe('a retired sleep_mode block outside campaign-record', () => {
     expect(record.keep_awake).toEqual({ held: false, reason: 'no hold recorded' });
   });
 });
+
+describe('campaign-record decide: owner needs', () => {
+  const prOf = (number: number, labels: string[]) => ({ number, title: `PR ${number}`, body: '', headRefName: 'b', state: 'OPEN' as const, mergedAt: null, labels });
+
+  test('lists owner-gated PRs and owner-addressed blocked items, dropping what a parked decision cites', () => {
+    const dir = campaign({ merge_mode: 'leave-open' }, { '7': { title: 'Name it', status: 'blocked', notes: 'needs-owner: pick' } });
+    runRecord(['park', '--campaign-dir', dir, '--question', 'Merge #31?', '--options', 'A|B', '--recommended', 'A'], NOW);
+    const out = JSON.parse(runRecord(['decide', '--campaign-dir', dir], NOW, undefined, { ownerPrs: [prOf(31, ['needs-owner']), prOf(32, ['owner-gated'])] }));
+    expect(out.owner_needs.prs.map((p: { number: number }) => p.number)).toEqual([32]);
+    expect(out.owner_needs.blocked.map((b: { number: number }) => b.number)).toEqual([7]);
+    expect(out.report).toContain('#32 PR 32 (owner-gated)');
+    expect(out.report).toContain('#7 Name it — needs-owner: pick');
+  });
+
+  test('an unreadable forge reports not read; an omitted arg keeps the report as it was', () => {
+    const dir = campaign({ merge_mode: 'leave-open' });
+    const unread = JSON.parse(runRecord(['decide', '--campaign-dir', dir], NOW, undefined, { ownerPrs: null }));
+    expect(unread.owner_needs.prs).toBeNull();
+    expect(unread.report).toContain('not read (forge unavailable)');
+    const plain = JSON.parse(runRecord(['decide', '--campaign-dir', dir], NOW));
+    expect(plain.owner_needs).toBeUndefined();
+    expect(plain.report).not.toContain('Also needing you');
+  });
+});

@@ -33,6 +33,9 @@ import {
   type DecideBaseline,
 } from './lib/campaign-status/decide-round.ts';
 import { reconcileHold, resolveStateStore, systemHoldDeps, type HoldDeps } from './lib/campaign-status/keep-awake.ts';
+import { collectOwnerNeeds } from './lib/campaign-status/owner-needs.ts';
+import { adapterForCampaign } from './lib/forge-adapter/for-campaign.ts';
+import type { ForgePr } from './lib/forge-adapter/types.ts';
 import { resolveHost } from './lib/usage-source.ts';
 import { resolveUsageBudget } from './lib/usage-budget.ts';
 
@@ -175,7 +178,12 @@ function coordinationRole(config: Record<string, unknown>): string {
  * Runs one record command and returns the line to print. Throws on bad input; writes nothing then.
  * `hold` makes the keep-awake inhibitor's process calls (`keep-awake.ts`); tests pass a fake.
  */
-export function runRecord(argv: string[], now: Date = new Date(), hold: HoldDeps = systemHoldDeps): string {
+export function runRecord(
+  argv: string[],
+  now: Date = new Date(),
+  hold: HoldDeps = systemHoldDeps,
+  forge: { ownerPrs?: ForgePr[] | null } = {},
+): string {
   const [sub, ...rest] = argv;
   if (sub !== undefined && Object.hasOwn(RETIRED, sub)) throw new Error(RETIRED[sub]);
   const flags = parseFlags(rest);
@@ -242,14 +250,23 @@ export function runRecord(argv: string[], now: Date = new Date(), hold: HoldDeps
     // The round is the answer channel, not a gate: its cards ask directly, so parking is left as it
     // was. It records its own baseline so the next round reports what ran since this one.
     const config = readConfig(flags.campaignDir);
-    const batch = wakeBatch(readPendingDecisions(flags.campaignDir).decisions);
+    const parked = readPendingDecisions(flags.campaignDir).decisions;
+    const batch = wakeBatch(parked);
     const issues = readQueueIssues(flags.campaignDir);
     const budget = readBudget(flags.campaignDir, config, now);
-    const report = buildDecideReport({ baseline: readDecideBaseline(flags.campaignDir, config), issues, budget, pending: batch.total });
+    // `ownerPrs` undefined: the caller read no forge, so the owner-needs section is left out; null: the forge was unreadable.
+    const owner_needs = forge.ownerPrs === undefined ? undefined : collectOwnerNeeds({ prs: forge.ownerPrs, issues, parked });
+    const report = buildDecideReport({
+      baseline: readDecideBaseline(flags.campaignDir, config),
+      issues,
+      budget,
+      pending: batch.total,
+      ...(owner_needs ? { ownerNeeds: owner_needs } : {}),
+    });
     const next: DecideBaseline = { at: now.toISOString(), done: issues ? doneIssues(issues) : null, weekly_pct: budget.weekly_pct };
     writeJsonAtomic(path.join(flags.campaignDir, DECIDE_BASELINE_FILE), next);
     const warning = retiredSleepModeWarning(config);
-    return JSON.stringify({ report, ...(warning ? { warning } : {}), ...batch }, null, 2);
+    return JSON.stringify({ report, ...(owner_needs ? { owner_needs } : {}), ...(warning ? { warning } : {}), ...batch }, null, 2);
   }
 
   if (sub === 'rearm') {
@@ -282,9 +299,22 @@ export function runRecord(argv: string[], now: Date = new Date(), hold: HoldDeps
   throw new Error(`Unknown subcommand "${sub ?? ''}". ${USAGE}`);
 }
 
+/** The campaign's open PRs for the decide round, or null when the forge cannot be read (never an error: the round still runs). */
+async function readOpenPrs(campaignDir: string): Promise<ForgePr[] | null> {
+  try {
+    const config = readConfig(campaignDir) as { repo?: string; forge?: string };
+    if (!config.repo) return null;
+    return await adapterForCampaign(campaignDir, { repo: config.repo, forge: config.forge }).prList({ state: 'open', limit: 200 });
+  } catch {
+    return null;
+  }
+}
+
 if (import.meta.main) {
   try {
-    console.log(runRecord(process.argv.slice(2)));
+    const argv = process.argv.slice(2);
+    const ownerPrs = argv[0] === 'decide' ? await readOpenPrs(parseFlags(argv.slice(1)).campaignDir) : undefined;
+    console.log(runRecord(argv, new Date(), systemHoldDeps, ownerPrs === undefined ? {} : { ownerPrs }));
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     process.exit(1);

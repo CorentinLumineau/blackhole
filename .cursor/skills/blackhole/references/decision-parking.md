@@ -81,6 +81,11 @@ Schema and fixture: `pending-decisions.ts`, `fixtures/decision-parking/pending-d
    round has no baseline and says so (`not measured`); a campaign upgraded from retired sleep mode
    uses that sleep baseline once. A value that could not be read is named as such, never guessed.
    A `warning` field, when present, names a retired `sleep_mode` block to remove; show it too.
+   The `owner_needs` field, when present, adds `Also needing you (not parked)` to the report: open
+   PRs labelled `needs-owner` or `owner-gated`, and blocked items whose notes address the owner
+   (`collectOwnerNeeds`, `scripts/lib/campaign-status/owner-needs.ts`). Anything a parked decision
+   already blocks or cites by `#n` is left out. They are acted on in the forge, not asked as cards;
+   `prs: null` means the forge was not read, never none.
 3. Ask each entry of `cards` (at most four questions, the most-blocking first) as **one**
    AskUserQuestion call (or one set of decision cards, `project-thread-mode.md`), the recommended
    option first; more than four decisions means more cards, never a dropped question.
