@@ -90,8 +90,41 @@ describe('syncQueue — reconcile', () => {
   test('an open PR closing the issue links it and moves implement to review', () => {
     const r = sync({ queue, issues: [issue(1), issue(2), issue(3), issue(4)], prs: [pr(11, { headRefName: 'claude/login', body: 'Closes #1' }), pr(12, { headRefName: 'blackhole/issue-2-thing' })] });
     expect(r.queue.issues?.['1']).toMatchObject({ pr: 11, phase: 'review', status: 'in-flight' });
-    expect(r.queue.issues?.['2']).toMatchObject({ pr: 12, phase: 'handle' });
+    expect(r.queue.issues?.['2']).toMatchObject({ pr: 12, phase: 'review', status: 'ready' });
     expect(r.linked).toEqual([1, 2]);
+  });
+
+  test('an open own PR moves a ready entry at handle or plan to review, whether or not pr was already set', () => {
+    const q = { issues: {
+      '1': { title: 'a', phase: 'handle', status: 'ready', pr: null },
+      '2': { title: 'b', phase: 'plan', status: 'ready', pr: null },
+      '3': { title: 'c', phase: 'plan', status: 'ready', pr: 33 },
+    } };
+    const r = sync({ queue: q, issues: [issue(1), issue(2), issue(3)], prs: [
+      pr(11, { headRefName: 'blackhole/issue-1', body: 'Closes #1' }),
+      pr(12, { headRefName: 'claude/issue-2-x', body: 'Fixes #2' }),
+      pr(33, { headRefName: 'blackhole/issue-3', body: 'Closes #3' }),
+    ] });
+    expect(r.queue.issues?.['1']).toMatchObject({ pr: 11, phase: 'review', status: 'ready' });
+    expect(r.queue.issues?.['2']).toMatchObject({ pr: 12, phase: 'review', status: 'ready' });
+    expect(r.queue.issues?.['3']).toMatchObject({ pr: 33, phase: 'review', status: 'ready' });
+    expect(r.linked).toEqual([1, 2]);
+  });
+
+  test('an in-flight handle/plan entry, a foreign-lane entry keep their phase when a PR is linked', () => {
+    const q = { issues: {
+      '1': { title: 'a', phase: 'handle', status: 'in-flight', pr: null },
+      '2': { title: 'b', phase: 'plan', status: 'in-flight', pr: null },
+      '3': { title: 'c', phase: 'handle', status: 'blocked', pr: null, notes: 'another lane: agent:cursor' },
+    } };
+    const r = sync({ queue: q, issues: [issue(1), issue(2), issue(3, { labels: [{ name: 'agent:cursor' }] })], prs: [
+      pr(11, { headRefName: 'blackhole/issue-1', body: 'Closes #1' }),
+      pr(12, { headRefName: 'blackhole/issue-2', body: 'Closes #2' }),
+      pr(13, { headRefName: 'blackhole/issue-3', body: 'Closes #3' }),
+    ] });
+    expect(r.queue.issues?.['1']).toMatchObject({ pr: 11, phase: 'handle', status: 'in-flight' });
+    expect(r.queue.issues?.['2']).toMatchObject({ pr: 12, phase: 'plan', status: 'in-flight' });
+    expect(r.queue.issues?.['3']).toMatchObject({ pr: null, phase: 'handle', status: 'blocked' });
   });
 
   test('a merged PR marks its issue merged/done; a closed issue with no merged PR is closed/done', () => {
