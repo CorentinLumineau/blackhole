@@ -120,6 +120,8 @@ gh workflow run release-cadence.yml --ref main -f force=true
 or locally: `bun run release-cadence --cut --force` (local cuts do not require the repo
 variable). Not for routine use.
 
+A `force=true` dispatch queued behind a running cut can be replaced by a merge-triggered (`workflow_run`) run, so re-dispatch it if it was superseded.
+
 ## Failures
 
 A persistently-failing cut files or comments on a `blackhole/backlog` issue titled

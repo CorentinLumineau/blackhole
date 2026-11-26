@@ -33,7 +33,7 @@ on:
 
 # One cut at a time; a running cut is never cancelled. GitHub keeps only one
 # pending run per group, so a queued force=true dispatch can be superseded by
-# the next cron run (which then skips if < N PRs). If that happens, dispatch
+# the next workflow_run or cron run (which then skips if < N PRs). If that happens, dispatch
 # force=true again once the running cut finishes.
 concurrency:
   group: release-cadence
