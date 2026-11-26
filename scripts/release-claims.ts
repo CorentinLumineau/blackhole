@@ -1,8 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
-import { DISPATCHED_STATUSES, readClaimLabels, releaseClaimLabels, type ClaimReleaseReport } from './lib/claim-release.ts';
-import { adapterForCampaign } from './lib/forge-adapter/for-campaign.ts';
+import { claimAdapter, loadClaimConfig, resolveCampaignDir, runClaimCli, UsageError } from './lib/claim-cli.ts';
+import { DISPATCHED_STATUSES, releaseClaimLabels, type ClaimReleaseReport } from './lib/claim-release.ts';
 import type { ForgeAdapter } from './lib/forge-adapter/types.ts';
 import { readJsonFile } from './lib/fs.ts';
 
@@ -14,9 +14,7 @@ import { readJsonFile } from './lib/fs.ts';
 // prints, `failed` lists them) or the forge could not be read (message on stderr).
 const USAGE = 'usage: release-claims.ts [--campaign-dir <dir>]';
 
-export class UsageError extends Error {}
-
-type Config = { repo?: string; forge?: string; claim_labels?: unknown };
+export { UsageError };
 
 /** Runs one release pass and returns the report. `adapter` replaces the configured forge's, for a test. */
 export async function runReleaseClaims(argv: string[], opts: { adapter?: ForgeAdapter } = {}): Promise<ClaimReleaseReport> {
@@ -24,10 +22,8 @@ export async function runReleaseClaims(argv: string[], opts: { adapter?: ForgeAd
   const unknown = unknownFlagKeys(flags, ['campaign-dir']);
   if (unknown.length) throw new UsageError(`unknown flag(s): ${unknown.map((k) => `--${k}`).join(', ')}`);
   if (flags['campaign-dir'] === true) throw new UsageError('--campaign-dir needs a value');
-  const campaignDir = path.resolve(process.cwd(), typeof flags['campaign-dir'] === 'string' ? flags['campaign-dir'] : '.blackhole');
-  const configPath = path.join(campaignDir, 'config.json');
-  const config = fs.existsSync(configPath) ? (readJsonFile(configPath, configPath) as Config) : {};
-  const labels = readClaimLabels(config);
+  const campaignDir = resolveCampaignDir(flags['campaign-dir']);
+  const { config, configPath, labels } = loadClaimConfig(campaignDir);
   if (labels.length === 0) return { released: [], kept: [], failed: [] };
 
   const queuePath = path.join(campaignDir, 'queue.json');
@@ -37,28 +33,18 @@ export async function runReleaseClaims(argv: string[], opts: { adapter?: ForgeAd
     .map(([key]) => Number(key))
     .filter((n) => Number.isInteger(n) && n > 0);
 
-  if (!config.repo && !opts.adapter) throw new Error(`${configPath} has no "repo": the forge cannot be read.`);
-  const adapter = opts.adapter ?? adapterForCampaign(campaignDir, { repo: config.repo as string, forge: config.forge });
+  const adapter = claimAdapter(campaignDir, config, configPath, 'read', opts.adapter);
   return releaseClaimLabels(adapter, issues, labels);
 }
 
 /** 1 when any claim release failed, so the caller sees a partial pass. */
 export const reportExitCode = (report: ClaimReleaseReport): number => (report.failed.length > 0 ? 1 : 0);
 
-const main = async (): Promise<void> => {
-  try {
+const main = (): Promise<void> =>
+  runClaimCli('release-claims', USAGE, async () => {
     const report = await runReleaseClaims(process.argv.slice(2));
     console.log(JSON.stringify(report));
     process.exitCode = reportExitCode(report);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (error instanceof UsageError) {
-      console.error(`release-claims: ${message}\n${USAGE}`);
-      process.exit(2);
-    }
-    console.error(`release-claims: ${message}`);
-    process.exit(1);
-  }
-};
+  });
 
 if (import.meta.main) await main();
