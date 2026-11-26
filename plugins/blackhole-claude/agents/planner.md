@@ -125,6 +125,8 @@ has no `documentation/` target.
       rather than staged as a second `documentation/INDEX.md` row fragment (issue #832, ADR-031
       Phase 2 — supersedes the paired staged `append_row` INDEX-row fragment issue #445
       introduced): the row is reproduced automatically at carry time from this field.
+      When an issue obliges the re-read, write `review_trigger` as `on issue-close #N`
+      (`doc-governance.md` § Lifecycle Frontmatter), not free text.
    3. Append one manifest entry (`route: "plan"`, `produced_by: "planner"`, `sub_mode: null`,
       `target_kind: "new_file"` for the plan body) via `bun run --cwd <abs repo-root> "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/stage-manifest.ts append --manifest <abs repo-root>/.blackhole/staged/<issue>/manifest.json --issue <N> --entry-json '<entry json>'` (atomic `.tmp` + rename, never a shell redirect; exit 1 means refused, fix and re-run; an entry containing an apostrophe goes in a file in the worktree passed as `--entry-file <path>` instead of `--entry-json`). Never commit into `documentation/` — the
       implementer carry-step owns delivery.

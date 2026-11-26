@@ -4,6 +4,7 @@ import { parseMdFrontmatter, parseFrontmatterFields } from '../lib/build/content
 import { parseIndexTableRows, walkMdFilesAbs } from '../lib/check-common.ts';
 import { buildDocIndexRows, diffDocIndexRows, type DocIndexDiff } from '../lib/doc-index-generate.ts';
 import { DOC_HEALTH_THRESHOLDS } from '../lib/build/facts.ts';
+import { findMalformedIssueTriggers } from '../lib/review-trigger-grammar.ts';
 import { root, type CheckResult } from './check-utils.ts';
 
 // Issue #462 (ADR-021 D6 Scope 1) — doc-health.check.ts: matches verify.doc-health.test.ts.
@@ -174,6 +175,18 @@ export const evaluateDocTreeHealth = (docsDir: string): CheckResult => {
     DOC_HEALTH_THRESHOLDS.deprecationWindowDays
   );
   if (stale.length) details.push(`deprecated past ${DOC_HEALTH_THRESHOLDS.deprecationWindowDays}-day window: ${stale.join(', ')}`);
+
+  const malformedTriggers = findMalformedIssueTriggers(
+    files
+      .filter((f) => !isIndexFile(f.relPath) && !isArchivedMilestone(f.relPath))
+      .map((f) => ({
+        relPath: f.relPath,
+        reviewTrigger: parseFrontmatterFields(parseMdFrontmatter(f.content).frontmatter).review_trigger ?? '',
+      }))
+  );
+  if (malformedTriggers.length) {
+    details.push(`review_trigger not in grammar (use "on issue-close #N"): ${malformedTriggers.join(', ')}`);
+  }
 
   return details.length ? { id: 'V-DOCHEALTH-03', ok: true, detail: details.join('; ') } : { id: 'V-DOCHEALTH-03', ok: true };
 };
