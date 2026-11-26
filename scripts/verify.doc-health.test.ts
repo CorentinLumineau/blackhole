@@ -13,6 +13,7 @@ import {
   findOrphanDocs,
   findOversizedDocs,
   findStaleDeprecatedDocs,
+  evaluateDocTreeHealth,
   findStaleIndexRows,
   isRootIndexRowCeilingExceeded,
   isTreeSizeAdvisoryExceeded,
@@ -342,6 +343,32 @@ describe('findStaleDeprecatedDocs (deprecation window)', () => {
   test('a non-deprecated doc is never flagged regardless of age', () => {
     const files = [{ relPath: 'reference/old.md', status: 'current', lastUpdated: '2020-01-01' }];
     expect(findStaleDeprecatedDocs(files, 90, now)).toEqual([]);
+  });
+});
+
+describe('evaluateDocTreeHealth review_trigger grammar lint (V-DOCHEALTH-03, advisory)', () => {
+  const fm = (trigger: string): string =>
+    FM({ type: 'plan', status: 'current', review_trigger: trigger, created: '2026-01-01', last_updated: '2026-01-01' });
+
+  test('a malformed issue-keyed trigger is reported but never blocks', () => {
+    withFixtureDir((dir) => {
+      write(dir, 'plans/bad.md', fm('"when #5228 closes"'));
+      const result = evaluateDocTreeHealth(dir);
+      expect(result.id).toBe('V-DOCHEALTH-03');
+      expect(result.ok).toBe(true);
+      expect(result.detail).toContain('review_trigger not in grammar');
+      expect(result.detail).toContain('plans/bad.md');
+    });
+  });
+
+  test('a well-formed trigger and enum values add no detail', () => {
+    withFixtureDir((dir) => {
+      write(dir, 'plans/good.md', fm('"on issue-close #12"'));
+      write(dir, 'plans/enum.md', fm('"on file change"'));
+      const result = evaluateDocTreeHealth(dir);
+      expect(result.ok).toBe(true);
+      expect(result.detail).toBeUndefined();
+    });
   });
 });
 

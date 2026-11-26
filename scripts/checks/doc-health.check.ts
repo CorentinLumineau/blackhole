@@ -4,6 +4,7 @@ import { parseMdFrontmatter, parseFrontmatterFields } from '../lib/build/content
 import { parseIndexTableRows, walkMdFilesAbs } from '../lib/check-common.ts';
 import { buildDocIndexRows, diffDocIndexRows, type DocIndexDiff } from '../lib/doc-index-generate.ts';
 import { DOC_HEALTH_THRESHOLDS } from '../lib/build/facts.ts';
+import { malformedTriggerDetail } from '../lib/review-trigger-grammar.ts';
 import { root, type CheckResult } from './check-utils.ts';
 
 // Issue #462 (ADR-021 D6 Scope 1) — doc-health.check.ts: matches verify.doc-health.test.ts.
@@ -166,14 +167,15 @@ export const evaluateDocTreeHealth = (docsDir: string): CheckResult => {
     details.push(`tree file count ${files.length} exceeds ${DOC_HEALTH_THRESHOLDS.treeSizeAdvisory}`);
   }
 
+  const docs = files.map((f) => ({ relPath: f.relPath, fm: parseFrontmatterFields(parseMdFrontmatter(f.content).frontmatter) }));
   const stale = findStaleDeprecatedDocs(
-    files.map((f) => {
-      const fm = parseFrontmatterFields(parseMdFrontmatter(f.content).frontmatter);
-      return { relPath: f.relPath, status: fm.status ?? '', lastUpdated: fm.last_updated ?? '' };
-    }),
+    docs.map((d) => ({ relPath: d.relPath, status: d.fm.status ?? '', lastUpdated: d.fm.last_updated ?? '' })),
     DOC_HEALTH_THRESHOLDS.deprecationWindowDays
   );
   if (stale.length) details.push(`deprecated past ${DOC_HEALTH_THRESHOLDS.deprecationWindowDays}-day window: ${stale.join(', ')}`);
+
+  const triggers = malformedTriggerDetail(docs.filter((d) => !isIndexFile(d.relPath) && !isArchivedMilestone(d.relPath)));
+  if (triggers) details.push(triggers);
 
   return details.length ? { id: 'V-DOCHEALTH-03', ok: true, detail: details.join('; ') } : { id: 'V-DOCHEALTH-03', ok: true };
 };
