@@ -572,6 +572,7 @@ skipped gate.
 ## Bundled shadcn skill (conditional)
 *   **Load when**: the issue is UI or design-system work (`route.ui` is `true`, or the frontend-detection keyword set matches) and the worktree has a `components.json`.
 *   **Read**: `.claude/skills/blackhole/references/gate-modules/16-shadcn-skill.md`
+*   **Hard limit** (stays inline, applies even if the module is skipped): never run `shadcn apply` or `init --preset`, and never change a theme or preset, without the owner's explicit OK.
 
 ---
 

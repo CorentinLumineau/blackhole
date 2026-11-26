@@ -274,8 +274,8 @@ For issue N, PR P:
    building the ready set in step 2. Hunted issues never displace human-authored ones beyond
    their own computed Priority rank in step 2's descending sort — this step only decides
    *whether a wave fires this turn*, not queue ordering.
-1. Run forge sync, then score what it ingested unscored: `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/pareto-score.ts detect`; when it lists issues, score them and run `apply` per `forge-sync.md` § Score on ingest, so the batch below ranks them by their own priority
-2. Build ready set per `queue-dag.md` and take the next batch from `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/pareto-order.ts` (lowest wave, owner-pinned `user_queue_order` first, then stored priority, effort, oldest).
+1. Run forge sync, then score what it ingested unscored or changed: `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/pareto-score.ts detect`; when it lists issues, score them and run `apply` per `forge-sync.md` § Score on ingest and re-score, so the batch below ranks them by their own current priority
+2. Build ready set per `queue-dag.md` and take the next batch from `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/pareto-order.ts --require-scored` (lowest wave, owner-pinned `user_queue_order` first, then stored priority, effort, oldest). Exit 1 names an unscored issue in the batch: run `detect` and `apply` for it per `forge-sync.md` § Score on ingest and re-score, then take the batch again.
 3. For each selected issue, set `in-flight`, spawn worker at correct phase:
    - New issues start at **handle** or **plan** if handle complete
    - Returned-from-review start at **implement**

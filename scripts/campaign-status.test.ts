@@ -1119,6 +1119,19 @@ describe('status --summary (the launch summary)', () => {
     expect(summaryJson(tempCampaign({}, { 'run-context.json': runContext('claude', 'ask-user-question') })).cards.length).toBeGreaterThan(0);
   });
 
+  test('--data reads a recorded worker-context.json into the overview, and omits worker columns without one', () => {
+    const overviewOf = (dir: string) => {
+      const out = path.join(dir, 'data-out');
+      const proc = Bun.spawnSync({ cmd: ['bun', 'run', 'scripts/campaign-status.ts', '--no-gh', '--campaign-dir', dir, '--data', out], cwd: root });
+      expect(proc.exitCode).toBe(0);
+      return JSON.parse(fs.readFileSync(path.join(out, 'overview.json'), 'utf-8'))[0] as Record<string, unknown>;
+    };
+    const none = overviewOf(tempCampaign({}));
+    expect(Object.keys(none).filter((k) => k.startsWith('worker_'))).toEqual([]);
+    const record = { recorded_at: '2026-11-11T11:30:00.000Z', workers: 9, unattributed: 1, median_first_turn_tokens: 110_228, roles: {}, merged_prs: 2, spawns_per_merged_pr: 3.5, respawns: { total: 4, warm: 1, cold: 3 } };
+    expect(overviewOf(tempCampaign({}, { 'worker-context.json': record }))).toMatchObject({ worker_median_first_turn_tokens: 110_228, worker_respawns_cold: 3 });
+  });
+
   test('a valid --usage changes the Budget row', () => {
     const dir = tempCampaign({ usage_budget: { enabled: true } }, { 'run-context.json': runContext('cursor', 'ask-user-question') });
     const before = row(summaryJson(dir, '--now', NOW_S), 'budget');

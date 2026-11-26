@@ -52,7 +52,7 @@ Direct `/blackhole run` or `/goal` in a single session: act as orchestrator (leg
 
 ## Phase 0: Bootstrap (ALL modes)
 
-**Native forge sync** — automatic, never AskQuestion to confirm.
+**Native forge sync** — automatic, never AskQuestion to confirm. In `run` and `catchup` modes the sync is followed by the re-score (`bun run scripts/pareto-score.ts detect`, then `apply`: `forge-sync.md` § Score on ingest and re-score) before the launch summary, so the run starts from a current order.
 
 1. **Config** — `.blackhole/config.json` (from `config-template.md` in this repo). In `run` and `catchup` modes
    this step also runs the **Campaign launch configuration gate** (`coordinator.md` § Bootstrap

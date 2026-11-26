@@ -145,8 +145,10 @@ function ingest(i: ForgeIssue, input: SyncInput, sizePrefix: string): SyncedEntr
 function reconcile(entry: SyncedEntry, i: ForgeIssue, sizePrefix: string): SyncedEntry {
   const f = forgeFields(i, sizePrefix);
   const deps = [...new Set([...(entry.depends_on ?? []), ...parseDependsFromBody(i.body ?? '')])];
-  const { pareto: _stale, ...rest } = entry;
-  const pareto = parseParetoLine(i.body ?? '');
+  const { pareto: stored, ...rest } = entry;
+  const parsed = parseParetoLine(i.body ?? '');
+  // scored_at/rationale describe one score: keep them only while the forge line still says the same.
+  const pareto = parsed && stored && stored.priority === parsed.priority && stored.gain === parsed.gain && stored.effort === parsed.effort ? { ...stored, ...parsed } : parsed;
   return { ...rest, ...(pareto ? { pareto } : {}), title: f.title, labels: f.labels, milestone: f.milestone, size: f.size ?? entry.size ?? null, depends_on: deps, ...(f.epic_parent !== null ? { epic_parent: f.epic_parent } : {}) };
 }
 

@@ -39,7 +39,7 @@ bun run scripts/state-branch.ts pull
 ## What travels
 
 Everything under `.blackhole/` except `archive/`, `hook-events/`, `.tmp/`, `*.tmp` files and the
-signals that describe one machine (`run-context.json`, `plugin-drift.json`, `doc-health.json`),
+signals that describe one machine (`run-context.json`, `plugin-drift.json`, `doc-health.json`, `worker-context.json`),
 which the next machine derives again. Restores are byte-for-byte.
 
 ## Local-only steps
