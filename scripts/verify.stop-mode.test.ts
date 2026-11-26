@@ -212,10 +212,10 @@ describe('usage stop bypasses from the re-review are caught on the real files', 
     expect(findUsageStopViolations(inject(phaseStop, '2. **Leave the queue alone**', 'Increment `failed_attempts`.')).length).toBeGreaterThan(0);
   });
 
-  test('(e) a second paragraph under resume step 7 is scanned up to the next heading', () => {
+  test('(e) a second paragraph under resume step 5 is scanned up to the next heading', () => {
     const bad = runtime.replace('**MUST** complete `recovery-protocol.md` §5', 'On resume, mark each paused issue `failed`.\n\n**MUST** complete `recovery-protocol.md` §5');
     expect(bad).not.toBe(runtime);
-    expect(findUsageRuntimeViolations(bad).join('; ')).toContain('resume step 7');
+    expect(findUsageRuntimeViolations(bad).join('; ')).toContain('resume step 5');
   });
 
   test('the usage stop still records stopped_by: usage and wake_at', () => {

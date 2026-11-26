@@ -58,6 +58,10 @@ const BRANCH_ISSUE_RE = new RegExp(String.raw`^(?:claude|blackhole)\/${CAMPAIGN_
 /** Dependency bots: their PR is an open PR, not another agent lane. */
 const BOT_BRANCH = /^(?:renovate|dependabot)\//;
 
+/** An entry with an own open PR is reviewed, not planned or implemented again; an in-flight worker still holds its phase at handle/plan, and an implement entry already linked to the PR was sent back to implement on purpose. */
+const advancesToReview = (entry: { phase?: string | null; status?: string | null; pr?: number | null }, ownPr: number): boolean =>
+  (entry.phase === 'implement' && entry.pr !== ownPr) || ((entry.phase === 'handle' || entry.phase === 'plan') && entry.status !== 'in-flight');
+
 const isLaneNote = (notes: string | null | undefined): boolean => LANE_NOTE.test(notes ?? '');
 
 function forgeFields(i: ForgeIssue, sizePrefix: string) {
@@ -219,9 +223,10 @@ export function syncQueue(input: SyncInput): SyncResult {
     let next = state ? applyLane(entry, label ? `${ANOTHER_LANE} ${label}` : (peerHold ?? prHold)) : entry;
     const ownPr = open.own.get(n);
     // A peer's PR is never adopted as this session's own, whatever the entry's status or note.
-    if (ownPr && next.pr !== ownPr.number && !isLaneNote(next.notes) && !peer) {
-      next = { ...next, pr: ownPr.number, phase: next.phase === 'implement' ? 'review' : next.phase };
-      linked.push(n);
+    if (ownPr && !isLaneNote(next.notes) && !peer) {
+      const phase = advancesToReview(next, ownPr.number) ? 'review' : next.phase;
+      if (next.pr !== ownPr.number) linked.push(n);
+      next = { ...next, pr: ownPr.number, phase };
     }
     issues[key] = next;
   }

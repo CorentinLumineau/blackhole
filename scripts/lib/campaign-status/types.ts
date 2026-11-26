@@ -301,9 +301,6 @@ export type StatusState = {
   next_action: string;
 };
 
-/** PreToolUse hook decisions for one rule: `deny` counts `tier: block` events, `warn` counts `tier: warn`. */
-export type DenyCount = { pattern_id: string; deny: number; warn: number };
-
 export type StatusReport = {
   schema_version: 1;
   generated_at: string;
@@ -390,8 +387,6 @@ export type StatusReport = {
   config_rows: Array<{ key: string; value: string }>;
   /** Queue entries the forge contradicts, rendered as the forge has them; the next sync brings the queue in line. Empty when the forge was not read. Additive. */
   drift: QueueDrift[];
-  /** Hook deny and warn events per `pattern_id` since the campaign started, live and archived, most frequent first. Additive. */
-  deny_counts: DenyCount[];
   /** The usage reading and the usage-budget verdict for it (`budget.ts`); `probed: false` when no reading was found. Additive. */
   budget: BudgetPanel;
   /** Run route, the decisions mode with its parked count and the owner's absence, and the coordination role (`run-state.ts`). Additive. */

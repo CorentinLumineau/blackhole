@@ -24,5 +24,5 @@ vcodes: [V-PLUGIN-01]
     version-carrying manifests, `.claude-plugin/plugin.json` included).
 *   **Non-goal**: this audit does not verify that the manual republish/reinstall step actually
     happened afterward, nor that the installed cache now matches the repo build — that residual
-    gap is covered by the independent, advisory `.blackhole/plugin-drift.json` signal
-    (`blackhole-state.md` § Plugin-Drift Signal), not by this diff-content check.
+    gap is covered by `pluginVersionWarning` (`scripts/lib/plugin-drift.ts`), which flags a
+    running plugin older than an installed one, not by this diff-content check.

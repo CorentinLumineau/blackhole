@@ -176,7 +176,7 @@ describe('MANIFEST_PATHS registry coverage', () => {
   test('live docs never state a version-carrying manifest count other than the registry length', () => {
     const sources = [
       ...execSync('git ls-files src', { cwd: repoRoot, encoding: 'utf8' }).split('\n').filter((f) => f.endsWith('.md')),
-      'templates/hooks/pretooluse/README.md',
+      'templates/hooks/README.md',
     ];
     const stale: string[] = [];
     for (const rel of sources) {

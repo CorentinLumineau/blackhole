@@ -14,8 +14,7 @@ only remedy left is key rotation, not a fix commit.
     2. `templates/hooks/pretooluse/patterns/file-patterns.json`, repo-root-relative (resolves on
        any install that vendors blackhole's full source tree — including this repo's own
        dogfooding install — since it is the hand-authored SSOT, always present there).
-    Read the file's `sensitiveFiles[]` array only (`blockedSystemPaths`/`pathTraversal` belong to
-    #447's own Bash/Write-Edit interception, not this check). Do not restate, paste, or re-derive
+    Read the file's `sensitiveFiles[]` array. Do not restate, paste, or re-derive
     any pattern from that array anywhere in this file.
 *   **Match rule**: for every path about to be staged, test it against every entry in
     `sensitiveFiles[]` by constructing `new RegExp(entry.pattern, entry.flags)` and testing the

@@ -56,7 +56,7 @@ describe('parent-landed doc rule', () => {
       .filter((f) => f.endsWith('.md'))
       .filter((f) => readFileSync(join(dir, f), 'utf8').includes('--is-ancestor'))
       .sort();
-    expect(hits).toEqual(['blackhole-state.md', 'merge-gate.md']);
+    expect(hits).toEqual(['merge-gate.md']);
     const prohibitions = ref('merge-gate.md').split('\n').filter((l) => l.includes('--is-ancestor'));
     expect(prohibitions).toHaveLength(1);
     expect(prohibitions[0]).toMatch(/never/i);

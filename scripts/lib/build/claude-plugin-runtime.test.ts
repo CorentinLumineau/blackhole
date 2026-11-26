@@ -148,6 +148,18 @@ describe('finalized Claude bundle', () => {
     });
   });
 
+  test('registers only the SessionStart export and ships no guard validator (ADR-065)', () => {
+    withTempDir('runtime-bundle-noguard', (destRoot) => {
+      populateClaudeFixtureTree(destRoot);
+      const parsed = JSON.parse(fs.readFileSync(path.join(destRoot, 'hooks', 'hooks.json'), 'utf-8')) as {
+        hooks: Record<string, unknown[]>;
+      };
+      expect(Object.keys(parsed.hooks)).toEqual(['SessionStart']);
+      expect(fs.readdirSync(path.join(destRoot, 'hooks')).sort()).toEqual(['hooks.json', 'patterns']);
+      expect(fs.readdirSync(path.join(destRoot, 'hooks', 'patterns'))).toEqual(['file-patterns.json']);
+    });
+  });
+
   test('ships the detector shell scripts byte-identical and anchors the planner call, runnable from a consumer cwd', () => {
     withTempDir('runtime-bundle-sh', (destRoot) => {
       populateClaudeFixtureTree(destRoot);

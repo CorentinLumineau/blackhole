@@ -213,8 +213,7 @@ D5 narrowing as Step 0.5 above).
    or dispatching further this turn. This closes the exact gap that caused issue #792's
    incident — a stale main clone silently disagreeing with a reviewer's independent check
    right after a merge — for every facts-read that follows: this turn's remaining
-   `plan-quality-gate.ts` reads, the next issue's build-in-main-clone (step 3),
-   and the plugin-drift-signal scan at the next turn start.
+   `plan-quality-gate.ts` reads and the next issue's build-in-main-clone (step 3).
 4.6. **Stacked-child recovery (mandatory whenever Step 0.7 listed children)**: after 4.5's
    main-clone refresh, run `merge-gate.md` § 7's `stack-repair.ts repair --apply` once per open
    child, each with `--child-issue <N>` and `--repo-root` set to that child's own worktree, **in the
@@ -257,6 +256,7 @@ For issue N, PR P:
 - `fixed-in-pr` → `resolved`, `resolved_at` set
 - `open` BLOCK on merged files → file new issue or `resolved` if obsolete
 - `deferred` → keep until deferred issue merges
+- Run `bun run --cwd <abs repo-root> "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/staged-promotion-sweep.ts --campaign-dir <abs .blackhole> --repo-root <abs repo-root> --issue N [--package-root <issue N's plan package_root>]` (read-only; `--issue` scopes the sweep to the merged issue so its own package root applies). Each `unpromoted_merged` or `target_outside_allowlist` row is a `V-AUTO-02` ledger row, deferred to a forge issue per never-drop; `legacy_manifest_shape` and `manifest_unreadable` rows are reported, not repaired
 - Under `merge_mode: leave-open`, `fixed-in-pr` rows stay `fixed-in-pr` (not
   `resolved`) until the later forge-sync observes the real external merge —
   do not resolve them prematurely at LGTM time.

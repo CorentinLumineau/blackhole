@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
 import { makeTempDir } from './fs.ts';
-import { installStateFile, validateStateWrite } from './state-write-guard.ts';
+import { installStateFile, resolveArchiveRetention, validateStateWrite } from './state-write-guard.ts';
 
 const root = path.resolve(import.meta.dirname, '..', '..');
 const scriptPath = path.join(root, 'scripts/lib/state-write-guard.ts');
@@ -339,6 +339,9 @@ type EntityShape = {
   entityKey: 'issues' | 'findings';
   file: string;
   build: (n: number) => Record<string, unknown>;
+  buildOtherContainer: (n: number) => Record<string, unknown>;
+  liveKind: 'array' | 'object';
+  tmpKind: 'array' | 'object';
 };
 
 const ENTITY_SHAPES: EntityShape[] = [
@@ -346,15 +349,21 @@ const ENTITY_SHAPES: EntityShape[] = [
     entityKey: 'issues',
     file: 'queue.json',
     build: (n) => ({ issues: Object.fromEntries(Array.from({ length: n }, (_, i) => [String(i + 1), {}])) }),
+    buildOtherContainer: (n) => ({ issues: Array.from({ length: n }, () => ({})) }),
+    liveKind: 'object',
+    tmpKind: 'array',
   },
   {
     entityKey: 'findings',
     file: 'findings-ledger.json',
     build: (n) => ({ next_id: n + 1, findings: Array.from({ length: n }, (_, i) => ({ id: `F-${i + 1}` })) }),
+    buildOtherContainer: (n) => ({ findings: Object.fromEntries(Array.from({ length: n }, (_, i) => [`F-${i + 1}`, {}])) }),
+    liveKind: 'array',
+    tmpKind: 'object',
   },
 ];
 
-describe.each(ENTITY_SHAPES)('validateStateWrite — $entityKey ($file)', ({ entityKey, file, build }) => {
+describe.each(ENTITY_SHAPES)('validateStateWrite — $entityKey ($file)', ({ entityKey, file, build, buildOtherContainer, liveKind, tmpKind }) => {
   function withFiles(tmpContent: string, liveContent: string | null, fn: (tmpPath: string, livePath: string) => void) {
     const dir = makeTempDir(`state-guard-${entityKey}`);
     try {
@@ -438,6 +447,22 @@ describe.each(ENTITY_SHAPES)('validateStateWrite — $entityKey ($file)', ({ ent
     });
   });
 
+  test('refuses a same-count container type swap even with allowShrink', () => {
+    withFiles(JSON.stringify(buildOtherContainer(5)), JSON.stringify(build(5)), (tmpPath, livePath) => {
+      const result = validateStateWrite({ tmpPath, livePath, entityKey, allowShrink: true });
+      expect(result).toEqual({
+        ok: false,
+        reason: expect.stringMatching(new RegExp(`container type would change from ${liveKind} to ${tmpKind}`)),
+      });
+    });
+  });
+
+  test('permits a first write in either container type — no live baseline to compare', () => {
+    withFiles(JSON.stringify(buildOtherContainer(2)), null, (tmpPath, livePath) => {
+      expect(validateStateWrite({ tmpPath, livePath, entityKey })).toEqual({ ok: true });
+    });
+  });
+
   test('permits a write when the live file lacks the entity key — no baseline to regress against', () => {
     withFiles(JSON.stringify(build(1)), JSON.stringify({ refreshed_at: '2026-09-23T00:00:00.000Z' }), (tmpPath, livePath) => {
       expect(validateStateWrite({ tmpPath, livePath, entityKey })).toEqual({ ok: true });
@@ -445,7 +470,7 @@ describe.each(ENTITY_SHAPES)('validateStateWrite — $entityKey ($file)', ({ ent
   });
 });
 
-describe.each(ENTITY_SHAPES)('state-write-guard CLI — $entityKey ($file)', ({ entityKey, file, build }) => {
+describe.each(ENTITY_SHAPES)('state-write-guard CLI — $entityKey ($file)', ({ entityKey, file, build, buildOtherContainer }) => {
   test('exit-code contract: 0 on pass, 1 on each refusal, 2 on malformed usage', async () => {
     const dir = makeTempDir(`state-guard-cli-${entityKey}`);
     try {
@@ -479,6 +504,10 @@ describe.each(ENTITY_SHAPES)('state-write-guard CLI — $entityKey ($file)', ({ 
       const wipe = await run(JSON.stringify(build(0)), '--allow-shrink');
       expect(wipe.exitCode).toBe(1);
       expect(wipe.stderr).toMatch(/collapse to zero \(was 3\)/);
+
+      const swapped = await run(JSON.stringify(buildOtherContainer(3)));
+      expect(swapped.exitCode).toBe(1);
+      expect(swapped.stderr).toMatch(/container type would change/);
 
       const usage = await runStateWriteGuardCli(['--entity-key', entityKey]);
       expect(usage.exitCode).toBe(2);
@@ -600,6 +629,134 @@ describe('validateStateWrite — queue entry status and phase', () => {
       const { exitCode, stderr } = await runStateWriteGuardCli(['--tmp', tmpPath, '--entity-key', 'issues']);
       expect(exitCode).toBe(1);
       expect(stderr).toContain('in-review');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('validateStateWrite — issues keys must be issue numbers', () => {
+  const check = (issues: Record<string, unknown>) => {
+    const dir = makeTempDir('state-guard-issue-keys');
+    try {
+      const tmpPath = path.join(dir, 'queue.json.tmp');
+      fs.writeFileSync(tmpPath, JSON.stringify({ issues }));
+      return validateStateWrite({ tmpPath, livePath: null, entityKey: 'issues' });
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  };
+
+  test.each(['0', 'abc', '01', '-3', '1.5'])('refuses object key %p and names it', (key) => {
+    const result = check({ '1': {}, [key]: {} });
+    expect(result).toEqual({ ok: false, reason: expect.stringContaining(JSON.stringify(key)) });
+  });
+
+  test('permits positive-integer keys', () => {
+    expect(check({ '1': {}, '1639': {} })).toEqual({ ok: true });
+  });
+
+  test('does not apply to findings', () => {
+    const dir = makeTempDir('state-guard-finding-keys');
+    try {
+      const tmpPath = path.join(dir, 'findings-ledger.json.tmp');
+      fs.writeFileSync(tmpPath, JSON.stringify({ findings: { abc: {} } }));
+      expect(validateStateWrite({ tmpPath, livePath: null, entityKey: 'findings' })).toEqual({ ok: true });
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('installStateFile — archive snapshot retention', () => {
+  const seed = (archiveDir: string, names: string[]) => {
+    fs.mkdirSync(archiveDir, { recursive: true });
+    for (const name of names) fs.writeFileSync(path.join(archiveDir, name), '{}');
+  };
+  const queueSnaps = (archiveDir: string) => fs.readdirSync(archiveDir).filter((n) => n.startsWith('queue-') && n.endsWith('.json')).sort();
+  const run = (env: string | undefined) => {
+    const dir = makeTempDir('install-retention-');
+    const livePath = path.join(dir, 'queue.json');
+    const archiveDir = path.join(dir, 'archive');
+    fs.writeFileSync(livePath, JSON.stringify({ issues: { 1: {} } }));
+    seed(archiveDir, [
+      'queue-2020-01-01T00-00-00-000Z.json',
+      'queue-2020-01-02T00-00-00-000Z.json',
+      'queue-2020-01-03T00-00-00-000Z.json',
+      'queue-2020-01-04T00-00-00-000Z.json',
+    ]);
+    const before = process.env.BLACKHOLE_ARCHIVE_SNAPSHOT_RETENTION;
+    if (env === undefined) delete process.env.BLACKHOLE_ARCHIVE_SNAPSHOT_RETENTION;
+    else process.env.BLACKHOLE_ARCHIVE_SNAPSHOT_RETENTION = env;
+    try {
+      const content = JSON.stringify({ issues: { 1: {}, 2: {} } });
+      expect(installStateFile({ livePath, archiveDir, content, entityKey: 'issues' })).toEqual({ ok: true });
+      return { dir, archiveDir, snaps: queueSnaps(archiveDir) };
+    } finally {
+      if (before === undefined) delete process.env.BLACKHOLE_ARCHIVE_SNAPSHOT_RETENTION;
+      else process.env.BLACKHOLE_ARCHIVE_SNAPSHOT_RETENTION = before;
+    }
+  };
+
+  test('default keeps exactly the newest two snapshots, including the one just taken', () => {
+    const { dir, snaps } = run(undefined);
+    try {
+      expect(snaps).toHaveLength(2);
+      expect(snaps[0]).toBe('queue-2020-01-04T00-00-00-000Z.json');
+      expect(snaps[1] > snaps[0]).toBe(true);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('env override keeps that many snapshots', () => {
+    const { dir, snaps } = run('3');
+    try {
+      expect(snaps).toHaveLength(3);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test.each(['0', '-1', 'abc', '1.5', ''])('invalid retention %p falls back to 2', (value) => {
+    expect(resolveArchiveRetention({ BLACKHOLE_ARCHIVE_SNAPSHOT_RETENTION: value })).toBe(2);
+  });
+
+  test('pruning queue snapshots leaves ledger snapshots and hook-events dirs alone', () => {
+    const dir = makeTempDir('install-retention-other-');
+    try {
+      const livePath = path.join(dir, 'queue.json');
+      const archiveDir = path.join(dir, 'archive');
+      fs.writeFileSync(livePath, JSON.stringify({ issues: { 1: {} } }));
+      seed(archiveDir, [
+        'queue-2020-01-01T00-00-00-000Z.json',
+        'queue-2020-01-02T00-00-00-000Z.json',
+        'findings-ledger-2020-01-01T00-00-00-000Z.json',
+        'queue-notes.txt',
+      ]);
+      fs.mkdirSync(path.join(archiveDir, 'hook-events-x'));
+      installStateFile({ livePath, archiveDir, content: JSON.stringify({ issues: { 1: {}, 2: {} } }), entityKey: 'issues' });
+      const left = fs.readdirSync(archiveDir);
+      expect(left).toContain('findings-ledger-2020-01-01T00-00-00-000Z.json');
+      expect(left).toContain('hook-events-x');
+      expect(left).toContain('queue-notes.txt');
+      expect(queueSnaps(archiveDir)).toHaveLength(2);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('a refused install still keeps the pre-mutation snapshot', () => {
+    const dir = makeTempDir('install-retention-refused-');
+    try {
+      const livePath = path.join(dir, 'queue.json');
+      const archiveDir = path.join(dir, 'archive');
+      fs.writeFileSync(livePath, JSON.stringify({ issues: { 1: {} } }));
+      seed(archiveDir, ['queue-2020-01-01T00-00-00-000Z.json', 'queue-2020-01-02T00-00-00-000Z.json']);
+      expect(installStateFile({ livePath, archiveDir, content: '{}', entityKey: 'issues' }).ok).toBe(false);
+      const snaps = queueSnaps(archiveDir);
+      expect(snaps).toHaveLength(2);
+      expect(fs.readFileSync(path.join(archiveDir, snaps[1]), 'utf-8')).toBe(JSON.stringify({ issues: { 1: {} } }));
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

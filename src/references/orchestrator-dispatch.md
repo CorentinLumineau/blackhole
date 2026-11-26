@@ -204,48 +204,6 @@ section consumes and `model-routing.md` § Escalation rule for the tier-bump mec
 section applies with the narrower cap above.
 
 
-## Implementer write-root containment (issue #620, #907)
-
-**Scope:** every `implementer` spawn only — not `planner`, `reviewer`, `orchestrator`, or
-`coordinator`. The orchestrator and coordinator sessions must **not** be narrowed by either
-mechanism below; they legitimately Write/Edit the main clone (especially `.blackhole/` campaign
-state).
-
-**The reachable mechanism (issue #907): cwd-derived containment, automatic, no declaration
-needed.** `validate-file-changes.js` and `validate-bash-command.js` both resolve the assigned
-root through `readAssignedWorktreeRoot(cwd)` in `hook-event-log.js`. That function's primary tier
-derives the assignment structurally from the PreToolUse payload's own `cwd`: when `cwd` resolves
-to a linked (non-main) worktree, that worktree becomes the sole assigned root automatically —
-writes to the main clone or a sibling worktree are denied (`outside-assigned-worktree` /
-`bash-outside-assigned-worktree`, block tier). A validated scratchpad root (`scratchpad_dir` in
-`.blackhole/config.json`, or the opt-in `BLACKHOLE_SCRATCHPAD_DIR` override) is never dropped by
-this narrowing. When `cwd` resolves to the main clone itself (the orchestrator's/`planner`'s/
-`investigator`'s/`hunter`'s legitimate case), this tier does not fire at all — behaviour is
-unchanged from today's `allWorktreeRoots` fallback. This tier requires **no spawn-time action**:
-it works for every dispatch pattern, including Pattern C (the native `Agent`/`Workflow` tool),
-because it needs no channel to carry a declaration to the worker at all.
-
-**The declared-channel mechanism (issue #620): `BLACKHOLE_ASSIGNED_WORKTREE`, Pattern B / manual
-use only.** A shell `export` does not survive between subagent spawns or separate `Bash` tool
-calls, and the native `Agent`/`Workflow` tool provides no environment channel to a spawned
-worker at all — an `export` issued by the orchestrator's own session is never visible inside a
-Pattern C worker's process. This env var therefore has **no reachable effect on a Pattern C
-implementer spawn**; it remains meaningful only for Pattern B (a human or script manually
-exporting it in a shell before invoking Claude Code directly) or other manual/scripted
-invocations that share the orchestrator's own process environment. Where it *is* set, it takes
-precedence over the cwd-derived tier above (checked first in `readAssignedWorktreeRoot`); when
-unset, empty, unresolvable, or not a registered member of `allWorktreeRoots(cwd)`, resolution
-falls through to the cwd-derived tier rather than straight to `allWorktreeRoots`. Contract when
-it does apply:
-
-```bash
-export BLACKHOLE_ASSIGNED_WORKTREE='<absolute wt-<N> path>'
-```
-
-See `hook-schemas.md`'s `pattern_id` table for the full `outside-assigned-worktree` /
-`bash-outside-assigned-worktree` contract, covering both resolution tiers.
-
-
 ## CI Failure Diagnosis Dispatch
 
 **Trigger condition**: `phase-loop.md` § Merge protocol step 2 sub-bullet 4 — CI remains red
@@ -390,8 +348,17 @@ with an open PR stays until merge: the lease covers an abandoned one. `NOT-HELD`
 ## Contract claim labels
 
 Applies when `claim_labels` is set in `config.json` (for example `["in-progress:claude"]`), lane or no
-lane: a consumer contract labels the issues the campaign works, and the campaign removes the label
-itself. The lane claim above answers `SKIP` with no lane, so it never releases these.
+lane: a consumer contract labels the issues the campaign works, and the campaign adds the label at
+dispatch and removes it itself. The lane claim above answers `SKIP` with no lane, so it never claims
+or releases these.
+
+**Claim at dispatch.** Before spawning an implementer for issue N (a fix-round respawn included;
+`labelAdd` is idempotent), after the lane claim step and independent of it (a lane `SKIP` still gets
+the contract labels), run `bun run scripts/claim-labels.ts --issue <N> --campaign-dir .blackhole`. It adds
+every `claim_labels` entry to the issue through the forge adapter and prints one JSON line `{claimed,
+failed}`; with `claim_labels` unset it writes nothing. It fails open: exit 1 or a non-empty `failed`
+is logged as a warning in the turn notes and never blocks dispatch (the merge then needs the label by
+hand). The campaign never pre-creates a label by hand: the GitHub and GitLab adapters add the label through the forge API, which creates a missing one with a default colour, and the Gitea adapter creates it first. Spell `claim_labels` exactly as the consumer's existing label so its colour and description are kept.
 
 `bun run scripts/release-claims.ts --campaign-dir .blackhole` reads the forge: for every `queue.json`
 issue the campaign dispatched (status `in-flight`, `merged` or `closed`, never `ready` or `blocked`,
@@ -402,5 +369,6 @@ branch): that PR is the work in flight and the claim is kept. It prints one JSON
 kept, failed}` and writes nothing when `claim_labels` is unset; a forge error on one issue lands in
 `failed` (issue, label, error), the pass continues and the script exits 1 after printing the report. Run it on every `stop` tier
 (`phase-stop.md`) and when the queue drains at the turn-end gate, so a finished campaign leaves no
-claim label on an issue it is not working.
+claim label on an issue it is not working. `--issues <n,n,...>` adds the issues the stop just reset to `ready` or `blocked`
+(or triaged at a drain) to that set whatever their queue status, so an abandoned worker's issue loses its label too; the same open-PR keep rule applies.
 

@@ -81,6 +81,7 @@ Committed template: `.blackhole/config.json`
 | `worker_model_policy` | no | `cost-optimized` (default) — per-spawn model from role/track/route tier matrix, cheapest capable slug on current harness (`model-routing.md`); `inherit` — parent session model, no `model` override (v0.6.1 behavior) |
 | `worker_effort_policy` | no | `cost-optimized` (default when field present) — per-spawn reasoning effort folded into the resolved task tier (`model-routing.md` § Harness tier ladders); `inherit` — omit effort parameters, session inheritance (mirror `worker_model_policy: inherit`). When absent, tier-folded effort defaults apply under `cost-optimized` semantics |
 | `decisions.mode` | no | Decision parking (`decision-parking.md`, ADR-059): `park` ⇒ every owner question the campaign raises is parked in `pending-decisions.json` and asked in one round when the owner runs `/blackhole decide`; `ask` ⇒ every gate asks as it comes. The interactive launch gate and the decide round ask directly either way. **Resolution**: absent, or any value other than `"ask"` (default) ⇒ `park`; a retired `sleep_mode` block is never read |
+| `decisions.owner_gate` | no | The consumer repo's owner gate on PRs, `{pending_label, approved_label}` (both non-empty strings): a PR carrying `pending_label` and not `approved_label` waits on the owner, and the decide round asks it as an Approve / Hold card (`decision-parking.md` § Decide round). On **Approve** the orchestrator adds `approved_label` on the current head; whether an approval is still current is the consumer's merge gate to judge. **Resolution**: absent ⇒ inert: no forge read, and `decide` says nothing about gated PRs; present but missing either label ⇒ `decide` names it unusable on its Decisions line (`owner-gated PRs unchecked — forge unavailable (…)`), as it does a failed forge read |
 | `sleep_mode` | no | **Retired** (ADR-059 amendment): sleep mode is gone. Any `sleep_mode` block is ignored, never an error: `run-context.ts`, the launch summary's and the Run panel's Decisions rows, and the `decide` round name it with a warning to remove it. Parking is `decisions.mode`, the keep-awake hold follows the run (`keep-awake.md`), and an unattended start passes `--unattended`. A `sleep_mode.since`/`baseline` left by a campaign that was away at the upgrade seeds the first `decide` report once. **Resolution**: ignored |
 | `entry_mode` | no | `multitask` (default) — coordinator + orchestrator; `direct` = legacy single session |
 | `merge_mode` | **yes at bootstrap** | `"immediate"` \| `"gated-batch"` (ADR-005) \| `"leave-open"` (ADR-006) — **no default** (ruling R-002, `documentation/reference/product-principles.md`): an absent or invalid value is a bootstrap-blocking condition, not a silent fallback; see the contract note below. `immediate`: each **low-risk** green campaign PR squash-merges as soon as it reaches LGTM; any other PR stays open with `needs-chef` (`merge-risk.md`). `gated-batch` waits for all in-scope PRs (per `scope_milestone`/`scope_labels`) to reach LGTM, then merges one low-risk PR at a time in `merge_after` dependency order; high-risk siblings still get `needs-chef`. `leave-open`: blackhole never merges — every PR is driven to LGTM and left open for human review/merge; an LGTM'd open PR counts as *delivered* for campaign-complete purposes; `merged_by: blackhole` is never set for these issues; `fixed-in-pr` ledger rows stay `fixed-in-pr` until the human merge is later observed by a sync; high-risk green PRs still receive `needs-chef`; see `phase-loop.md` § Merge protocol and `merge-gate.md` |
@@ -145,7 +146,7 @@ Committed template: `.blackhole/config.json`
 | `ci_capacity.enabled` | no | Master switch for the forge reader (default `false`; `false` ⇒ it prints nothing and the worker count is the token budget's) |
 | `ci_capacity.lanes` | no | Runner labels the consumer's PR gate needs (default `[]`; an empty list reads nothing). A runner or queued job counts when it carries any of them; no label is assumed by the plugin |
 | `ci_capacity.queue_allowance` | no | Backlog beyond idle runners tolerated before workers are lowered, and the workers allowed once every runner in the lanes is busy (default `1`; integer `>= 0`) |
-| `claim_labels` | no | Contract claim labels the campaign releases on `stop` and on a drained queue, for issues with no open PR in flight (for example `["in-progress:claude"]`; default `[]` = off; read by `scripts/release-claims.ts`). **Resolution**: absent key ⇒ the default; a wrong type throws with the key path |
+| `claim_labels` | no | Contract claim labels the campaign adds to an issue at implementer dispatch (`scripts/claim-labels.ts`) and releases on `stop` and on a drained queue, for issues with no open PR in flight (for example `["in-progress:claude"]`; default `[]` = off; read by `scripts/release-claims.ts`). **Resolution**: absent key ⇒ the default; a wrong type throws with the key path |
 | `catchup` | no | Pacing preset of `/blackhole catchup` mode (ADR-054): the keys below. Never read by `run`. **Resolution**: absent block or key ⇒ the default; a wrong type throws with the key path |
 | `catchup.weekly_target_pct` | no | Share of the weekly allowance the pace floor reaches at the reset; the floor grows linearly over all 168 h of the week (default `80`; number in (0, 100]). **Resolution**: absent block or key ⇒ the default; a wrong type or range throws with the key path |
 | `catchup.five_hour.no_spawn_at` | no | 5-hour `used_percentage` at or above which a catchup spawns no new worker (default `75`; must be `<` `stop_workers_at`). **Resolution**: absent block or key ⇒ the default; a wrong type throws with the key path |
@@ -257,21 +258,11 @@ overwrite existing runtime config without user confirmation.
 
 ### Environment Variable Overrides
 
-Every field above is a `.blackhole/config.json` key. This section is for the one tunable
-(issue #970) that deliberately is **not**: the PreToolUse hooks' `.blackhole/hook-events/`
-rotation mechanism (`src/references/hook-schemas.md` § "Rotation") only ever sweeps when
-`.blackhole/config.json` is **absent** — a config-file-sourced setting would be definitionally
-unreadable in the one context that mechanism runs in, so it is read from the environment
-instead.
+Every field above is a `.blackhole/config.json` key. The one tunable that deliberately is not:
 
 | Variable | Default | Description |
 |----------|---------|--------------|
-| `BLACKHOLE_HOOK_EVENT_RETENTION_DAYS` | `14` | Age, in days, past which a `.blackhole/hook-events/` file becomes eligible for the sentinel-gated rotation sweep to archive into `.blackhole/archive/hook-events-rotated-<ts>/`. Any non-positive-integer value (unset, non-numeric, `0`, negative, fractional) falls back to the default rather than throwing. |
-
-This is not a registry of every pre-existing `BLACKHOLE_*` hook environment variable
-(`BLACKHOLE_HOOK_EVENT_DIR`, `BLACKHOLE_ASSIGNED_WORKTREE`, `BLACKHOLE_SCRATCHPAD_DIR`,
-`BLACKHOLE_CLAUDE_HOME`) — those are pre-existing, undocumented-here debt out of this issue's
-scope; only the rotation tunable is registered.
+| `BLACKHOLE_ARCHIVE_SNAPSHOT_RETENTION` | `2` | Number of pre-mutation `queue.json` / `findings-ledger.json` snapshots kept per file in `.blackhole/archive/`; older ones are deleted when a new snapshot is taken. Any non-positive-integer value (unset, non-numeric, `0`, negative, fractional) falls back to the default, so at least one snapshot always survives. |
 
 ## usage_budget
 
@@ -339,7 +330,7 @@ cell leaves out.
 | `forge` | `links` | — | Picks the forge the quick links point at | Other config |
 | `parallel_max` | `config` | Concurrency | | Budget |
 | `pareto_max_age_days` | none | — | Staleness threshold of the re-score; nothing the owner acts on | Other config |
-| `claim_labels` | none | — | Contract labels released on stop; the stop report lists them, not the page | Other config |
+| `claim_labels` | none | — | Contract labels claimed at implementer dispatch (`scripts/claim-labels.ts`) and released on stop; the stop report lists them, not the page | Other config |
 | `scratchpad_dir` | none | — | Where worktrees live on this machine; nothing the owner acts on | Other config |
 | `size_label_prefix` | none | — | Label spelling the sync reads; sizes appear on no panel | Other config |
 | `default_touch_paths` | none | — | Per-issue plan scope; each plan carries its own | Other config |

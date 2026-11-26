@@ -225,7 +225,7 @@ describe('buildCitationFileIndex', () => {
 });
 
 describe('runChecks (live-tree assertion)', () => {
-  test('V-CITE-01 is clean on the live tree — the generalized whole-file fallback resolves the V-HOOK pair', () => {
+  test('V-CITE-01 is clean on the live tree — the generalized whole-file fallback resolves every citation', () => {
     const results = runChecks();
     const resolution = results.find((r) => r.id === 'V-CITE-01');
     expect(resolution?.ok).toBe(true);

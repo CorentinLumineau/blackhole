@@ -27,12 +27,20 @@ export type StateWriteGuardParams = {
   allowShrink?: boolean;
 };
 
-const countEntities = (parsed: unknown, entityKey: string): number | null => {
+type ContainerKind = 'array' | 'object';
+
+const containerKind = (parsed: unknown, entityKey: string): ContainerKind | null => {
   if (typeof parsed !== 'object' || parsed === null || !(entityKey in parsed)) return null;
   const value = (parsed as Record<string, unknown>)[entityKey];
-  if (Array.isArray(value)) return value.length;
-  if (typeof value === 'object' && value !== null) return Object.keys(value).length;
-  return null;
+  if (Array.isArray(value)) return 'array';
+  return typeof value === 'object' && value !== null ? 'object' : null;
+};
+
+const countEntities = (parsed: unknown, entityKey: string): number | null => {
+  const kind = containerKind(parsed, entityKey);
+  if (kind === null) return null;
+  const value = (parsed as Record<string, unknown>)[entityKey] as object;
+  return kind === 'array' ? (value as unknown[]).length : Object.keys(value).length;
 };
 
 // queue.json's entity key. Only its entries carry the `status`/`phase` enums of `QUEUE_STATUSES` /
@@ -43,6 +51,13 @@ const QUEUE_ENTITY_KEY = 'issues';
 // `in-review`, `excluded`, phase `loop`) have a documented mapping in `scripts/queue-migrate.ts`.
 const QUEUE_MIGRATE_REMEDY =
   'Legacy values are migrated by scripts/queue-migrate.ts in the blackhole plugin (dry run by default, --apply to write; queue-dag.md § Legacy values)';
+
+/** The first `issues` object key that is not a positive issue number, as a refusal reason. */
+const queueKeyError = (entries: unknown): string | null => {
+  if (typeof entries !== 'object' || entries === null || Array.isArray(entries)) return null;
+  const bad = Object.keys(entries).find((key) => !/^[1-9]\d*$/.test(key));
+  return bad === undefined ? null : `queue key ${JSON.stringify(bad)} is not an issue number (positive integer)`;
+};
 
 /** The first queue entry whose `status` or `phase` is present but undocumented, as a refusal reason. */
 const queueEnumError = (entries: unknown): string | null => {
@@ -71,6 +86,23 @@ export type InstallStateFileParams = {
   allowShrink?: boolean;
 };
 
+const DEFAULT_ARCHIVE_RETENTION = 2;
+
+/** Snapshots kept per state file: `BLACKHOLE_ARCHIVE_SNAPSHOT_RETENTION` when a positive integer,
+ *  else the default. Never below 1, so the pre-mutation snapshot always survives. */
+export const resolveArchiveRetention = (env: NodeJS.ProcessEnv = process.env): number => {
+  const raw = env.BLACKHOLE_ARCHIVE_SNAPSHOT_RETENTION;
+  return raw !== undefined && /^[1-9]\d*$/.test(raw) ? Number(raw) : DEFAULT_ARCHIVE_RETENTION;
+};
+
+/** Delete all but the newest `keep` `<base>-<ISO timestamp>.json` snapshots; ISO names sort by age.
+ *  Other archive content (other bases, `hook-events-*` dirs) never matches the pattern. */
+const pruneArchiveSnapshots = (archiveDir: string, base: string, keep: number): void => {
+  const pattern = new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}-\\d{4}-\\d{2}-\\d{2}T[\\d-]+Z\\.json$`);
+  const snaps = fs.readdirSync(archiveDir).filter((name) => pattern.test(name)).sort();
+  for (const name of snaps.slice(0, Math.max(0, snaps.length - keep))) fs.rmSync(path.join(archiveDir, name));
+};
+
 /** Write protocol steps 1-4: snapshot the live file (when one exists) into `archiveDir`, write the candidate to
  *  `<livePath>.tmp`, validate it, then atomically install it. A refused candidate leaves the live
  *  file untouched and the `.tmp` removed. */
@@ -85,7 +117,11 @@ export const installStateFile = ({
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const base = path.basename(livePath, path.extname(livePath));
   // A first write has nothing to snapshot yet.
-  if (fs.existsSync(livePath)) fs.copyFileSync(livePath, path.join(archiveDir, `${base}-${timestamp}.json`));
+  if (fs.existsSync(livePath)) {
+    fs.copyFileSync(livePath, path.join(archiveDir, `${base}-${timestamp}.json`));
+    // Prune right after the copy, before validation, so a refused write keeps its snapshot.
+    pruneArchiveSnapshots(archiveDir, base, resolveArchiveRetention());
+  }
 
   const tmpPath = `${livePath}.tmp`;
   fs.writeFileSync(tmpPath, content, 'utf-8');
@@ -126,8 +162,9 @@ export const validateStateWrite = ({
   }
 
   if (entityKey === QUEUE_ENTITY_KEY) {
-    const enumError = queueEnumError((parsed as Record<string, unknown>)[entityKey]);
-    if (enumError) return { ok: false, reason: enumError };
+    const entries = (parsed as Record<string, unknown>)[entityKey];
+    const structureError = queueKeyError(entries) ?? queueEnumError(entries);
+    if (structureError) return { ok: false, reason: structureError };
   }
 
   const liveExists = livePath !== null && fs.existsSync(livePath);
@@ -136,6 +173,17 @@ export const validateStateWrite = ({
   const liveParsed = readJsonFile(livePath as string, livePath as string);
   const liveCount = countEntities(liveParsed, entityKey);
   if (liveCount === null) return { ok: true }; // live file itself is structurally degenerate — nothing to regress against
+
+  // Counts alone cannot see an object rewritten into a same-size array (or the reverse), which
+  // readers keyed on the live shape would then misread: the shape must not change.
+  const liveKind = containerKind(liveParsed, entityKey);
+  const tmpKind = containerKind(parsed, entityKey);
+  if (liveKind !== tmpKind) {
+    return {
+      ok: false,
+      reason: `${entityKey} container type would change from ${liveKind} to ${tmpKind} — a rewrite must keep the live file's shape`,
+    };
+  }
 
   // A full collapse to zero is refused even when the caller declared a shrink: the escape hatch
   // covers "one fewer issue", not "every issue gone at once" — the exact incident shape.

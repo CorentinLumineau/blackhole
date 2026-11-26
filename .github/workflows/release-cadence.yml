@@ -1,6 +1,11 @@
 name: Release Cadence
 
 # Every-N-merged-PR release cut (N = CADENCE_THRESHOLD in scripts/lib/release-cadence.ts).
+# Triggers: completion of the Verify workflow on main (ADR-063 M1), a 2-hourly cron kept only as
+# a backstop (GitHub drops scheduled runs under load), and a forced workflow_dispatch.
+# All three share one freshness rule (ADR-063 M2) evaluated by scripts/release-cadence.ts, so
+# nothing here trusts the workflow_run payload beyond the job `if:` guards. The payload is never
+# interpolated into a shell or an action input, and no checkout sets `ref:`.
 # On by default. Owner kill switch: repository variable RELEASE_CADENCE_ENABLED == 'false'
 # (see documentation/runbooks/release-cadence.md).
 # A package.json already above the latest tag cuts early, below the threshold.
@@ -12,8 +17,12 @@ name: Release Cadence
 # sole publisher.
 
 on:
+  workflow_run:
+    workflows: [Verify]
+    types: [completed]
+    branches: [main]
   schedule:
-    # Every 2 hours, at :17 to stay off the top-of-hour cron rush.
+    # Backstop only. Every 2 hours, at :17 to stay off the top-of-hour cron rush.
     - cron: "17 */2 * * *"
   workflow_dispatch:
     inputs:
@@ -24,7 +33,7 @@ on:
 
 # One cut at a time; a running cut is never cancelled. GitHub keeps only one
 # pending run per group, so a queued force=true dispatch can be superseded by
-# the next cron run (which then skips if < N PRs). If that happens, dispatch
+# the next workflow_run or cron run (which then skips if < N PRs). If that happens, dispatch
 # force=true again once the running cut finishes.
 concurrency:
   group: release-cadence
@@ -32,7 +41,7 @@ concurrency:
 
 jobs:
   disabled-notice:
-    if: vars.RELEASE_CADENCE_ENABLED == 'false'
+    if: vars.RELEASE_CADENCE_ENABLED == 'false' && github.event_name != 'workflow_run'
     name: cadence-disabled (notice)
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -42,7 +51,7 @@ jobs:
           echo "::warning title=Release Cadence disabled::RELEASE_CADENCE_ENABLED is 'false' (owner kill switch). Every-N-PR cuts are skipped. Re-enable by deleting the variable — see documentation/runbooks/release-cadence.md. Agents must not set this variable."
 
   cut:
-    if: vars.RELEASE_CADENCE_ENABLED != 'false'
+    if: vars.RELEASE_CADENCE_ENABLED != 'false' && github.ref == 'refs/heads/main' && (github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository))
     name: cut-release (gate + prepare + tag)
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -52,7 +61,7 @@ jobs:
       contents: write        # git push main + release tag
       pull-requests: read    # gh api repos/.../pulls
       issues: write          # file/comment the persistent-failure tracking issue
-      actions: read          # Verify workflow conclusion on the tip SHA
+      actions: read          # Verify runs on main (freshness check)
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

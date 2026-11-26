@@ -43,6 +43,17 @@ export interface PrChangeBaseResult {
   detail?: string;
 }
 
+/**
+ * `UPDATED`: the forge accepted the request (merge is asynchronous, the head changes and CI reruns).
+ * `CONFLICT`: the base cannot merge into the head cleanly. `STALE-HEAD`: the head moved past
+ * `expectedHeadSha`. `UNSUPPORTED`: the backend has no safe equivalent (never a throw, so the caller
+ * falls back to the local path). `FAILED`: any other failure, with the forge's text in `detail`.
+ */
+export interface PrUpdateBranchResult {
+  verdict: 'UPDATED' | 'CONFLICT' | 'STALE-HEAD' | 'UNSUPPORTED' | 'FAILED';
+  detail?: string;
+}
+
 export interface ForgeCheck {
   name: string;
   status: 'QUEUED' | 'IN_PROGRESS' | 'COMPLETED';
@@ -188,6 +199,8 @@ export interface ForgeAdapter {
   prFiles(number: number): Promise<string[]>;
   /** Retargets the PR, then reads the base back: exit status is not evidence the base moved. */
   prChangeBase(number: number, base: string): Promise<PrChangeBaseResult>;
+  /** Merges the base into the PR head server-side, only while the head is still `expectedHeadSha`. Never force-pushes, never throws on a forge refusal. */
+  prUpdateBranch(number: number, expectedHeadSha: string): Promise<PrUpdateBranchResult>;
 
   /** The target's forge-declared blockers (native edges and PR-body lines), each once. */
   getDependencies(target: DependencyTarget): Promise<ForgeDependencies>;

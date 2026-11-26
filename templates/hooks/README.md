@@ -1,5 +1,7 @@
 # Cursor hooks — blackhole campaign
 
+No blocking `PreToolUse` hook ships in any harness build (ADR-065, `documentation/decisions/ADR-065-no-blocking-pretooluse-guards.md`): the fragments below only validate worker JSON and write the resume signal after a subagent stops.
+
 Install fragments from this directory into your project's `.cursor/hooks.json`.
 
 ## Order (required)

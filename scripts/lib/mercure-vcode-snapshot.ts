@@ -87,10 +87,7 @@ export const buildMercureVcodeSnapshot = (mercureRoot: string, now: Date = new D
   const pluginJson = readJsonFile(pluginJsonPath, `${mercureRoot} plugin.json`) as { version?: unknown };
   const mercureVersion = typeof pluginJson.version === 'string' ? pluginJson.version : '';
 
-  // A non-git install must not crash the sync (plan Task 4) — catches and nulls on failure,
-  // same spawnSync-status-check idiom as scripts/plugin-drift-signal.ts's readRepoHeadSha
-  // (V-INT-01 — same technique; not imported directly, since scripts/lib/ modules never depend
-  // on a scripts/ root module — that would invert the established lib/ ← scripts/ layering).
+  // A non-git install must not crash the sync (plan Task 4) — catches and nulls on failure.
   let mercureCommit: string | null = null;
   try {
     const result = spawnSync('git', ['-C', mercureRoot, 'rev-parse', 'HEAD'], { encoding: 'utf-8' });

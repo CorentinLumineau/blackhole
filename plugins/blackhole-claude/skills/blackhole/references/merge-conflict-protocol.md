@@ -24,6 +24,15 @@ bypassed for `leave-open`; a human still merges the PR itself manually.
 `mergeStateStatus` — see the plan's Execution Strategy note on `gh` version drift) → proceed to
 step 1 unchanged, zero extra cost. `mergeable == "CONFLICTING"` → run the protocol below.
 
+**Behind but clean.** `mergeStateStatus == "BEHIND"` with `mergeable == "MERGEABLE"` means the PR has
+no conflict and only lags its base. Refresh it on the forge, with no worktree, local merge or
+rebase: `bun run --cwd <abs repo-root> "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/pr-update-branch.ts --repo-slug <owner/repo>
+--forge <forge> --pr <n> --expected-head-sha <headRefOid>`, passing the `headRefOid` just read.
+It makes one server-side merge of the base into the head, guarded by that sha. Never force-push.
+Exit `0` (`UPDATED`): the head changed and CI reruns, so STOP this issue's merge for the turn, as
+`restack` does. Exit `3` (`UNSUPPORTED`, Gitea and GitLab), `STALE-HEAD`, `CONFLICT` or `FAILED`:
+proceed unchanged to step 1 or the protocol below, and never retry more than once in a turn.
+
 ## Classification rule (explicit — the threshold is stated, not left to worker judgment)
 
 A conflict hunk is **mechanical** iff it matches one of:
@@ -218,6 +227,7 @@ content, not just an issue number.
 | Stacked branch (`merge_after` predecessor merged after this branch's point), plain rebase would conflict | Follow § Stacked child after its parent merges (merge the target branch into the child) — never a rebase or cherry-pick |
 | Non-stacked branch, but rebase conflicts turn out to be squash-base shaped anyway | Attempt 1 (plain rebase) fails, Attempt 2 (cherry-pick) recovers |
 | Both attempts exhausted, semantic hunk remains | `status: blocked`, hunks surfaced, no third attempt |
+| `BEHIND` and `MERGEABLE`, forge update refused or unsupported | `pr-update-branch.ts` returned `UNSUPPORTED`, `STALE-HEAD`, `CONFLICT` or `FAILED`: carry on at step 1 (or the conflict protocol) exactly as before; the refresh is an optimisation, never a gate |
 | `merge_mode: leave-open` | Preflight runs as a merge-readiness dry run (ADR-026 D5) and as a post-external-merge sibling restack (D6) — but the campaign never calls `gh pr merge` itself; a human still merges the PR manually once ready |
 
 ## Consulted by
