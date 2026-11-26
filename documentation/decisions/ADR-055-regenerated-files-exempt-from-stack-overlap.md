@@ -4,7 +4,7 @@ summary: "A path regenerated wholesale from the merged tree, with a blocking sta
 status: accepted
 review_trigger: "on a change to the V-STACK-02 overlap predicate, or a request to exempt another path from it"
 created: 2026-11-18
-last_updated: 2026-11-25
+last_updated: 2026-11-26
 related:
   - documentation/decisions/ADR-051-stacking-only-overlap-strategy.md
   - documentation/decisions/ADR-031-generate-documentation-index.md
@@ -222,3 +222,14 @@ All three scorers pick Option A unanimously, but the two critics' margins are be
   to, and `pickStackParent` drops exactly those files from the overlap. An edited or removed row, a
   file absent at the merge base, an unreadable merge base or a binary diff keeps the file an
   overlap. The candidate's own side is not yet written; the PR-time `V-STACK-02` check verifies it.
+- **2026-11-26 - committed build-output trees (#1493).** Two PRs whose only conflict was in a
+  generated copy under `plugins/blackhole-claude/**` (PR #1491 against #1489, PR #1492) were
+  forced into a stack, though `merge-conflict-protocol.md` class 1 already resolves that conflict
+  by rebuilding. Owner approved 2026-11-24: build-output-only conflicts do not force stacking;
+  a source conflict still does. `withoutRegenerated` now also drops every path for which
+  `isGeneratedBuildPath` (`scripts/lib/build/paths.ts`) holds, so the prefilter, the touch-path
+  comparison and the `mergeTreeVerdict` conflict filter all apply it. The list is derived from
+  `COMMITTED_TARGET_TREES` (the build's own target registry), with the `.claude/` tree narrowed to
+  `CLAUDE_NATIVE_GENERATED_DIRS`, the subdirs the build cleans and rewrites, plus the root
+  `SKILL.md`; `.claude/settings.json`, `progress.md`, `initiatives/` and maintainer skills are
+  hand-maintained and stay overlaps. A conflict in `src/`, `templates/` or any other path still stacks.

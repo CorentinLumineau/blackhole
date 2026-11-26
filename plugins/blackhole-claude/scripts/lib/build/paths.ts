@@ -68,3 +68,30 @@ export const COMMITTED_TARGET_TREES: CommittedTargetTree[] = [
   { id: 'agent-plugins', paths: AGENT_PLUGINS_TARGET_DIRS.map((d) => `${d}/`) },
   { id: 'gemini-distribution', paths: [`${DISTRIBUTION_ROOT}/`] },
 ];
+
+/**
+ * The `.claude/` subdirs the build rewrites. The rest of `.claude/` (settings.json, progress.md,
+ * initiatives/, maintainer-only skills) is hand-maintained state the build never cleans.
+ */
+export const CLAUDE_NATIVE_GENERATED_DIRS = ['agents', 'rules', 'skills/blackhole', 'skills/shadcn', 'hooks'].map(
+  (d) => `${CLAUDE_NATIVE_ROOT}/${d}`,
+);
+
+/** Root file the build writes and removes outside any tree directory. */
+const ROOT_GENERATED_FILE = 'SKILL.md';
+
+/**
+ * Every path the build regenerates, derived from `COMMITTED_TARGET_TREES` so no second list exists:
+ * a trailing `/` is a directory prefix, anything else an exact file. The claude-native tree is
+ * narrowed to `CLAUDE_NATIVE_GENERATED_DIRS`.
+ */
+const GENERATED_BUILD_PATHS: readonly string[] = [
+  ...COMMITTED_TARGET_TREES.flatMap((t) =>
+    t.id === 'claude-native' ? CLAUDE_NATIVE_GENERATED_DIRS.map((d) => `${d}/`) : t.paths,
+  ),
+  ROOT_GENERATED_FILE,
+];
+
+/** True when `file` lies in a tree `bun run build` regenerates from `src/` and `templates/`. */
+export const isGeneratedBuildPath = (file: string): boolean =>
+  GENERATED_BUILD_PATHS.some((g) => (g.endsWith('/') ? file.startsWith(g) : file === g));

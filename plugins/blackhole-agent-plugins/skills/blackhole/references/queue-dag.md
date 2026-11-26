@@ -283,8 +283,8 @@ branch.
 
 ### Step 3 — Conflict filter
 
-For each pair in ready set, first remove `REGENERATED_PATHS` members (`scripts/lib/stack-overlap.ts`,
-ADR-055) from each issue's `touch_paths`; an issue whose list holds only such files has no
+For each pair in ready set, first remove `REGENERATED_PATHS` members and paths inside a committed build-output tree
+(`scripts/lib/stack-overlap.ts`, `isGeneratedBuildPath`, ADR-055) from each issue's `touch_paths`; an issue whose list holds only such files has no
 overlap. `APPEND_ONLY_PATHS` members are not filtered from `touch_paths` either, but Step 3b drops one from
 the overlap when the parent PR's diff against its merge base only adds lines to it
 (`pureAdditionFiles`, ADR-055 amendment); an edit keeps it an overlap. Then, if the remaining `touch_paths` globs overlap on likely files,

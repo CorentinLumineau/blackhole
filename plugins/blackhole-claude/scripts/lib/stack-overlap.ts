@@ -1,3 +1,4 @@
+import { isGeneratedBuildPath } from './build/paths.ts';
 import { ROOT_DOC_INDEX_PATH } from './doc-index-generate.ts';
 import type { GitResult, OpenPrSnapshot, SnapshotPr } from './open-pr-snapshot.ts';
 
@@ -22,9 +23,13 @@ export const REGENERATED_PATHS: ReadonlySet<string> = new Set([ROOT_DOC_INDEX_PA
  */
 export const APPEND_ONLY_PATHS: ReadonlySet<string> = new Set(['documentation/decisions/INDEX.md']);
 
-/** `files` minus the exact members of `regenerated`; the one filter every overlap site applies. */
+/**
+ * `files` minus the exact members of `regenerated` and every path in a committed build-output
+ * tree (ADR-055 amendment: those are rebuilt from `src/`, so a conflict confined to them is
+ * resolved by `bun run build`, never by ordering the PRs); the one filter every overlap site applies.
+ */
 export const withoutRegenerated = (files: readonly string[], regenerated: ReadonlySet<string> = REGENERATED_PATHS): string[] =>
-  files.filter((f) => !regenerated.has(f));
+  files.filter((f) => !regenerated.has(f) && !isGeneratedBuildPath(f));
 
 export type ConflictVerdict = 'conflict' | 'clean' | 'unknown';
 

@@ -2,11 +2,13 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { makeTempDir } from './fs.ts';
+import { CLAUDE_NATIVE_GENERATED_DIRS, isGeneratedBuildPath } from './build/paths.ts';
 import type { OpenPrSnapshot, SnapshotPr } from './open-pr-snapshot.ts';
 import {
   chainDepth,
   chainTip,
   mergeTreeVerdict,
+  withoutRegenerated,
   onlyAddsLines,
   pureAdditionFiles,
   pickParent,
@@ -343,6 +345,35 @@ describe('mergeTreeVerdict (real git)', () => {
     expect(viaGit).toEqual({ kind: 'none' });
   });
 
+  // Both sides edit the same line of a build-output file and of `second`; no other path conflicts.
+  const buildOutputFixture = (second: string): string => {
+    const repo = makeTempDir('merge-tree-build-output');
+    dirs.push(repo);
+    git(repo, 'init', '-q', '-b', 'main');
+    for (const f of ['plugins/blackhole-claude/ref.md', second]) {
+      fs.mkdirSync(path.dirname(path.join(repo, f)), { recursive: true });
+      fs.writeFileSync(path.join(repo, f), 'one\ntwo\nthree\n');
+    }
+    git(repo, 'add', '.');
+    git(repo, 'commit', '-q', '-m', 'base');
+    for (const side of ['p1', 'p2']) {
+      git(repo, 'checkout', '-q', '-b', side, 'main');
+      for (const f of ['plugins/blackhole-claude/ref.md', second]) fs.writeFileSync(path.join(repo, f), `one\n${side}\nthree\n`);
+      git(repo, 'commit', '-q', '-am', side);
+    }
+    return repo;
+  };
+
+  test('build-output-only conflict is clean; the same conflict in a source file still conflicts', () => {
+    const generatedOnly = runner(buildOutputFixture('.claude/skills/blackhole/SKILL.md'));
+    expect(generatedOnly(['merge-tree', '--write-tree', '--no-messages', 'p1', 'p2']).code).toBe(1);
+    expect(mergeTreeVerdict(generatedOnly, 'p1', 'p2')).toBe('clean');
+    const withSource = runner(buildOutputFixture('src/references/x.md'));
+    expect(mergeTreeVerdict(withSource, 'p1', 'p2')).toBe('conflict');
+    const maintainerState = runner(buildOutputFixture('.claude/settings.json'));
+    expect(mergeTreeVerdict(maintainerState, 'p1', 'p2')).toBe('conflict');
+  });
+
   // Two PRs each touch documentation/decisions/INDEX.md in the same gap (a row after the last one).
   // `edit` rewrites the existing row 'ADR-001' instead of only adding one.
   const adrIndexFixture = (p2Edits: boolean): string => {
@@ -565,5 +596,48 @@ describe('pureAdditionFiles (stub git)', () => {
 
   test('a file outside the append-only set is never returned', () => {
     expect(pureAdditionFiles(stub('2\t0\tsrc/a.ts\n'), 'origin/main', 'pr', ['src/a.ts'])).toEqual([]);
+  });
+});
+
+describe('isGeneratedBuildPath', () => {
+  test('matches every committed build-output tree and nothing else', () => {
+    const generated = [
+      'plugins/blackhole-claude/skills/blackhole/references/merge-gate.md',
+      'plugins/blackhole/rules/x.md',
+      '.cursor/rules/x.mdc',
+      'skills/blackhole/SKILL.md',
+      'references/x.md',
+      'agents/x.md',
+      'rules/x.mdc',
+      'codex-skills/x/SKILL.md',
+      'codex-agents/x.toml',
+      '.codex-plugin/plugin.json',
+      '.agents/build/rules/x.md',
+      '.gemini-plugin/x.json',
+      '.claude-plugin/marketplace.json',
+      'codex-marketplace.json',
+      'SKILL.md',
+    ];
+    for (const f of generated) expect(isGeneratedBuildPath(f)).toBe(true);
+    for (const d of CLAUDE_NATIVE_GENERATED_DIRS) expect(isGeneratedBuildPath(`${d}/x.md`)).toBe(true);
+    const source = [
+      'src/references/x.md',
+      'src/agents/x.md',
+      'scripts/lib/build/paths.ts',
+      'templates/hooks/x.js',
+      'documentation/decisions/INDEX.md',
+      '.claude/settings.json',
+      '.claude/progress.md',
+      '.claude/CLAUDE.md',
+      '.claude/initiatives/_registry.json',
+      '.claude/skills/prj-create-release/SKILL.md',
+      '.agents/handoff/x.md',
+      'plugins-notes.md',
+    ];
+    for (const f of source) expect(isGeneratedBuildPath(f)).toBe(false);
+  });
+
+  test('withoutRegenerated drops build-output paths and keeps source paths', () => {
+    expect(withoutRegenerated(['plugins/blackhole-claude/a.md', 'src/a.md', 'documentation/INDEX.md'])).toEqual(['src/a.md']);
   });
 });
