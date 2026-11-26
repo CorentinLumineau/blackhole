@@ -267,6 +267,7 @@ instead.
 | Variable | Default | Description |
 |----------|---------|--------------|
 | `BLACKHOLE_HOOK_EVENT_RETENTION_DAYS` | `14` | Age, in days, past which a `.blackhole/hook-events/` file becomes eligible for the sentinel-gated rotation sweep to archive into `.blackhole/archive/hook-events-rotated-<ts>/`. Any non-positive-integer value (unset, non-numeric, `0`, negative, fractional) falls back to the default rather than throwing. |
+| `BLACKHOLE_ARCHIVE_SNAPSHOT_RETENTION` | `2` | Number of pre-mutation `queue.json` / `findings-ledger.json` snapshots kept per file in `.blackhole/archive/`; older ones are deleted when a new snapshot is taken. Any non-positive-integer value (unset, non-numeric, `0`, negative, fractional) falls back to the default, so at least one snapshot always survives. |
 
 This is not a registry of every pre-existing `BLACKHOLE_*` hook environment variable
 (`BLACKHOLE_HOOK_EVENT_DIR`, `BLACKHOLE_ASSIGNED_WORKTREE`, `BLACKHOLE_SCRATCHPAD_DIR`,

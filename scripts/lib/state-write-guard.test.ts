@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
 import { makeTempDir } from './fs.ts';
-import { installStateFile, validateStateWrite } from './state-write-guard.ts';
+import { installStateFile, resolveArchiveRetention, validateStateWrite } from './state-write-guard.ts';
 
 const root = path.resolve(import.meta.dirname, '..', '..');
 const scriptPath = path.join(root, 'scripts/lib/state-write-guard.ts');
@@ -662,6 +662,101 @@ describe('validateStateWrite — issues keys must be issue numbers', () => {
       const tmpPath = path.join(dir, 'findings-ledger.json.tmp');
       fs.writeFileSync(tmpPath, JSON.stringify({ findings: { abc: {} } }));
       expect(validateStateWrite({ tmpPath, livePath: null, entityKey: 'findings' })).toEqual({ ok: true });
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('installStateFile — archive snapshot retention', () => {
+  const seed = (archiveDir: string, names: string[]) => {
+    fs.mkdirSync(archiveDir, { recursive: true });
+    for (const name of names) fs.writeFileSync(path.join(archiveDir, name), '{}');
+  };
+  const queueSnaps = (archiveDir: string) => fs.readdirSync(archiveDir).filter((n) => n.startsWith('queue-') && n.endsWith('.json')).sort();
+  const run = (env: string | undefined) => {
+    const dir = makeTempDir('install-retention-');
+    const livePath = path.join(dir, 'queue.json');
+    const archiveDir = path.join(dir, 'archive');
+    fs.writeFileSync(livePath, JSON.stringify({ issues: { 1: {} } }));
+    seed(archiveDir, [
+      'queue-2020-01-01T00-00-00-000Z.json',
+      'queue-2020-01-02T00-00-00-000Z.json',
+      'queue-2020-01-03T00-00-00-000Z.json',
+      'queue-2020-01-04T00-00-00-000Z.json',
+    ]);
+    const before = process.env.BLACKHOLE_ARCHIVE_SNAPSHOT_RETENTION;
+    if (env === undefined) delete process.env.BLACKHOLE_ARCHIVE_SNAPSHOT_RETENTION;
+    else process.env.BLACKHOLE_ARCHIVE_SNAPSHOT_RETENTION = env;
+    try {
+      const content = JSON.stringify({ issues: { 1: {}, 2: {} } });
+      expect(installStateFile({ livePath, archiveDir, content, entityKey: 'issues' })).toEqual({ ok: true });
+      return { dir, archiveDir, snaps: queueSnaps(archiveDir) };
+    } finally {
+      if (before === undefined) delete process.env.BLACKHOLE_ARCHIVE_SNAPSHOT_RETENTION;
+      else process.env.BLACKHOLE_ARCHIVE_SNAPSHOT_RETENTION = before;
+    }
+  };
+
+  test('default keeps exactly the newest two snapshots, including the one just taken', () => {
+    const { dir, snaps } = run(undefined);
+    try {
+      expect(snaps).toHaveLength(2);
+      expect(snaps[0]).toBe('queue-2020-01-04T00-00-00-000Z.json');
+      expect(snaps[1] > snaps[0]).toBe(true);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('env override keeps that many snapshots', () => {
+    const { dir, snaps } = run('3');
+    try {
+      expect(snaps).toHaveLength(3);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test.each(['0', '-1', 'abc', '1.5', ''])('invalid retention %p falls back to 2', (value) => {
+    expect(resolveArchiveRetention({ BLACKHOLE_ARCHIVE_SNAPSHOT_RETENTION: value })).toBe(2);
+  });
+
+  test('pruning queue snapshots leaves ledger snapshots and hook-events dirs alone', () => {
+    const dir = makeTempDir('install-retention-other-');
+    try {
+      const livePath = path.join(dir, 'queue.json');
+      const archiveDir = path.join(dir, 'archive');
+      fs.writeFileSync(livePath, JSON.stringify({ issues: { 1: {} } }));
+      seed(archiveDir, [
+        'queue-2020-01-01T00-00-00-000Z.json',
+        'queue-2020-01-02T00-00-00-000Z.json',
+        'findings-ledger-2020-01-01T00-00-00-000Z.json',
+        'queue-notes.txt',
+      ]);
+      fs.mkdirSync(path.join(archiveDir, 'hook-events-x'));
+      installStateFile({ livePath, archiveDir, content: JSON.stringify({ issues: { 1: {}, 2: {} } }), entityKey: 'issues' });
+      const left = fs.readdirSync(archiveDir);
+      expect(left).toContain('findings-ledger-2020-01-01T00-00-00-000Z.json');
+      expect(left).toContain('hook-events-x');
+      expect(left).toContain('queue-notes.txt');
+      expect(queueSnaps(archiveDir)).toHaveLength(2);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('a refused install still keeps the pre-mutation snapshot', () => {
+    const dir = makeTempDir('install-retention-refused-');
+    try {
+      const livePath = path.join(dir, 'queue.json');
+      const archiveDir = path.join(dir, 'archive');
+      fs.writeFileSync(livePath, JSON.stringify({ issues: { 1: {} } }));
+      seed(archiveDir, ['queue-2020-01-01T00-00-00-000Z.json', 'queue-2020-01-02T00-00-00-000Z.json']);
+      expect(installStateFile({ livePath, archiveDir, content: '{}', entityKey: 'issues' }).ok).toBe(false);
+      const snaps = queueSnaps(archiveDir);
+      expect(snaps).toHaveLength(2);
+      expect(fs.readFileSync(path.join(archiveDir, snaps[1]), 'utf-8')).toBe(JSON.stringify({ issues: { 1: {} } }));
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

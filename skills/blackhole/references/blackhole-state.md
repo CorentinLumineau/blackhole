@@ -70,6 +70,14 @@ also kept on the `blackhole/state` branch: pushed at every turn end and restored
 (`state-branch.md`). `archive/`, `hook-events/`, `.tmp/`, `*.tmp` and the per-machine signals
 (`run-context.json`, `plugin-drift.json`, `doc-health.json`, `pace-log.jsonl`, `usage-history.jsonl`, `worker-context.json`) stay local.
 
+### Durable vs scratch
+
+- **Durable** (commit when a consumer tracks `.blackhole/`): `config.json`, `status-artifact.json`,
+  `plans/`, `staged/`.
+- **Scratch** (never commit): `archive/`, `hook-events/`, `.tmp/`, `*.tmp`, and the per-machine
+  signals listed above. A consumer that commits `.blackhole/` adds `.blackhole/archive/` to its
+  `.gitignore`: snapshots copy issue titles verbatim and can be tens of thousands of lines each.
+
 Full schemas: `.cursor/skills/blackhole/references/findings-ledger.md`,
 `queue-dag.md`.
 
@@ -85,6 +93,9 @@ mutation happened not to run in the same incident.
 
 1. Snapshot the live file to `archive/<file>-<timestamp>.json` before mutating it (queue and
    ledger alike) — recovery must never depend on a scratchpad `.tmp` file surviving by luck.
+   `installStateFile` then prunes older snapshots of the same file, keeping the newest 2
+   (`BLACKHOLE_ARCHIVE_SNAPSHOT_RETENTION`, a positive integer; anything else falls back to 2), so
+   `archive/` stays bounded and the pre-mutation snapshot always survives.
 2. Write the candidate output to `<file>.tmp`.
 3. Validate the `.tmp` file before installing it:
    ```
