@@ -59,8 +59,7 @@ When steps 1-6 are skipped per the carve-out above **and** the mode being
 entered is `run` or `catchup`, run the launch gate before spawning or resuming the
 orchestrator: `skills/blackhole/references/launch-gate.md` owns
 its executive summary, per-section Accept / Adjust, status-page probe,
-print-only clause and bootstrap order (status page, doctor, spawn). The summary
-prints after the bootstrap re-score, so its Roadmap row shows the order the run follows. It also
+print-only clause and bootstrap order (status page, doctor, spawn). It also
 runs `bun run scripts/campaign-status.ts config-summary`, the output the drift guard below reads.
 
 - **Fail closed on docs_governance drift**: if any orchestrator/campaign spawn text you are
