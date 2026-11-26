@@ -129,7 +129,10 @@ it stays the one warn-and-record `bash-write-target-unresolvable` tier.
 
 `trustedWriteRoots(cwd, input)` in `utils/hook-event-log.js` is the one place that names the extra
 roots a campaign-scoped caller may write beyond its assigned worktree; the Write/Edit hook and the
-Bash write guard both call it, so a root is never trusted by one tool and refused by the other.
+Bash write guard both reach it through `lazyTrustedWriteRoots`, so a root is never trusted by one tool
+and refused by the other. The roots are resolved at most once per call, and only when a write target
+lies outside the assigned worktree and the state dir; an in-bounds or write-free call does no
+settings or git work for them.
 
 - **Scratchpad**: the payload's `scratchpad_dir` (the real PreToolUse payload carries it; it has no
   field for additional working directories), the configured `scratchpad_dir`, and
