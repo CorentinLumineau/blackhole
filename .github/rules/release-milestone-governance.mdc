@@ -13,9 +13,13 @@ alwaysApply: true
 - **Close a milestone only after** its matching release is published — never before.
 - **Never** close a milestone without going through the create-release workflow.
 
-## Required workflow
+## Release path
 
-When all issues on milestone `vX.Y.Z` are done:
+The every-10-merged-PR cadence is the **primary** path ([ADR-060](../../documentation/decisions/ADR-060-cadence-primary-release-policy.md)). It also cuts early when an unreleased PR already bumped `package.json` above the latest tag. Manual `bun run release` is for **hotfixes only**, and its release commit carries `[skip release]`.
+
+## Hotfix workflow (manual)
+
+When a hotfix must ship before the cadence, or when all issues on milestone `vX.Y.Z` are done and the maintainer pass is closing it:
 
 1. Follow [`.claude/skills/prj-create-release/SKILL.md`](../../.claude/skills/prj-create-release/SKILL.md):
    `bun run release prepare|validate|tag|push` with `.github/releases/vX.Y.Z.md`
@@ -37,7 +41,7 @@ When all issues on milestone `vX.Y.Z` are done:
 
 ## Automated cadence
 
-When `RELEASE_CADENCE_ENABLED` is `true`, `.github/workflows/release-cadence.yml` may cut a `vX.Y.Z` tag every 20 merged PRs. That path still uses `scripts/release.ts` + `.github/workflows/release.yml` to publish; it does **not** close a milestone. Close milestones only through the required workflow above.
+Unless the owner's kill switch `RELEASE_CADENCE_ENABLED` is `false`, `.github/workflows/release-cadence.yml` cuts a `vX.Y.Z` tag every 10 merged PRs (or earlier for an already-bumped version). That path still uses `scripts/release.ts` + `.github/workflows/release.yml` to publish; it does **not** close a milestone. Close milestones only through the hotfix workflow's close step above, in the maintainer pass.
 
 ## Campaign scope alignment
 

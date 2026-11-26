@@ -11,16 +11,25 @@ import { makeTempDir } from './lib/fs.ts';
 const root = path.resolve(import.meta.dirname);
 const scriptPath = path.join(root, 'carry-staged-artifacts.ts');
 
-const run = (args: string[]) => Bun.spawn(['bun', 'run', scriptPath, ...args], { cwd: root, stdout: 'pipe', stderr: 'pipe' });
+const runRaw = (args: string[]) => Bun.spawn(['bun', 'run', scriptPath, ...args], { cwd: root, stdout: 'pipe', stderr: 'pipe' });
 
 let dir: string;
+let activeConfigPath: string;
+
+// Every pre-existing suite below exercises the active carry path, so `run` points the CLI's
+// docs_governance gate at a config that enables it. The gate tests use `runRaw` instead.
+const run = (args: string[]) => runRaw(['--config', activeConfigPath, ...args]);
 
 beforeEach(() => {
   dir = makeTempDir('carry-cli');
+  const configDir = makeTempDir('carry-cli-config');
+  activeConfigPath = path.join(configDir, 'config.json');
+  fs.writeFileSync(activeConfigPath, JSON.stringify({ docs_governance: { enabled: true } }));
 });
 
 afterEach(() => {
   fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(path.dirname(activeConfigPath), { recursive: true, force: true });
 });
 
 describe('carry-staged-artifacts CLI — argv parsing', () => {
@@ -325,5 +334,124 @@ describe('carry-staged-artifacts CLI — carry target allowlist (issue #784 AC1)
     expect(stderr).toContain('skipped entries[0]');
     expect(stderr).toContain('target_path "package.json" is outside the carry allowlist');
     expect(fs.existsSync(path.join(repoRoot, 'package.json'))).toBe(false);
+  });
+});
+
+describe('carry-staged-artifacts CLI — docs_governance gate (issue #1400)', () => {
+  const stagedRel = '.blackhole/staged/1/plan-x.md';
+  const writeStagedPlan = (root: string): string => {
+    fs.mkdirSync(path.join(root, path.dirname(stagedRel)), { recursive: true });
+    fs.writeFileSync(path.join(root, stagedRel), '# Plan\n');
+    const manifestPath = path.join(root, 'manifest.json');
+    fs.writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        issue: 1,
+        updated_at: '2026-08-06T18:00:00.000Z',
+        entries: [
+          {
+            route: 'plan',
+            sub_mode: null,
+            produced_by: 'planner',
+            declared_at: '2026-08-06T17:58:00.000Z',
+            staged_path: stagedRel,
+            target_path: 'documentation/plans/plan-x.md',
+            target_kind: 'new_file',
+          },
+        ],
+      }),
+    );
+    return manifestPath;
+  };
+  const writeConfig = (file: string, body: unknown): void => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, typeof body === 'string' ? body : JSON.stringify(body));
+  };
+  const collect = async (proc: ReturnType<typeof runRaw>) => {
+    const [code, stdout, stderr] = await Promise.all([proc.exited, new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
+    return { code, stdout, stderr };
+  };
+
+  test('default config path is <staging-root>/.blackhole/config.json: enabled there carries into --repo-root', async () => {
+    const stagingDir = makeTempDir('carry-cli-staging');
+    const repoRootDir = makeTempDir('carry-cli-repo-root');
+    try {
+      const manifestPath = writeStagedPlan(stagingDir);
+      writeConfig(path.join(stagingDir, '.blackhole', 'config.json'), { docs_governance: { enabled: true } });
+      const { code, stdout } = await collect(
+        runRaw(['--manifest', manifestPath, '--repo-root', repoRootDir, '--staging-root', stagingDir]),
+      );
+      expect(code).toBe(0);
+      expect(JSON.parse(stdout)).toContain('documentation/plans/plan-x.md');
+      expect(fs.existsSync(path.join(repoRootDir, 'documentation/plans/plan-x.md'))).toBe(true);
+    } finally {
+      fs.rmSync(stagingDir, { recursive: true, force: true });
+      fs.rmSync(repoRootDir, { recursive: true, force: true });
+    }
+  });
+
+  test('default config path falls back to <repo-root>/.blackhole/config.json when --staging-root is absent', async () => {
+    const manifestPath = writeStagedPlan(dir);
+    writeConfig(path.join(dir, '.blackhole', 'config.json'), { docs_governance: { enabled: true } });
+    const { code, stdout } = await collect(runRaw(['--manifest', manifestPath, '--repo-root', dir]));
+    expect(code).toBe(0);
+    expect(JSON.parse(stdout)).toContain('documentation/plans/plan-x.md');
+  });
+
+  test('absent config.json is inert: prints [] and exits 0 without writing anything', async () => {
+    const manifestPath = writeStagedPlan(dir);
+    const { code, stdout } = await collect(runRaw(['--manifest', manifestPath, '--repo-root', dir]));
+    expect(code).toBe(0);
+    expect(JSON.parse(stdout)).toEqual([]);
+    expect(fs.existsSync(path.join(dir, 'documentation'))).toBe(false);
+  });
+
+  test('--config overrides the default path: an enabling --config wins over a disabling default config', async () => {
+    const manifestPath = writeStagedPlan(dir);
+    writeConfig(path.join(dir, '.blackhole', 'config.json'), { docs_governance: { enabled: false } });
+    const { code, stdout } = await collect(runRaw(['--config', activeConfigPath, '--manifest', manifestPath, '--repo-root', dir]));
+    expect(code).toBe(0);
+    expect(JSON.parse(stdout)).toContain('documentation/plans/plan-x.md');
+  });
+
+  test('--config pointing at a disabling config is inert even when the default config enables', async () => {
+    const manifestPath = writeStagedPlan(dir);
+    writeConfig(path.join(dir, '.blackhole', 'config.json'), { docs_governance: { enabled: true } });
+    const off = path.join(dir, 'off.json');
+    writeConfig(off, { docs_governance: { enabled: false } });
+    const { code, stdout } = await collect(runRaw(['--config', off, '--manifest', manifestPath, '--repo-root', dir]));
+    expect(code).toBe(0);
+    expect(JSON.parse(stdout)).toEqual([]);
+    expect(fs.existsSync(path.join(dir, 'documentation'))).toBe(false);
+  });
+
+  test('write_governance:false is inert: prints [] and exits 0', async () => {
+    const manifestPath = writeStagedPlan(dir);
+    const cfg = path.join(dir, 'cfg.json');
+    writeConfig(cfg, { docs_governance: { enabled: true, write_governance: false } });
+    const { code, stdout } = await collect(runRaw(['--config', cfg, '--manifest', manifestPath, '--repo-root', dir]));
+    expect(code).toBe(0);
+    expect(JSON.parse(stdout)).toEqual([]);
+  });
+
+  test('inert config never loads the manifest: a malformed manifest does not error', async () => {
+    const manifestPath = path.join(dir, 'manifest.json');
+    fs.writeFileSync(manifestPath, '{ not json');
+    const cfg = path.join(dir, 'cfg.json');
+    writeConfig(cfg, { docs_governance: { enabled: false } });
+    const { code, stdout } = await collect(runRaw(['--config', cfg, '--manifest', manifestPath, '--repo-root', dir]));
+    expect(code).toBe(0);
+    expect(JSON.parse(stdout)).toEqual([]);
+  });
+
+  test('malformed config.json exits 1 and names the config path on stderr', async () => {
+    const manifestPath = writeStagedPlan(dir);
+    const cfg = path.join(dir, 'cfg.json');
+    writeConfig(cfg, '{ not json');
+    const { code, stderr } = await collect(runRaw(['--config', cfg, '--manifest', manifestPath, '--repo-root', dir]));
+    expect(code).toBe(1);
+    expect(stderr).toContain('carry-staged-artifacts:');
+    expect(stderr).toContain(cfg);
+    expect(fs.existsSync(path.join(dir, 'documentation'))).toBe(false);
   });
 });

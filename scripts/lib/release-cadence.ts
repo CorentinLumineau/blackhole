@@ -1,7 +1,7 @@
 // Pure release-cadence helpers (ADR-003): threshold, gate, semver, notes, AI validation.
 // Side-effecting cut/prepare live in scripts/release-cadence.ts.
 
-export const CADENCE_THRESHOLD = 20;
+export const CADENCE_THRESHOLD = 10;
 
 /** Pinned Claude Code model alias for optional Haiku notes. */
 export const HAIKU_MODEL_ALIAS = 'haiku';
@@ -33,6 +33,8 @@ export type CadenceGateInput = {
   mergedPrCount: number;
   threshold: number;
   force: boolean;
+  /** package.json is already above the latest tag: an unreleased PR carried its own bump. */
+  versionBumpedSinceTag?: boolean;
 };
 
 export type CadenceGateDecision = 'skip' | 'no-op' | 'cut';
@@ -58,10 +60,13 @@ export type ClaudeSpawnResult = {
  * `[skip release]` on HEAD marks a release commit. It stops a cut only while fewer than
  * `threshold` PRs are pending, and `force` does not override it. With a full batch pending
  * the cut proceeds so a run on the previous cut's commit can claim the next batch.
+ * An already-bumped version cuts early with any pending PR, because the version-keyed plugin
+ * cache keeps a change inert until a tag ships it.
  */
 export function evaluateCadenceGate(input: CadenceGateInput): CadenceGateDecision {
   if (input.skipReleaseOnHead && input.mergedPrCount < input.threshold) return 'skip';
   if (input.mergedPrCount >= input.threshold || input.force) return 'cut';
+  if (input.versionBumpedSinceTag && input.mergedPrCount >= 1) return 'cut';
   return 'no-op';
 }
 
@@ -71,12 +76,14 @@ export function shouldRecheckAfterLock(
   secondCount: number,
   threshold: number,
   force: boolean,
+  versionBumpedSinceTag = false,
 ): boolean {
   const first = evaluateCadenceGate({
     skipReleaseOnHead: false,
     mergedPrCount: firstCount,
     threshold,
     force,
+    versionBumpedSinceTag,
   });
   if (first !== 'cut') return false;
 
@@ -85,14 +92,15 @@ export function shouldRecheckAfterLock(
     mergedPrCount: secondCount,
     threshold,
     force,
+    versionBumpedSinceTag,
   });
   return second === 'cut';
 }
 
-/** CI cuts only when the owner-gated repo variable is the string `true`. Local cuts skip this. */
+/** CI cuts unless the owner's kill switch, repo variable `RELEASE_CADENCE_ENABLED`, is the string `false`. Local cuts skip this. */
 export function cadenceEnvAllowsCut(env: NodeJS.ProcessEnv): boolean {
   if (env.CI !== 'true') return true;
-  return env.RELEASE_CADENCE_ENABLED === 'true';
+  return env.RELEASE_CADENCE_ENABLED !== 'false';
 }
 
 export function headHasSkipRelease(subject: string): boolean {
@@ -122,8 +130,27 @@ const MAJOR_TITLE = /^[a-z]+(\([^)]*\))?!:/i;
 const MAJOR_BODY = /^BREAKING[ -]CHANGE:/m;
 const MINOR_TITLE = /^feat(\([^)]*\))?:/i;
 
+const SEMVER = /^(\d+)\.(\d+)\.(\d+)$/;
+
+/** The package version when it is strictly above the tag version, else null. Never throws. */
+export function earlyCutVersion(pkgVersion: string, tagVersion: string): string | null {
+  const pkg = SEMVER.exec(pkgVersion);
+  const tag = SEMVER.exec(tagVersion);
+  if (!pkg || !tag) return null;
+  for (let i = 1; i <= 3; i++) {
+    const diff = Number(pkg[i]) - Number(tag[i]);
+    if (diff !== 0) return diff > 0 ? pkgVersion : null;
+  }
+  return null;
+}
+
+/** The higher of the bumped package version and the classified version; never below the classification. */
+export function higherCutVersion(early: string, classified: string): string {
+  return earlyCutVersion(classified, early) ?? early;
+}
+
 function bumpSemver(base: string, bump: SemverBump): string {
-  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(base);
+  const match = SEMVER.exec(base);
   if (!match) {
     throw new Error(`Invalid semver base "${base}"`);
   }

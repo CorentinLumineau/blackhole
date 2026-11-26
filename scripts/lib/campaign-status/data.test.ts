@@ -27,6 +27,19 @@ describe('buildStatusData — one source with --json', () => {
     });
   });
 
+  test('overview carries the recorded worker context as flat columns, and none when nothing is recorded', () => {
+    expect(Object.keys(data.overview[0]).filter((k) => k.startsWith('worker_'))).toEqual([]);
+    const recorded = ({ ...r, worker_context: { recorded_at: '2026-11-11T11:30:00.000Z', workers: 9, unattributed: 1, median_first_turn_tokens: 110_228, roles: {}, merged_prs: 2, spawns_per_merged_pr: 3.5, respawns: { total: 4, warm: 1, cold: 3 } } });
+    expect(buildStatusData(recorded).overview[0]).toMatchObject({
+      worker_median_first_turn_tokens: 110_228,
+      worker_spawns_per_merged_pr: 3.5,
+      worker_respawns: 4,
+      worker_respawns_warm: 1,
+      worker_respawns_cold: 3,
+      worker_context_recorded_at: '2026-11-11T11:30:00.000Z',
+    });
+  });
+
   test('stale_after_hours is the one STALE_AFTER_HOURS constant', () => {
     expect(data.overview[0].stale_after_hours).toBe(STALE_AFTER_HOURS);
   });

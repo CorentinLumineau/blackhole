@@ -11,10 +11,17 @@ disable-model-invocation: true
 Maintainer workflow for publishing a **product-focused** GitHub release.
 Every tag `vX.Y.Z` must have a matching notes file before the tag is pushed.
 
-Automated every-20-merged-PR cadence (when the owner has set `RELEASE_CADENCE_ENABLED=true`)
-is documented in [documentation/runbooks/release-cadence.md](../../../documentation/runbooks/release-cadence.md).
-This skill remains the off-cadence / hotfix path. Cadence reuses `bun run release` validate/tag/push
-and never publishes a GitHub Release itself. Agents must not set repo variables or secrets.
+The every-10-merged-PR cadence (on unless the owner set the kill switch `RELEASE_CADENCE_ENABLED=false`) is the
+**primary** release path ([ADR-060](../../../documentation/decisions/ADR-060-cadence-primary-release-policy.md),
+[runbook](../../../documentation/runbooks/release-cadence.md)). This skill is the **hotfix /
+off-cadence** path only: use it when a fix cannot wait for the cadence and no merged PR already
+bumped `package.json` (a bumped version cuts early by itself). Cadence reuses `bun run release`
+validate/tag/push and never publishes a GitHub Release itself. Agents must not set repo variables
+or secrets.
+
+The release commit of a manual hotfix carries `[skip release]` so the cadence does not race it.
+No registry step follows the tag: the versioned commit on `main` is what the Claude and Codex
+marketplace catalogs resolve.
 
 ## Prerequisites
 
@@ -34,7 +41,7 @@ CI reads `.github/releases/${TAG}.md` when the file exists; otherwise falls back
 
 ## Workflow
 
-1. **Decide version** — ask the user if semver bump is unclear
+1. **Confirm it is a hotfix** — otherwise stop and let the cadence cut it. Decide the version; ask the user if the semver bump is unclear
 2. **Prepare scaffold**
    ```bash
    bun run release prepare vX.Y.Z
@@ -61,7 +68,7 @@ CI reads `.github/releases/${TAG}.md` when the file exists; otherwise falls back
      .codex-plugin/plugin.json .gemini-plugin/plugin.json \
      plugins/blackhole/plugin.json plugins/blackhole-agent-plugins/plugin.json \
      plugins/blackhole-claude/.claude-plugin/plugin.json
-   git commit -m "docs: add vX.Y.Z release notes"
+   git commit -m "chore(release): prepare vX.Y.Z [skip release]"
    git push origin main
    ```
 6. **Tag and push** (triggers CI)

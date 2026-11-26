@@ -61,10 +61,10 @@ See `.cursor/skills/blackhole/references/orchestrator-dispatch.md` § Investigat
 Per `review-core.md`:
 
 1. Spawn `reviewer` → raw findings JSON
-2. Run `scripts/review-aggregate.ts` with `--base-ref <PR base branch> --repo-dir <PR worktree> --head <PR head>` (review-core.md § Aggregate invocation) → deduplicated, ranked findings + `lgtm`
+2. Build the audit context with `scripts/audit-context.ts`, then run `scripts/review-aggregate.ts` with `--audit-context-file <audit-context.json>` (required) and `--base-ref <PR base branch> --repo-dir <PR worktree> --head <PR head>` (review-core.md § Aggregate invocation) → deduplicated, ranked findings + `lgtm`
 3. Append aggregate output to ledger
 
-For docs-only PRs (per `review-core.md` § "Docs-only PRs"), step 1 is replaced: the orchestrator applies `reviewer.md` § Docs-Only Execution Mode Compliance itself instead of spawning `reviewer`, then proceeds to steps 2–3 unchanged.
+For docs-only PRs (per `review-core.md` § "Docs-only PRs"), step 1 is replaced: the orchestrator applies `reviewer.md` § Docs-Only Execution Mode Compliance itself instead of spawning `reviewer`, still passes `--direct-review` (with `--audit-context-file`) to `scripts/review-aggregate.ts`, then proceeds to steps 2–3 unchanged.
 
 Track `review_iteration` on queue entries. Increment after each `changes_requested` aggregate run. Escalate to coordinator when the aggregate returns `rethink` (trigger: `review-core.md` § Review convergence).
 
@@ -168,7 +168,7 @@ See `.cursor/skills/blackhole/references/orchestrator-runtime.md` § Incident Mo
 *   **Calculate Priority**:
     $$\text{Priority} = \text{Gain} \times (11 - \text{Effort})$$
 *   **Gating Cut-off**:
-    *   If $\text{Priority} \ge 30$, execute `scope_args=$(bun scripts/forge-scope.ts create-args) || exit 1; gh issue create --title "[Discovery] <Name>" --body "..." $scope_args` to push it to the GitHub forge, and log it as `deferred`.
+    *   If $\text{Priority} \ge 30$, execute `scope_args=$(bun scripts/forge-scope.ts create-args) || exit 1; gh issue create --title "[Discovery] <Name>" --body "..." $scope_args` to push it to the GitHub forge, and log it as `deferred`. The issue carries the `Pareto:` line and `pareto:P*` label from `scripts/pareto-file.ts` (`forge-sync.md` § Pareto line and label).
     *   If $\text{Priority} < 30$, set status in ledger to `archived` and skip issue creation to avoid backlog noise.
 *   **Ready Queue Sorting**: Automatically sort the ready set in `queue.json` in descending order of their Priority score, ensuring high-ROI issues are scheduled for implementation first.
 

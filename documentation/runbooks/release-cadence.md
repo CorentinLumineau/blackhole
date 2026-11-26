@@ -1,15 +1,15 @@
 ---
 type: runbook
-summary: "Day-2 operations for the every-20-merged-PR release cadence: owner enablement, optional Haiku notes, force cuts, and failure recovery"
+summary: "Day-2 operations for the every-10-merged-PR release cadence: owner kill switch, optional Haiku notes, force cuts, and failure recovery"
 status: current
 review_trigger: "on release workflow, release-cadence, or release script change"
 created: 2026-11-18
-last_updated: 2026-11-18
+last_updated: 2026-11-24
 ---
 
 # Release cadence
 
-Automated every-**20**-merged-PR release cut for this repository. The threshold is the single
+Automated every-**10**-merged-PR release cut for this repository. The threshold is the single
 exported constant `CADENCE_THRESHOLD` in `scripts/lib/release-cadence.ts` — do not copy the
 number into the workflow.
 
@@ -25,33 +25,22 @@ Workflows, repository variables, and repository secrets are owner-gated. Agents 
 
 - merge this workflow unprompted
 - run `gh variable set` / `gh secret set`
-- enable the cadence
+- disable or re-enable the cadence
 
-Kill switch (owner): `gh variable set RELEASE_CADENCE_ENABLED -b false`
+## Kill switch
 
-## Enablement
-
-The cut job runs only when the repository variable `RELEASE_CADENCE_ENABLED` is the string
-`'true'`:
+The cadence is on by default (owner request, ADR-060 amendment 2026-11-24). The cut job runs
+unless the repository variable `RELEASE_CADENCE_ENABLED` is the string `'false'`:
 
 ```yaml
-if: vars.RELEASE_CADENCE_ENABLED == 'true'
+if: vars.RELEASE_CADENCE_ENABLED != 'false'
 ```
 
-When the variable is unset or not `'true'`, a lightweight `disabled-notice` job emits a
-workflow warning so skips are not silent.
+Owner stop: `gh variable set RELEASE_CADENCE_ENABLED -b false` (or Settings → Secrets and
+variables → Actions → Variables). Owner restart: delete the variable. While it is `'false'`, a
+lightweight `disabled-notice` job emits a workflow warning so skips are not silent.
 
-**Do not enable** until a baseline `v*` tag exists on `main`. Enabling with hundreds of
-unreleased merged PRs would still only cut one batch of 20 notes per run (tagging current
-`HEAD`), but the leftover PRs would sit inside that tag without their own notes.
-
-Owner checklist:
-
-1. A `v*` tag already exists on `main`.
-2. `bun run release-cadence --json` on an up-to-date `main` shows the expected `count` / `wouldCut`.
-3. Set the variable: `gh variable set RELEASE_CADENCE_ENABLED -b true`
-4. Monitor the next schedule (`17 */2 * * *`) or dispatch **Release Cadence** manually.
-5. Verify: `gh release view vX.Y.Z` — body matches `.github/releases/vX.Y.Z.md`.
+Check after a cut: `gh release view vX.Y.Z` — body matches `.github/releases/vX.Y.Z.md`.
 
 ## Optional Haiku release notes (Claude subscription)
 
@@ -84,19 +73,30 @@ On each scheduled run (when enabled):
 
 1. Skip if `github.sha` is no longer `origin/main` (queued run went stale).
 2. Skip unless the Verify workflow succeeded on that exact tip SHA.
-3. Count merged PRs into `main` since the latest `v*` tag. Cut one batch of 20 even if `N>20`
+3. Count merged PRs into `main` since the latest `v*` tag. Cut one batch of 10 even if `N>10`
    (oldest first). Semver from conventional titles: `feat` = minor, else patch,
    `BREAKING CHANGE:` / `type!:` = major.
 4. Write `.github/releases/vX.Y.Z.md`, bump `package.json`, `bun run build` so all 7
    `VERSIONED_MANIFESTS` match, commit with `[skip release]`, annotated tag, push `main` + tag.
-5. `.github/workflows/release.yml` publishes the GitHub Release from the notes file.
+5. The `publish` job calls `.github/workflows/release.yml` (`workflow_call`) for the new tag,
+   which publishes the GitHub Release from the notes file. A tag pushed with `GITHUB_TOKEN`
+   starts no `push: tags` run by itself, so this call is what publishes a cadence release.
 
-`N<20` is a no-op unless `workflow_dispatch` `force: true`. `[skip release]` on HEAD still
-blocks a below-threshold force cut. A second run after the tag lands does not retag.
+`N<10` is a no-op unless `workflow_dispatch` `force: true`, with one exception: the **early cut**.
+When `package.json` is strictly above the latest `v*` tag (an unreleased PR bumped it, as
+V-PLUGIN-01 / ADR-030 require for a hook change) and at least one PR is pending, the cut fires
+below the threshold and tags `v<package.json version>`, or the classified version when the
+pending batch classifies higher: never below the classified version. `[skip release]` on HEAD still blocks a below-threshold cut,
+force or early. A second run after the tag lands does not retag.
+
+Catalog availability: there is no registry step. The versioned commit on `main` is what the
+Claude `marketplace.json` and Codex `codex-marketplace.json` catalogs resolve, and the tag only
+names it (ADR-060).
 
 ## Manual / hotfix path
 
-Off-cadence releases still use [prj-create-release](../../.claude/skills/prj-create-release/SKILL.md):
+Hotfix-only; the cadence is the primary path (ADR-060). The release commit carries
+`[skip release]`. Off-cadence releases use [prj-create-release](../../.claude/skills/prj-create-release/SKILL.md):
 
 ```bash
 bun run release prepare vX.Y.Z
@@ -109,7 +109,7 @@ bun run release push vX.Y.Z
 
 ## Emergency `--force`
 
-When `N < 20` but a maintainer must cut immediately:
+When `N < 10` but a maintainer must cut immediately:
 
 ```bash
 gh workflow run release-cadence.yml --ref main -f force=true
@@ -137,4 +137,6 @@ Follow-up issues must include `Pareto: gain=G effort=E priority=N` (Priority = G
 | `bun run release-cadence --json` | Machine-readable dry-run |
 | `bun run release-cadence --prepare` | Write artifacts only (no tag/push) |
 | `bun run release-cadence --cut` | Full CI cut path |
-| `bun run release-cadence --cut --force` | Cut below the 20-PR threshold |
+| `bun run release-cadence --cut --force` | Cut below the 10-PR threshold |
+
+A `package.json` already above the latest tag cuts early at that version without `--force`.

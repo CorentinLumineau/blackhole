@@ -2,6 +2,7 @@
 
 ## Before prepare
 
+- [ ] This is a hotfix or off-cadence release; if not, the cadence cuts it — stop
 - [ ] `main` is up to date
 - [ ] `bun run build` passes
 - [ ] Semver bump agreed with user
@@ -18,7 +19,7 @@
 
 - [ ] `package.json` version matches tag (without `v`)
 - [ ] `bun run release validate vX.Y.Z` passes
-- [ ] Committed on `main` and pushed
+- [ ] Committed on `main` with `[skip release]` in the commit message, and pushed
 - [ ] `bun run release tag vX.Y.Z`
 - [ ] `bun run release push vX.Y.Z`
 

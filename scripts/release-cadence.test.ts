@@ -6,6 +6,7 @@ import {
   CLAUDE_CODE_PACKAGE,
   HAIKU_MODEL_ALIAS,
   cutRelease,
+  dryRunStatus,
   parseCadenceArgs,
   prepareCadenceRelease,
   releaseCommitPaths,
@@ -142,6 +143,105 @@ describe('releaseCommitPaths', () => {
   });
 });
 
+describe('cutRelease early cut (1324)', () => {
+  const bumped = { pkgVersion: '0.30.2', prs: nPrs(4).slice(1) };
+
+  test('an already-bumped package.json cuts below threshold at that version', async () => {
+    const deps = mockDeps(bumped);
+    await cutRelease(cutArgs, deps);
+    expect(deps.bits.tagged).toEqual(['v0.30.2']);
+    expect(deps.bits.pushed).toEqual(['v0.30.2']);
+    expect(deps.bits.builtVersions).toEqual(['0.30.2']);
+    expect(deps.bits.notes.has('v0.30.2')).toBe(true);
+  });
+
+  test('package.json equal to the tag stays a no-op', async () => {
+    const deps = mockDeps({ pkgVersion: '0.30.1', prs: nPrs(3) });
+    await cutRelease(cutArgs, deps);
+    expect(deps.bits.tagged).toEqual([]);
+  });
+
+  test('[skip release] HEAD does not early cut', async () => {
+    const deps = mockDeps({ ...bumped, headSubject: 'chore(release): prepare v0.30.2 [skip release]' });
+    await cutRelease(cutArgs, deps);
+    expect(deps.bits.tagged).toEqual([]);
+  });
+
+  test('no pending PR does not early cut', async () => {
+    const deps = mockDeps({ ...bumped, prs: [] });
+    await cutRelease(cutArgs, deps);
+    expect(deps.bits.tagged).toEqual([]);
+  });
+
+  test('red Verify does not early cut', async () => {
+    const deps = mockDeps({ ...bumped, verify: false });
+    await cutRelease(cutArgs, deps);
+    expect(deps.bits.tagged).toEqual([]);
+  });
+
+  test('an existing tag for the bumped version refuses to retag', async () => {
+    const deps = mockDeps({ ...bumped, localTags: new Set(['v0.30.2']) });
+    await withExitMocked(async (exitSpy) => {
+      await expect(cutRelease(cutArgs, deps)).rejects.toBeInstanceOf(ProcessExitError);
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+    expect(deps.bits.pushed).toEqual([]);
+  });
+
+  test('notes already committed for the bumped version leave the release to its manual path', async () => {
+    const deps = mockDeps({ ...bumped, notes: new Map([['v0.30.2', 'manual notes']]) });
+    await cutRelease(cutArgs, deps);
+    expect(deps.bits.tagged).toEqual([]);
+    expect(deps.bits.pushed).toEqual([]);
+    expect(deps.bits.builtVersions).toEqual([]);
+  });
+
+  test('dry-run reports the early cut version, tag and bump', async () => {
+    const status = await dryRunStatus({ ...cutArgs, cut: false, json: true }, mockDeps(bumped));
+    expect(status.wouldCut).toBe(true);
+    expect(status.proposedTag).toBe('v0.30.2');
+    expect(status.proposedBump).toBe('early');
+    expect(status.earlyCutVersion).toBe('0.30.2');
+  });
+
+  test('--prepare below threshold prepares the bumped version', async () => {
+    const deps = mockDeps(bumped);
+    const tag = await prepareCadenceRelease({ ...cutArgs, cut: false, prepare: true }, deps);
+    expect(tag).toBe('v0.30.2');
+    expect(deps.bits.notes.has('v0.30.2')).toBe(true);
+    expect(deps.bits.builtVersions).toEqual(['0.30.2']);
+  });
+
+  test('hooks fix batch of 5 with a bumped patch version cuts that patch tag', async () => {
+    const deps = mockDeps({
+      pkgVersion: '0.30.2',
+      prs: [pr(1, 'fix(hooks): block stale cache'), ...nPrs(4).slice(1)],
+    });
+    await cutRelease(cutArgs, deps);
+    expect(deps.bits.tagged).toEqual(['v0.30.2']);
+  });
+});
+
+describe('early cut never goes below the classified version', () => {
+  test('a feat batch above a bumped patch tags the minor', async () => {
+    const deps = mockDeps({
+      pkgVersion: '0.30.2',
+      prs: [pr(1, 'feat(hooks): add a guard'), ...nPrs(4).slice(1)],
+    });
+    await cutRelease(cutArgs, deps);
+    expect(deps.bits.tagged).toEqual(['v0.31.0']);
+  });
+
+  test('dry-run proposes the classified minor over the bumped patch', async () => {
+    const status = await dryRunStatus(
+      { ...cutArgs, cut: false, json: true },
+      mockDeps({ pkgVersion: '0.30.2', prs: [pr(1, 'feat(hooks): add a guard'), ...nPrs(4).slice(1)] }),
+    );
+    expect(status.proposedTag).toBe('v0.31.0');
+    expect(status.proposedBump).toBe('minor');
+  });
+});
+
 describe('cutRelease gates', () => {
   test('flag off in CI is a no-op — no tag, no push', async () => {
     const deps = mockDeps({ env: { CI: 'true', RELEASE_CADENCE_ENABLED: 'false' } });
@@ -151,8 +251,8 @@ describe('cutRelease gates', () => {
     expect(deps.bits.builtVersions).toEqual([]);
   });
 
-  test('N < 20 is a no-op unless force', async () => {
-    const deps = mockDeps({ prs: nPrs(19) });
+  test('N below the threshold is a no-op unless force', async () => {
+    const deps = mockDeps({ prs: nPrs(CADENCE_THRESHOLD - 1) });
     await cutRelease(cutArgs, deps);
     expect(deps.bits.tagged).toEqual([]);
     expect(deps.bits.pushed).toEqual([]);
@@ -184,8 +284,8 @@ describe('cutRelease gates', () => {
     expect(deps.bits.pushed).toEqual([]);
   });
 
-  test('flag on + N>=20 + Verify green tags and pushes, notes match, manifests bumped', async () => {
-    const deps = mockDeps({ prs: nPrs(25) });
+  test('flag on + N>=threshold + Verify green tags and pushes, notes match, manifests bumped', async () => {
+    const deps = mockDeps({ prs: nPrs(CADENCE_THRESHOLD + 5) });
     await cutRelease(cutArgs, deps);
     expect(deps.bits.tagged).toEqual(['v0.31.0']);
     expect(deps.bits.pushed).toEqual(['v0.31.0']);
@@ -194,7 +294,7 @@ describe('cutRelease gates', () => {
     expect(notes).toContain('## Release — backlog-campaign v0.31.0');
     expect(notes).toContain(NOTES_FOOTER);
     expect(notes).toContain('[#1](https://github.com/CorentinLumineau/blackhole/pull/1)');
-    expect(notes).not.toContain('#21');
+    expect(notes).not.toContain(`#${CADENCE_THRESHOLD + 1}`);
     expect(deps.bits.gitCalls.some((cmd) => cmd.startsWith('git add') && cmd.includes('.github/releases/v0.31.0.md'))).toBe(
       true,
     );
@@ -204,7 +304,7 @@ describe('cutRelease gates', () => {
     }
   });
 
-  test('[skip release] HEAD with N<20 does not tag even with force', async () => {
+  test('[skip release] HEAD with N<threshold does not tag even with force', async () => {
     const deps = mockDeps({
       prs: nPrs(4),
       headSubject: 'chore(release): prepare v0.30.1 [skip release]',
@@ -254,7 +354,7 @@ describe('cutRelease gates', () => {
 });
 
 describe('prepareCadenceRelease', () => {
-  test('writes deterministic notes and bumps when N>=20', async () => {
+  test('writes deterministic notes and bumps when N>=threshold', async () => {
     const deps = mockDeps({ prs: nPrs(20) });
     const tag = await prepareCadenceRelease({ prepare: true, cut: false, force: false, json: false }, deps);
     expect(tag).toBe('v0.31.0');
@@ -356,12 +456,12 @@ describe('single CADENCE_THRESHOLD constant', () => {
   test('workflow and scripts do not scatter a second threshold literal', () => {
     const workflow = fs.readFileSync(WORKFLOW, 'utf-8');
     expect(workflow).toContain('CADENCE_THRESHOLD');
-    expect(workflow).not.toMatch(/\b20\b/);
+    expect(workflow).not.toMatch(/\b10\b/);
     const lib = fs.readFileSync(LIB_SRC, 'utf-8');
-    expect(lib).toMatch(/export const CADENCE_THRESHOLD = 20;/);
+    expect(lib).toMatch(/export const CADENCE_THRESHOLD = 10;/);
     const cli = fs.readFileSync(CLI_SRC, 'utf-8');
-    expect(cli).not.toMatch(/mergedPrCount\s*[<>=]+\s*20/);
-    expect(cli).not.toMatch(/threshold:\s*20/);
+    expect(cli).not.toMatch(/mergedPrCount\s*[<>=]+\s*10/);
+    expect(cli).not.toMatch(/threshold:\s*10/);
     expect(cli).toContain('CADENCE_THRESHOLD');
   });
 });
@@ -374,8 +474,8 @@ describe('release-cadence.yml', () => {
     expect(yaml).toContain('cron: "17 */2 * * *"');
     expect(yaml).toContain('workflow_dispatch:');
     expect(yaml).toContain('force:');
-    expect(yaml).toContain("if: vars.RELEASE_CADENCE_ENABLED == 'true'");
-    expect(yaml).toContain("if: vars.RELEASE_CADENCE_ENABLED != 'true'");
+    expect(yaml).toContain("if: vars.RELEASE_CADENCE_ENABLED != 'false'");
+    expect(yaml).toContain("if: vars.RELEASE_CADENCE_ENABLED == 'false'");
     expect(yaml).toMatch(/^\s*runs-on: ubuntu-latest$/m);
     expect(yaml).not.toContain('self-hosted');
     expect(yaml).not.toContain('pcfixe');
@@ -389,6 +489,14 @@ describe('release-cadence.yml', () => {
     expect(yaml).not.toContain('gh release create');
     expect(releaseYaml).toContain('softprops/action-gh-release');
     expect(yaml).toContain('bun run release-cadence');
+  });
+
+  test('publish job calls release.yml for the new tag (a GITHUB_TOKEN tag push triggers no run)', () => {
+    expect(yaml).toContain('uses: ./.github/workflows/release.yml');
+    expect(yaml).toContain('tag: ${{ needs.cut.outputs.tag }}');
+    expect(yaml).toContain("if: needs.cut.outputs.tag != ''");
+    expect(releaseYaml).toContain('workflow_call:');
+    expect(releaseYaml).toContain('tag_name: ${{ inputs.tag || github.ref_name }}');
   });
 
   test('does not set repo variables or secrets; token is env-only on the cut step', () => {
@@ -415,5 +523,35 @@ describe('release-cadence.yml', () => {
 describe('Haiku pin', () => {
   test('exported model alias is haiku', () => {
     expect(HAIKU_MODEL_ALIAS).toBe('haiku');
+  });
+});
+
+describe('release policy docs (1324)', () => {
+  const read = (rel: string): string => fs.readFileSync(path.join(REPO, rel), 'utf-8');
+  const docs = [
+    '.claude/skills/prj-create-release/SKILL.md',
+    '.claude/skills/prj-create-release/references/checklist.md',
+    '.github/rules/release-milestone-governance.mdc',
+    'documentation/runbooks/release-cadence.md',
+    'documentation/decisions/ADR-060-cadence-primary-release-policy.md',
+  ];
+
+  test('no doc presents a separate marketplace publish step', () => {
+    for (const rel of docs) {
+      expect(read(rel)).not.toMatch(
+        /marketplace[ -]publish|publish(?:ing)? (?:to )?(?:the )?(?:Claude |Codex )?(?:marketplace|registry)/i,
+      );
+    }
+  });
+
+  test('skill marks the manual flow as hotfix-only with [skip release] and links the ADR', () => {
+    const skill = read('.claude/skills/prj-create-release/SKILL.md');
+    expect(skill).toContain('[skip release]');
+    expect(skill).toContain('ADR-060');
+    expect(skill).toMatch(/hotfix/i);
+  });
+
+  test('runbook documents the early cut', () => {
+    expect(read('documentation/runbooks/release-cadence.md')).toMatch(/early cut/i);
   });
 });

@@ -408,7 +408,7 @@ export function formatDashboard(opts: {
   const { scope, checkpoint, queue, ledger, forge, checkpointBody, view, crossRepoBlockers, lane } = opts;
   const issues = queue.issues ?? {};
   const findings = ledger.findings ?? [];
-  const { active, done, inFlight, blocked, ready, unclassified } = groupIssuesByPhase(issues);
+  const { active, done, inFlight, blocked, ready, unclassified, crossRepo } = groupIssuesByPhase(issues);
   const { queue: q, ledger: ledgerCounts } = computeStatusCounts(issues, findings);
   const filed = discoveryFilings(findings);
   const scopeLabel = formatScopeLabel(scope, 'markdown');
@@ -441,6 +441,10 @@ export function formatDashboard(opts: {
     inFlightCount: inFlight.length,
   });
   lines.push(renderQueueHealthLine(queueHealth, blocked.length));
+  if (crossRepo.length > 0) {
+    const shown = crossRepo.slice(0, SECTION_CAP);
+    lines.push(`Cross-repo entries not shown: ${crossRepo.length} (${shown.join(', ')}${crossRepo.length > shown.length ? ', …' : ''})`);
+  }
   lines.push('');
   if (view) lines.push(...renderViewSection(view, scopeLabel));
   if (view?.budget) lines.push(...renderBudgetSection(view.budget));

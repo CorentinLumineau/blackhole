@@ -58,7 +58,7 @@ See [README.md](README.md#-installation-paths) for Cursor submodule, Claude mark
 
 ## Maintainer — releases & milestones
 
-Each semver milestone (`v0.4.1`, `v0.4.2`, …) is closed **only** by publishing its matching release via [`.claude/skills/prj-create-release/SKILL.md`](.claude/skills/prj-create-release/SKILL.md). The CLI backing that skill is [`scripts/release.ts`](scripts/release.ts) — run `bun run release prepare|validate|tag|push vX.Y.Z`. Project rule: [`.github/rules/release-milestone-governance.mdc`](.github/rules/release-milestone-governance.mdc). Automated every-20-PR cadence (owner-gated) is [documentation/runbooks/release-cadence.md](documentation/runbooks/release-cadence.md) — do not set `RELEASE_CADENCE_ENABLED` or `CLAUDE_CODE_OAUTH_TOKEN`.
+The every-10-merged-PR cadence is the default release path ([ADR-060](documentation/decisions/ADR-060-cadence-primary-release-policy.md)); manual `bun run release` is for hotfixes only. Each semver milestone (`v0.4.1`, `v0.4.2`, …) is closed **only** after its matching release is published, a hotfix via [`.claude/skills/prj-create-release/SKILL.md`](.claude/skills/prj-create-release/SKILL.md). The CLI backing that skill is [`scripts/release.ts`](scripts/release.ts) — run `bun run release prepare|validate|tag|push vX.Y.Z`. Project rule: [`.github/rules/release-milestone-governance.mdc`](.github/rules/release-milestone-governance.mdc). Cadence runbook (owner-gated): [documentation/runbooks/release-cadence.md](documentation/runbooks/release-cadence.md) — do not set `RELEASE_CADENCE_ENABLED` or `CLAUDE_CODE_OAUTH_TOKEN`.
 
 ## Maintainer — upstream sync
 

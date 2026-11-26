@@ -17,7 +17,7 @@ Filed issues are titled `[Kaizen] <summary>` and use these fields, in this order
 | Rationale | Why this matters — see the root-cause-framing note below |
 | Failure scenario | Concrete consequence if left unaddressed (a bug that recurs, a regression risk, a maintenance cost) |
 | Fix direction | A recommended approach — not a full implementation, just enough for the planner to scope it |
-| Footer | `gain`, `effort`, and the computed `Priority` (see § Scoring below) |
+| Footer | The `Pareto:` line (`scripts/pareto-file.ts line`) is the footer: `gain`, `effort`, and the computed `Priority`; the issue also carries the `pareto:P*` label (`scripts/pareto-file.ts label`), see `forge-sync.md` § Pareto line and label |
 
 **Field-label reconciliation note**: the issue AC for this template (#198) spells this field
 "Rationale" verbatim, while ADR-006 § Orchestrator hunt dispatch step 3 phrases the same slot

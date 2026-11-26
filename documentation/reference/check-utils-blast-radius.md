@@ -4,7 +4,7 @@ summary: "Blast-radius reference for shared check-utils.ts consumers across scri
 status: current
 review_trigger: "on check-utils.ts or scripts/checks/*.check.ts import change"
 created: 2026-07-26
-last_updated: 2026-11-18
+last_updated: 2026-11-26
 related:
   - scripts/checks/check-utils.ts
   - scripts/verify.ts
@@ -108,6 +108,7 @@ closing the recurring six-time drift — #410/#462/#498/#570/#882/#945 — this 
 | `scripts/checks/links.check.ts` | `root`, `read`, `CheckResult` | Markdown link integrity checks |
 | `scripts/checks/new-file-test-pairing.check.ts` | `read`, `CheckResult` | New-file test-pairing convention checks |
 | `scripts/checks/pareto-filing-gate.check.ts` | `root`, `read`, `CheckResult` | Pareto filing-gate checks |
+| `scripts/checks/pareto-forge-line.check.ts` | `root`, `CheckResult` | Pareto forge-line and bucket-label contract checks |
 | `scripts/checks/parity-matrix.check.ts` | `root`, `CheckResult` | Platform parity matrix checks |
 | `scripts/checks/plan-quality-gate.check.ts` | `root`, `read`, `CheckResult` | Plan quality gate checks |
 | `scripts/checks/playbook-invocation.check.ts` | `read`, `CheckResult` | Playbook alias-invocation checks (V-INVOKE-01) |
