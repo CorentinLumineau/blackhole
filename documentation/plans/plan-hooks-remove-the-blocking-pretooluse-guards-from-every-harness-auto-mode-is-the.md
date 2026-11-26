@@ -65,7 +65,7 @@ None for `queue.json` or ledger. Config/API surface removed: the `hooks.PreToolU
 | STRIDE | Threat | Severity | Mitigation status |
 |---|---|---|---|
 | Spoofing | A worker passes itself off as orchestrator to write state (the ADR-064 `agent_type` assumption) | Low | Mitigated: the trust grant disappears; single-writer rule plus `state-write-guard.ts` validation |
-| Tampering | A bad write wipes `queue.json` or the ledger | High | Mitigated: guard validation before install plus archive snapshot, `state-write-guard.test.ts` |
+| Tampering | A bad write wipes `queue.json` or the ledger | High | Accepted (detect + recover): `state-write-guard.ts` validates only the orchestrator's own writes, so a worker's direct write is not prevented; detection is the guard's shrink/zero/shape refusal on the orchestrator's next install, recovery is the pre-mutation archive snapshot (`state-write-guard.test.ts`); prevention relies on worker prompts and auto mode |
 | Repudiation | Denied calls no longer logged to hook-events | Low | Accepted Risk: ledger and PR audit trail remain |
 | Information Disclosure | A worker stages a secret or sensitive file | High | Mitigated: reviewer V-SEC-03/V-SEC-11 BLOCK audits; no blackhole CI secret scan (accepted, stated in ADR-065) |
 | Denial of Service | A destructive shell or git command in the shared clone | High | Mitigated: auto mode prompts on Claude Code; Accepted Risk on harnesses without auto mode (detective V-SEC-14/V-BRANCH only) |

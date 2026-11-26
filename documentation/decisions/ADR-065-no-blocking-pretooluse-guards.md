@@ -43,6 +43,7 @@ ADR-061 kept six PreToolUse guards where auto mode could not cover them. On 2026
 ### Residual risk accepted
 
 - On a harness without auto mode a worker can now run a destructive command, or write outside its worktree to a path no reviewer sees; the review-time audit detects after the fact, it does not prevent.
+- **Tampering with campaign state is Accepted (detect + recover), not Mitigated.** A worker (prompt-injected or buggy) can overwrite or truncate `queue.json` or `findings-ledger.json` and no hook denies it: the single-writer rule and `state-write-guard.ts` validate only the orchestrator's own writes. Detection is the guard's shrink, zero-byte and shape refusal on the orchestrator's next install; recovery is the archive snapshot taken before each mutation; prevention relies on worker prompts and auto mode.
 - Blackhole's own CI has no secret scanner today. The secrets row relies on the reviewer audits here; a CI scan is a separate follow-up, not part of this decision.
 - Installed plugin copies keep the old hooks until the plugin is updated or reinstalled (`blackhole-protocol.md` § Installed plugin cache refresh); the release note says so.
 
