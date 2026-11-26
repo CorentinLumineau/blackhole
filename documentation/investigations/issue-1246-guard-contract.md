@@ -4,7 +4,7 @@ summary: "Write-guard contract for GIT_TRACE* writes (issue #1246): what blocks,
 status: current
 review_trigger: "on file change"
 created: 2026-11-18
-last_updated: 2026-11-18
+last_updated: 2026-11-26
 related: [investigations/issue-1246-git-trace.md, ../src/references/hook-schemas.md]
 ---
 
@@ -337,6 +337,7 @@ contract tier shown (`M` is a path outside the assigned root).
 | `case x in a)env "GIT_TRACE=M/x" git status;; esac` (label glued to the command) | silent | BLOCK (T1) |
 | `case ${x:-a b} in a)env "GIT_TRACE=M/x" git status;; esac` (case word split on a space) | silent | BLOCK (T1) |
 | `set -a; cat <<EOF` with `GIT_TRACE` only in the heredoc body or a comment | silent | WARN (T2-8) |
+| `${X:+a b} env "GIT_TRACE=M/x" git status` (braced expansion holding a space, which may expand to nothing) | silent | BLOCK (T1) |
 
 The allexport mention test (T2-8) now reads the whole command rather than the heredoc-masked
 view of one text. A value inside the assigned root, a relative value and a non-file value such as
