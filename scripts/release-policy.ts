@@ -12,6 +12,7 @@ import {
   type CutDecision,
 } from './lib/release-policy.ts';
 import { readJsonFile } from './lib/fs.ts';
+import { isAncestor } from './lib/stack-merge.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
 
@@ -21,14 +22,17 @@ const defaultGit: GitRunner = (args) => execFileSync('git', args, { cwd: root, e
 
 export type PolicyReport = CutDecision & { tag: string | null; nextVersion: string | null };
 
-const isAncestor = (git: GitRunner, sha: string, of: string): boolean => {
-  try {
-    git(['merge-base', '--is-ancestor', sha, of]);
-    return true;
-  } catch {
-    return false;
-  }
-};
+// Adapts this script's throwing runner to the shared one `isAncestor` takes.
+const ancestorTest =
+  (git: GitRunner) =>
+  (sha: string, of: string): boolean =>
+    isAncestor(root, sha, of, (_repoRoot, args) => {
+      try {
+        return { ok: true, code: 0, stdout: git(args), stderr: '' };
+      } catch (error) {
+        return { ok: false, code: 1, stdout: '', stderr: String(error) };
+      }
+    });
 
 /**
  * Offline release decision for the checkout: reads tags and first-parent history through `git`
@@ -49,11 +53,12 @@ export function reportPolicy(
     git(['log', '--first-parent', '--name-only', `--format=${FIRST_PARENT_LOG_FORMAT}`, ...range]),
   );
   const tagDate = tag ? git(['log', '-1', '--format=%cI', tag]) : '';
+  const reaches = ancestorTest(git);
   const freshness = verifiedSha
-    ? evaluateFreshness([{ status: 'completed', conclusion: 'success', headSha: verifiedSha }], (sha) => isAncestor(git, sha, 'HEAD'))
+    ? evaluateFreshness([{ status: 'completed', conclusion: 'success', headSha: verifiedSha }], (sha) => reaches(sha, 'HEAD'))
     : { ok: false, sha: null, reason: 'no verified main run supplied (pass --verified-sha)' };
   const isVerified = (sha: string): boolean =>
-    verifiedSha !== null && isAncestor(git, sha, verifiedSha);
+    verifiedSha !== null && reaches(sha, verifiedSha);
   const decision = decideCut({
     commits,
     now,
