@@ -400,11 +400,6 @@ const SCAN_BUDGET_EXCEEDED = 'scan-budget-exceeded';
 /** Most directories `findRemovalInvocations` tracks as a relative path's possible base. */
 const MAX_CWD_CANDIDATES = 16;
 
-/** Most distinct resolved paths (across every `rm` clause and `cd` candidate) one command may
- * probe with a `git worktree list` subprocess (~2.3 ms each); a normal `rm -rf a b c` uses a
- * handful. */
-const MAX_REMOVAL_TARGET_PROBES = 64;
-
 /** True when the character at `i` ends a clause tail on its own account, ignoring the one
  * position-relative case `clauseTailFrom` handles itself (a clause's very first character). */
 const isClauseTailBoundary = (command, i) => {

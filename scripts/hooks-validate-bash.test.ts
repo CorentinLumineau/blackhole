@@ -1593,6 +1593,33 @@ describe('validate-bash-command.js — main-clone git working-tree-mutation guar
     });
   });
 
+  test('F6b: a `cd <mainRepo>` before a destructive git mutation is tracked through every shell wrapper and denied', async () => {
+    await withLinkedWorktree('blackhole-hook-897-', async (mainRepo, worktree) => {
+      const denied = [
+        `cd ${mainRepo} && git clean -fd`,
+        `(cd ${mainRepo} && git clean -fd)`,
+        `{ cd ${mainRepo} && git clean -fd; }`,
+        `eval "cd ${mainRepo} && git reset --hard"`,
+        `cd ${worktree} || cd ${mainRepo} && git clean -fd`,
+        `nohup sudo -u git sh -c 'cd ${mainRepo} && git clean -fd'`,
+      ];
+      for (const command of denied) {
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(command), worktree);
+        expect({ command, exitCode: result.exitCode }).toEqual({ command, exitCode: 2 });
+        expect(permissionDecision(result.stdout)).toBe('deny');
+      }
+    });
+  });
+
+  test('F6c: `cd <worktree> && git clean -fd` and a quoted `cd <mainRepo>` string are allowed — negative controls', async () => {
+    await withLinkedWorktree('blackhole-hook-897-', async (mainRepo, worktree) => {
+      for (const command of [`cd ${worktree} && git clean -fd`, `echo "cd ${mainRepo} && git clean -fd"`]) {
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(command), worktree);
+        expect({ command, exitCode: result.exitCode }).toEqual({ command, exitCode: 0 });
+      }
+    });
+  });
+
   test('F7: a PR-comment string quoting `git checkout -- .` is allowed — negative control for UNCERTAIN-position over-tightening', async () => {
     await withLinkedWorktree('blackhole-hook-897-', async (mainRepo) => {
       const result = await runPreToolUseHook(
