@@ -73,7 +73,19 @@ Schema and fixture: `pending-decisions.ts`, `fixtures/decision-parking/pending-d
    on). The only write is this round's baseline, `.blackhole/decide-baseline.json`
    (`{at, done, weekly_pct}`: when, the issues done then, the weekly usage % then), which the next
    round's report measures against. Every `decide` advances it, so a second `decide` straight
-   after the first reports nothing finished since.
+   after the first reports nothing finished since. The round holds three sources, sorted together
+   (`scripts/lib/campaign-status/owner-gate.ts`), none of them written to `pending-decisions.json`:
+   - parked decisions (`PD-<n>`);
+   - owner-gated PRs (`PR-<n>`), only when `config.json` sets `decisions.owner_gate`
+     (`config-template.md`): a read-only, fail-open forge read of the open PRs carrying its
+     `pending_label` and not its `approved_label`. The labels and the rule for whether an approval
+     is still current belong to the consumer repo's merge gate; the plugin hardcodes neither. Each
+     one blocks the PR, the queue issues it implements or that stack on it, and the issues that
+     depend on those. No block: no forge read, and the report says nothing about gated PRs;
+   - blocked worker returns with an owner question (`BR-<n>`): a `blocked` queue item whose note
+     only the owner can clear (`awaiting-*` or `blocked-escalated:`, `waitReason`), unless it is
+     already parked. It blocks itself and its dependents.
+   PR and BR cards offer **Approve** / **Hold**.
 2. Show the `report` field first, verbatim: `## Since the last decide round` — when the last round
    was, the issues finished since, open PRs in merge order with each one's blocker
    (`mergeNextOrder`, `scripts/lib/merge-next.ts`), the weekly points used since, and the number of
@@ -81,12 +93,23 @@ Schema and fixture: `pending-decisions.ts`, `fixtures/decision-parking/pending-d
    round has no baseline and says so (`not measured`); a campaign upgraded from retired sleep mode
    uses that sleep baseline once. A value that could not be read is named as such, never guessed.
    A `warning` field, when present, names a retired `sleep_mode` block to remove; show it too.
+   When `decisions.owner_gate` is set but the gated PRs could not be read (a malformed block, no
+   `repo`, a forge other than GitHub, or a forge error), the Decisions line says `owner-gated PRs unchecked — forge unavailable (<reason>)`, never a
+   bare `none`.
 3. Ask each entry of `cards` (at most four questions, the most-blocking first) as **one**
    AskUserQuestion call (or one set of decision cards, `project-thread-mode.md`), the recommended
    option first; more than four decisions means more cards, never a dropped question.
-4. For each answer: `bun scripts/campaign-record.ts resolve --id PD-<n> --answer "<label or text>"`.
-   It removes the decision, records it in `owner-decisions.json` with its blocked items as `refs`,
-   and prints the items to unblock — promote them `blocked → ready` in the same turn.
+4. For each answer, by id:
+   - `PD-<n>`: `bun scripts/campaign-record.ts resolve --id PD-<n> --answer "<label or text>"`.
+     It removes the decision, records it in `owner-decisions.json` with its blocked items as
+     `refs`, and prints the items to unblock — promote them `blocked → ready` in the same turn.
+   - `PR-<n>` **Approve**: the orchestrator adds the gate's `approved_label` on the PR's current head and
+     comments on the PR citing the answer. `decide` never adds the label itself, and nothing is
+     labelled without the owner's answer. **Hold**: nothing changes.
+   - `BR-<n>` **Approve** (or the owner's own text): the orchestrator hands the answer to the item
+     and promotes it `blocked → ready`. **Hold**: it stays blocked.
+   Record each PR or BR answer with `campaign-record.ts decision --text "<question> → <answer>"
+   --refs <blocks>`; `resolve` takes only `PD-` ids.
 
 The dashboard's and the status page's "Decisions waiting for you" panels, the Run panel's
 Decisions row and the launch summary's Decisions row all say `run /blackhole decide` while a
