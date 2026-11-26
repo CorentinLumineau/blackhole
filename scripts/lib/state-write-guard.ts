@@ -86,6 +86,23 @@ export type InstallStateFileParams = {
   allowShrink?: boolean;
 };
 
+const DEFAULT_ARCHIVE_RETENTION = 2;
+
+/** Snapshots kept per state file: `BLACKHOLE_ARCHIVE_SNAPSHOT_RETENTION` when a positive integer,
+ *  else the default. Never below 1, so the pre-mutation snapshot always survives. */
+export const resolveArchiveRetention = (env: NodeJS.ProcessEnv = process.env): number => {
+  const raw = env.BLACKHOLE_ARCHIVE_SNAPSHOT_RETENTION;
+  return raw !== undefined && /^[1-9]\d*$/.test(raw) ? Number(raw) : DEFAULT_ARCHIVE_RETENTION;
+};
+
+/** Delete all but the newest `keep` `<base>-<ISO timestamp>.json` snapshots; ISO names sort by age.
+ *  Other archive content (other bases, `hook-events-*` dirs) never matches the pattern. */
+const pruneArchiveSnapshots = (archiveDir: string, base: string, keep: number): void => {
+  const pattern = new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}-\\d{4}-\\d{2}-\\d{2}T[\\d-]+Z\\.json$`);
+  const snaps = fs.readdirSync(archiveDir).filter((name) => pattern.test(name)).sort();
+  for (const name of snaps.slice(0, Math.max(0, snaps.length - keep))) fs.rmSync(path.join(archiveDir, name));
+};
+
 /** Write protocol steps 1-4: snapshot the live file (when one exists) into `archiveDir`, write the candidate to
  *  `<livePath>.tmp`, validate it, then atomically install it. A refused candidate leaves the live
  *  file untouched and the `.tmp` removed. */
@@ -100,7 +117,11 @@ export const installStateFile = ({
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const base = path.basename(livePath, path.extname(livePath));
   // A first write has nothing to snapshot yet.
-  if (fs.existsSync(livePath)) fs.copyFileSync(livePath, path.join(archiveDir, `${base}-${timestamp}.json`));
+  if (fs.existsSync(livePath)) {
+    fs.copyFileSync(livePath, path.join(archiveDir, `${base}-${timestamp}.json`));
+    // Prune right after the copy, before validation, so a refused write keeps its snapshot.
+    pruneArchiveSnapshots(archiveDir, base, resolveArchiveRetention());
+  }
 
   const tmpPath = `${livePath}.tmp`;
   fs.writeFileSync(tmpPath, content, 'utf-8');
