@@ -16,6 +16,7 @@
 - [ ] install dependencies in worktree (e.g. `npm install`, `bun install`, etc.)
 - [ ] Target-repo setup (existence-gated allowlist — first present wins; see § Target-repo setup below)
 - [ ] Spawn implementer worker (run_in_background: true)
+- [ ] Fix round (`review_iteration >= 1`): continue the warm implementer via `SendMessage` when `orchestrator-delegation.md` § Fix-round continuation (SendMessage) holds, else spawn fresh with a lean brief
 - [ ] Worker returns new_findings[] — orchestrator appends to ledger
 - [ ] Worker returns companion_repairs[] — orchestrator matches (vcode, file) against open/deferred V-ADA-01/V-ADA-05 ledger rows and sets fixed-in-pr (findings-ledger.md § Status transitions)
 - [ ] implementer status: blocked with escalation_trigger set → orchestrator-dispatch.md § Escalation dispatch (do not re-spawn implementer directly; spawn investigator instead)

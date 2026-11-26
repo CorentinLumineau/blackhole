@@ -90,6 +90,34 @@ is what makes a worker's Claude Code subagent transcript deterministically locat
 time (`agent-a<name>-*.jsonl`, `recovery-protocol.md` §10) — an undiscoverable transcript is an
 undiscoverable return.
 
+**Name shape**: `<role>-<issue-number>`, optionally followed by `-<suffix>` segments such as
+`-recheck1` or `-t159` (`implementer-5333`, `reviewer-5333-recheck1`). `scripts/worker-context-report.ts`
+reads the issue from the **first** `-<digits>` segment of the spawn name in `.meta.json` (`NAME_ISSUE`) and
+from a name-bearing transcript file's `<role>-<issue>[-<suffix>]` form (`ROLE_ISSUE`), so the issue
+number comes first and nothing before it may match `-<digits>`: never put a PR number or round
+counter ahead of it, and write a PR reference as a word with no hyphen before the digits
+(`reviewer-pr1502` carries no issue; `review-1502` would read PR 1502 as the issue). The role
+segment is the part before the first `-`, so it contains no hyphen. The same string MUST be passed as the `label`
+of the matching `agent()` call in a `Workflow` fan-out; without it those runs are unattributed.
+
+### Fix-round continuation (SendMessage)
+
+A fix round (`phase: implement` re-entered with `review_iteration >= 1`, from a review `changes_requested` or a `V-CI-01` row) re-enters the same issue with a worker that already holds its plan, worktree and diff in context. Continue it with `SendMessage` addressed by its spawn name `implementer-<issue>` (§ Deterministic spawn name) instead of spawning a fresh one, **only when every condition holds**:
+
+1. **Warm**: the transcript `~/.claude/projects/*/$CLAUDE_CODE_SESSION_ID/subagents/agent-aimplementer-<issue>-*.jsonl` (most recent on several matches, `orchestrator-runtime.md` recovery rung 1; on Claude desktop the session's `tasks/<task id>.output`, the same file recovery rung 1 names) was last modified within 5 minutes of the send, the cache TTL `WARM_TTL_MS` in `scripts/lib/worker-context-report.ts`. A cold resume re-bills the whole prior transcript, so past the TTL spawn fresh.
+2. **Small**: that file is at most 600000 bytes (about 150k tokens, `CONTINUATION_MAX_TRANSCRIPT_BYTES` in `scripts/lib/worker-context-report.ts`). A larger transcript costs more to carry than a fresh brief.
+3. **Same worker shape**: the previous return was `status: complete`, no `escalation_trigger` bump changed the model tier, and the plan's Touch-Paths are unchanged (an amendment, `orchestrator-dispatch.md` § Spawn-Time Touch-Paths Amendment, needs a fresh spawn).
+4. **Clean state**: `recovery-protocol.md` § 5 steps 2-4 pass for `wt-<issue>`, and `git -C <worktree> ls-remote origin refs/heads/blackhole/issue-<issue>` equals `git -C <worktree> rev-parse HEAD`, so the worker resumes on the pushed head and not on a stale or mixed worktree.
+5. **Addressable**: the `SendMessage` is accepted. A rejected send, or a worker that no longer exists, falls back to a fresh spawn at once, with no retry.
+
+A condition that cannot be evaluated counts as false and takes the fresh spawn: `CLAUDE_CODE_SESSION_ID` unset, a glob with no match, a tied or unavailable `mtime`, or an unreadable size. Never guess a condition true.
+
+The message carries only what is new: the open findings or the `V-CI-01` summary with its `<UNTRUSTED-CI-LOG>` excerpt (`ci-diagnosis.md` § Implementer spawn framing), the review head SHA, any Failed-Approaches entries for the issue verbatim (`orchestrator-runtime.md` before-respawn rule), and a request for the same implementer return JSON (`worker-schemas.md`). It does not repeat `<PLAN_CONTEXT>`. The worker's reply is read like any worker return (`orchestrator-runtime.md` recovery ladder).
+
+A fresh spawn (any condition false) gets a lean brief: `<PLAN_CONTEXT>`, the findings and any Failed-Approaches entries for the issue (`orchestrator-runtime.md` before-respawn rule), never the previous transcript. Lean means no previous transcript, not a reduced contract. Record the choice in the `campaign-checkpoint.md` Notes as `Fix round #<issue>: continued` or `Fix round #<issue>: fresh (<failed condition>)`; `scripts/worker-context-report.ts` counts the respawns that stay cold.
+
+Never continue a `reviewer` (its independence is the point of a second pass), an `escalation_trigger` return (`orchestrator-dispatch.md` § Escalation dispatch), or the merge-readiness promotion spawn.
+
 ### Route-derived dispatch (ADR-004 step 3)
 
 Before spawning `planner`, derive its spawn directive from the issue's `queue.json`

@@ -9,8 +9,8 @@ import { buildWorkerContextReport, collectWorkerRows, WORKER_CONTEXT_FILE, type 
 
 // Usage: bun run scripts/worker-context-report.ts --transcripts <dir> [--campaign-dir <dir>] [--since <ISO>] [--record] [--json]
 // Measures what each campaign worker spawn cost at runtime, from Claude Code subagent transcripts
-// (`<dir>/**/subagents/agent-a<role>-<issue>-<hash>.jsonl`, or the `agentType` of the `.meta.json`
-// beside an unnamed one): median first-turn `cache_creation_input_tokens`, spawns per merged PR
+// (`<dir>/**/subagents/agent-a<role>-<issue>-<hash>.jsonl`, or the `name` (else the `description`) in the `.meta.json`
+// beside an unnamed one, whose first `-<digits>` segment is the issue): median first-turn `cache_creation_input_tokens`, spawns per merged PR
 // (merged = `queue.json` status), and fix-round respawns split warm/cold at the cache TTL. The
 // static counterpart is worker-context-size.ts. `--transcripts` is required: the report never
 // walks the home directory on its own. `--since` defaults to the queue's `campaign_started_at`.

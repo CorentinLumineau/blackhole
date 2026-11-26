@@ -6,6 +6,9 @@ import { median } from './review-noise-report.ts';
 /** Anthropic's default prompt-cache TTL: a worker started within it of the previous worker's last turn reads a warm cache. */
 export const WARM_TTL_MS = 5 * 60_000;
 
+/** Largest implementer transcript (bytes, about 150k tokens) a fix round still continues with `SendMessage`; a bigger one costs more to carry than a fresh lean brief. */
+export const CONTINUATION_MAX_TRANSCRIPT_BYTES = 600_000;
+
 /** The file the report is recorded in, inside the campaign directory; `campaign-status.ts` reads it. */
 export const WORKER_CONTEXT_FILE = 'worker-context.json';
 
@@ -30,7 +33,7 @@ export type WorkerContextReport = {
 
 // A subagent transcript is `agent-a<name>-<16 hex>.jsonl` when the spawn was named, else `agent-a<17 hex>.jsonl`.
 const NAMED = /^agent-a(.+)-[0-9a-f]{16}\.jsonl$/;
-const ROLE_ISSUE = /^(.+)-(\d+)$/;
+const ROLE_ISSUE = /^([^-]+)-(\d+)(?:-.*)?$/;
 // The harness records a spawn's `name` and `description` in `.meta.json` even though it names the file by hash.
 const NAME_ISSUE = /-(\d+)(?![0-9])/;
 const DESCRIPTION_ISSUE = /\bissue\s+#?(\d+)/i;

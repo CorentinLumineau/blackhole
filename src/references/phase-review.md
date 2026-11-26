@@ -19,7 +19,7 @@ Binding: [review-core.md](review-core.md), [reviewer-schemas.md](reviewer-schema
   - [ ] Issue #485: before appending, transition any prior ledger row named `fixed` in the aggregate's consumed `recheck[]` to `status: resolved` (see findings-ledger.md § Status transitions), so the write-time dedup check (findings-ledger.md § Write protocol step 3) never silently absorbs the new, distinct finding sharing that row's key
   - [ ] Issue #485: if `unresolved_recheck` (worker-schemas.md § Review aggregate) is non-empty, do not silently proceed as a normal changes_requested iteration — surface it to the coordinator via the existing blocked-iteration/escalation path (review-core.md § Review convergence)
 - [ ] V-ADA-01/V-ADA-05 findings: before append, dedup by (vcode, file) ignoring issue_ref — skip append if an open/deferred row already exists for that (vcode, file) under any issue_ref (see findings-ledger.md).
-- [ ] BLOCK → increment review_iteration; back to phase implement (see review-core.md § Review convergence)
+- [ ] BLOCK → increment review_iteration; back to phase implement (see review-core.md § Review convergence); the fix round continues the warm implementer when `orchestrator-delegation.md` § Fix-round continuation (SendMessage) holds
 - [ ] Round limit reached → `rethink` verdict, escalate to coordinator (`AskQuestion`, review-iteration
   escalation gate class per `clarify-gates.md` § Gate Content Contract (R-003)): What — the
   PR/issue and its open BLOCK findings; Why — the round limit in review-core.md § Review convergence;
