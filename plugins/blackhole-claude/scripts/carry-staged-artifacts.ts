@@ -12,7 +12,7 @@ import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
 // can do on its own.
 function usage(): never {
   console.error(
-    'Usage: bun run --cwd <abs repo-root> scripts/carry-staged-artifacts.ts --manifest <path> --repo-root <path> [--staging-root <path>] [--config <path>]',
+    'Usage: bun run --cwd <abs repo-root> scripts/carry-staged-artifacts.ts --manifest <path> --repo-root <path> [--staging-root <path>] [--config <path>] [--package-root <dir>]',
   );
   process.exit(2);
 }
@@ -20,9 +20,9 @@ function usage(): never {
 // The original `for (i = 2; i += 2)` loop structurally rejected any token outside a clean
 // --key/value alternation, including an unrecognized flag — restored explicitly here since
 // parseFlags has no such structural check on its own.
-const KNOWN_KEYS = ['manifest', 'repo-root', 'staging-root', 'config'];
+const KNOWN_KEYS = ['manifest', 'repo-root', 'staging-root', 'config', 'package-root'];
 
-function parseArgs(argv: string[]): { manifestPath: string; repoRoot: string; stagingRoot?: string; configPath?: string } {
+function parseArgs(argv: string[]): { manifestPath: string; repoRoot: string; stagingRoot?: string; configPath?: string; packageRoot?: string } {
   const flags = parseFlags(argv.slice(2));
   if (unknownFlagKeys(flags, KNOWN_KEYS).length > 0) usage();
   if (typeof flags.manifest !== 'string' || typeof flags['repo-root'] !== 'string') usage();
@@ -31,11 +31,12 @@ function parseArgs(argv: string[]): { manifestPath: string; repoRoot: string; st
     repoRoot: flags['repo-root'] as string,
     stagingRoot: typeof flags['staging-root'] === 'string' ? flags['staging-root'] : undefined,
     configPath: typeof flags.config === 'string' ? flags.config : undefined,
+    packageRoot: typeof flags['package-root'] === 'string' ? flags['package-root'] : undefined,
   };
 }
 
 function main(): void {
-  const { manifestPath, repoRoot, stagingRoot, configPath } = parseArgs(process.argv);
+  const { manifestPath, repoRoot, stagingRoot, configPath, packageRoot } = parseArgs(process.argv);
 
   // docs_governance kill switch (config-template.md § docs_governance.enabled): inert means
   // nothing is read or written, so the manifest is not even loaded.
@@ -70,7 +71,7 @@ function main(): void {
 
   let outcome: ReturnType<typeof carryManifest>;
   try {
-    outcome = carryManifest(manifest, repoRoot, { stagingRoot, docsGovernanceActive });
+    outcome = carryManifest(manifest, repoRoot, { stagingRoot, docsGovernanceActive, packageRoot });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`carry-staged-artifacts: ${message}`);

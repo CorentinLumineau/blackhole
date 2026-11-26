@@ -376,7 +376,7 @@ this section states only what the script does not decide.
     the script create a duplicate.
 *   **Invoke**: `bun run --cwd <this worktree's absolute path> scripts/carry-staged-artifacts.ts
     --manifest {repo_root}/.blackhole/staged/<issue>/manifest.json --repo-root <this worktree's
-    absolute path> --staging-root {repo_root}` (optional `--config <path>`) — `--cwd` MUST equal `--repo-root` (pins module
+    absolute path> --staging-root {repo_root}` (optional `--config <path>`; `--package-root <plan package_root>` when the plan sets one, which also admits that package's `documentation/**` and `ARCHITECTURE.md`) — `--cwd` MUST equal `--repo-root` (pins module
     resolution to the worktree, issue #798). `{repo_root}` is the main-clone path used for the plan
     file (§ "Plan artifact paths (worktree rule)"); `staged_path` entries live only there
     (`blackhole-state.md` § Staging), so `--staging-root` points there while `--repo-root` and

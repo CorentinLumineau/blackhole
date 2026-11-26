@@ -256,6 +256,7 @@ For issue N, PR P:
 - `fixed-in-pr` → `resolved`, `resolved_at` set
 - `open` BLOCK on merged files → file new issue or `resolved` if obsolete
 - `deferred` → keep until deferred issue merges
+- Run `bun run --cwd <abs repo-root> scripts/staged-promotion-sweep.ts --campaign-dir <abs .blackhole> --repo-root <abs repo-root> --issue N [--package-root <issue N's plan package_root>]` (read-only; `--issue` scopes the sweep to the merged issue so its own package root applies). Each `unpromoted_merged` or `target_outside_allowlist` row is a `V-AUTO-02` ledger row, deferred to a forge issue per never-drop; `legacy_manifest_shape` and `manifest_unreadable` rows are reported, not repaired
 - Under `merge_mode: leave-open`, `fixed-in-pr` rows stay `fixed-in-pr` (not
   `resolved`) until the later forge-sync observes the real external merge —
   do not resolve them prematurely at LGTM time.
