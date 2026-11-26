@@ -6,6 +6,7 @@ import { foreignLaneLabel, isOwnLaneBranch } from './campaign-status/blocked-cla
 import { closedIssues } from './campaign-status/merged.ts';
 import { latestClosingPrActivity } from './forge-adapter/claim.ts';
 import { DEFAULT_CLAIM_LEASE_HOURS, isClaimStale, LANE_LABEL_PREFIX, laneOfLabel } from './lane.ts';
+import { parseParetoLine } from './pareto.ts';
 import { DONE_STATUSES } from './campaign-status/queue.ts';
 import { ANOTHER_SESSION, isPeerHold } from './peer-campaigns.ts';
 import type { QueueIssue, QueueJson } from './campaign-status/types.ts';
@@ -121,6 +122,7 @@ function yieldsToPeer(notes: string | null | undefined, input: SyncInput): boole
 
 function ingest(i: ForgeIssue, input: SyncInput, sizePrefix: string): SyncedEntry {
   const f = forgeFields(i, sizePrefix);
+  const pareto = parseParetoLine(i.body ?? '');
   return {
     title: f.title,
     phase: 'handle',
@@ -135,6 +137,7 @@ function ingest(i: ForgeIssue, input: SyncInput, sizePrefix: string): SyncedEntr
     labels: f.labels,
     milestone: f.milestone,
     epic_parent: f.epic_parent,
+    ...(pareto ? { pareto } : {}),
     notes: 'auto-sync ingest',
   };
 }
@@ -142,7 +145,11 @@ function ingest(i: ForgeIssue, input: SyncInput, sizePrefix: string): SyncedEntr
 function reconcile(entry: SyncedEntry, i: ForgeIssue, sizePrefix: string): SyncedEntry {
   const f = forgeFields(i, sizePrefix);
   const deps = [...new Set([...(entry.depends_on ?? []), ...parseDependsFromBody(i.body ?? '')])];
-  return { ...entry, title: f.title, labels: f.labels, milestone: f.milestone, size: f.size ?? entry.size ?? null, depends_on: deps, ...(f.epic_parent !== null ? { epic_parent: f.epic_parent } : {}) };
+  const { pareto: stored, ...rest } = entry;
+  const parsed = parseParetoLine(i.body ?? '');
+  // scored_at/rationale describe one score: keep them only while the forge line still says the same.
+  const pareto = parsed && stored && stored.priority === parsed.priority && stored.gain === parsed.gain && stored.effort === parsed.effort ? { ...stored, ...parsed } : parsed;
+  return { ...rest, ...(pareto ? { pareto } : {}), title: f.title, labels: f.labels, milestone: f.milestone, size: f.size ?? entry.size ?? null, depends_on: deps, ...(f.epic_parent !== null ? { epic_parent: f.epic_parent } : {}) };
 }
 
 /**
@@ -219,8 +226,8 @@ export function syncQueue(input: SyncInput): SyncResult {
     issues[key] = next;
   }
 
+  // Owner pins only: ingest never writes `user_queue_order` (`queue-dag.md` § Per-issue fields).
   const order = [...(input.queue?.user_queue_order ?? [])];
-  for (const n of added) if (!order.includes(n)) order.push(n);
   return {
     queue: { ...(input.queue ?? {}), refreshed_at: input.now, campaign_started_at: input.queue?.campaign_started_at ?? input.now, user_queue_order: order, issues },
     added,

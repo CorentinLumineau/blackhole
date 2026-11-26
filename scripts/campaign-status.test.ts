@@ -15,11 +15,14 @@ import {
   groupIssuesByPhase,
   parseCheckpointFrontmatter,
   parseStatusArgs,
+  readDocCarry,
   renderConfigSummary,
   renderPluginDriftWarning,
   renderRouteChain,
   type Route,
 } from './campaign-status';
+import { doneIssues } from './lib/campaign-status/decide-round.ts';
+import { computeStatusCounts } from './lib/campaign-status/queue.ts';
 import { SCAN_BOUNDARY_NOTE, type PluginDriftSignal, type PluginDriftSource } from './plugin-drift-signal';
 
 const fullRoute: Route = {
@@ -106,6 +109,14 @@ describe('renderRouteChain', () => {
 });
 
 describe('computeWaves', () => {
+  test('a cross-repo key is skipped, not turned into NaN (#1499)', () => {
+    const result = computeWaves({
+      '10': { status: 'ready' },
+      'blackhole#1168': { status: 'ready', depends_on: [10] },
+    });
+    expect(result).toEqual({ waves: [[10]], unresolved: [] });
+  });
+
   test('empty queue yields no waves and no unresolved', () => {
     const { waves, unresolved } = computeWaves({});
     expect(waves).toEqual([]);
@@ -205,6 +216,20 @@ last_completed_phase: review
 });
 
 describe('groupIssuesByPhase', () => {
+  test('a cross-repo key yields only integer rows and is listed in crossRepo (#1499)', () => {
+    const grouped = groupIssuesByPhase({
+      '10': { status: 'ready' },
+      'blackhole#1168': { status: 'ready' },
+    });
+    expect(grouped.active.map((r) => r.num)).toEqual([10]);
+    expect(grouped.active.every((r) => Number.isInteger(r.num))).toBe(true);
+    expect(grouped.crossRepo).toEqual(['blackhole#1168']);
+  });
+
+  test('doneIssues drops a done cross-repo key instead of emitting NaN (#1499)', () => {
+    expect(doneIssues({ '10': { status: 'merged' }, 'blackhole#1162': { status: 'merged' } })).toEqual([10]);
+  });
+
   test('splits active vs done and in-flight', () => {
     const grouped = groupIssuesByPhase({
       '22': { title: 'A', phase: 'review', status: 'in-flight', pr: 40 },
@@ -1094,6 +1119,19 @@ describe('status --summary (the launch summary)', () => {
     expect(summaryJson(tempCampaign({}, { 'run-context.json': runContext('claude', 'ask-user-question') })).cards.length).toBeGreaterThan(0);
   });
 
+  test('--data reads a recorded worker-context.json into the overview, and omits worker columns without one', () => {
+    const overviewOf = (dir: string) => {
+      const out = path.join(dir, 'data-out');
+      const proc = Bun.spawnSync({ cmd: ['bun', 'run', 'scripts/campaign-status.ts', '--no-gh', '--campaign-dir', dir, '--data', out], cwd: root });
+      expect(proc.exitCode).toBe(0);
+      return JSON.parse(fs.readFileSync(path.join(out, 'overview.json'), 'utf-8'))[0] as Record<string, unknown>;
+    };
+    const none = overviewOf(tempCampaign({}));
+    expect(Object.keys(none).filter((k) => k.startsWith('worker_'))).toEqual([]);
+    const record = { recorded_at: '2026-11-11T11:30:00.000Z', workers: 9, unattributed: 1, median_first_turn_tokens: 110_228, roles: {}, merged_prs: 2, spawns_per_merged_pr: 3.5, respawns: { total: 4, warm: 1, cold: 3 } };
+    expect(overviewOf(tempCampaign({}, { 'worker-context.json': record }))).toMatchObject({ worker_median_first_turn_tokens: 110_228, worker_respawns_cold: 3 });
+  });
+
   test('a valid --usage changes the Budget row', () => {
     const dir = tempCampaign({ usage_budget: { enabled: true } }, { 'run-context.json': runContext('cursor', 'ask-user-question') });
     const before = row(summaryJson(dir, '--now', NOW_S), 'budget');
@@ -1272,5 +1310,31 @@ describe('the launch target (issue #1410)', () => {
   test('target refuses an unknown flag or an empty --stated with exit 2', () => {
     expect(status('target', '--campaign-dir', FULL, '--state', 'x').exitCode).toBe(2);
     expect(status('target', '--campaign-dir', FULL, '--stated', '').exitCode).toBe(2);
+  });
+});
+
+describe('cross-repo queue keys (#1499)', () => {
+  test('computeStatusCounts leaves a cross-repo key out of by_status', () => {
+    const { queue } = computeStatusCounts({ '10': { status: 'ready' }, 'blackhole#1162': { status: 'ready' } }, []);
+    expect(queue.by_status).toEqual({ ready: 1 });
+    expect(queue.ready).toBe(1);
+  });
+
+  test('readDocCarry skips a cross-repo key instead of reporting issue NaN', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'doc-carry-'));
+    try {
+      const campaignDir = path.join(dir, '.blackhole');
+      fs.mkdirSync(campaignDir);
+      const queue = {
+        issues: {
+          '10': { status: 'in-flight', phase: 'review' },
+          'blackhole#1162': { status: 'in-flight', phase: 'review' },
+        },
+      };
+      const read = readDocCarry(campaignDir, { docs_governance: { enabled: true } }, queue, {});
+      expect(read).toMatchObject({ unrouted: [10] });
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

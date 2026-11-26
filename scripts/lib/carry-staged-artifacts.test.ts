@@ -11,6 +11,7 @@ import {
   carryManifest,
   decideCopyMode,
   loadManifest,
+  resolveDocsGovernanceActive,
   rewriteInvestigatorFrontmatter,
   validateEntries,
   type Manifest,
@@ -1242,5 +1243,59 @@ describe('carryManifest — write-step failures are skipped, never fatal to the 
         expect(() => carryManifest(manifest, repoRoot, { stagingRoot: stagingDir })).toThrow();
       });
     });
+  });
+});
+
+describe('docs_governance kill switch (issue #1400)', () => {
+  const entry = {
+    route: 'plan',
+    sub_mode: null,
+    produced_by: 'planner',
+    declared_at: '2026-08-06T17:58:00.000Z',
+    staged_path: '.blackhole/staged/1/plan-x.md',
+    target_path: 'documentation/plans/plan-x.md',
+    target_kind: 'new_file' as const,
+  };
+
+  test('carryManifest with docsGovernanceActive:false writes no doc and no INDEX', () => {
+    withTempDir('carry-kill-switch', (repoRoot) => {
+      const stagedAbs = path.join(repoRoot, entry.staged_path);
+      fs.mkdirSync(path.dirname(stagedAbs), { recursive: true });
+      fs.writeFileSync(stagedAbs, '---\ntype: plan\nstatus: current\n---\n# Plan\n');
+      const manifest: Manifest = { issue: 1, updated_at: 'x', entries: [entry] };
+
+      const outcome = carryManifest(manifest, repoRoot, { docsGovernanceActive: false });
+
+      expect(outcome).toEqual({ carriedPaths: [], skippedEntries: [] });
+      expect(fs.existsSync(path.join(repoRoot, entry.target_path))).toBe(false);
+      expect(fs.existsSync(path.join(repoRoot, 'documentation/INDEX.md'))).toBe(false);
+    });
+  });
+
+  const resolveWith = (config: unknown | null): boolean => {
+    let result = false;
+    withTempDir('carry-config', (dir) => {
+      const configPath = path.join(dir, 'config.json');
+      if (config !== null) fs.writeFileSync(configPath, JSON.stringify(config));
+      result = resolveDocsGovernanceActive(configPath);
+    });
+    return result;
+  };
+
+  test('absent config file, absent block, or enabled unset all resolve inert (config-template.md SSOT row)', () => {
+    expect(resolveWith(null)).toBe(false);
+    expect(resolveWith({})).toBe(false);
+    expect(resolveWith({ docs_governance: {} })).toBe(false);
+    expect(resolveWith({ docs_governance: { write_governance: true } })).toBe(false);
+  });
+
+  test('explicit false on enabled or write_governance resolves inert', () => {
+    expect(resolveWith({ docs_governance: { enabled: false } })).toBe(false);
+    expect(resolveWith({ docs_governance: { enabled: true, write_governance: false } })).toBe(false);
+  });
+
+  test('enabled:true resolves active, write_governance defaulting true when the block is present', () => {
+    expect(resolveWith({ docs_governance: { enabled: true } })).toBe(true);
+    expect(resolveWith({ docs_governance: { enabled: true, write_governance: true } })).toBe(true);
   });
 });

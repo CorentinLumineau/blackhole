@@ -51,6 +51,7 @@ name alone.
 | Field | Values | Notes |
 |-------|--------|-------|
 | `pipeline_detection` | `{ actionman_workclaude: boolean, checked_at: ISO8601 }` \| absent | Optional (ADR-026); absent ≡ `{ actionman_workclaude: false, checked_at: null }`. Cached campaign-level detection of an installed ActionMan/workclaude review pipeline on the consumer forge, refreshed once per turn by `forge-sync.md`'s sync sequence — never re-derived per PR. `merge-gate.md` §6 `pipelineVerdict()` reads this cached flag to decide whether its C1 check applies at all |
+| `user_queue_order` | number[] \| absent | Owner pins only: issues the owner ordered ahead of the Pareto order (`clarify-gates.md` queue reorder, launch-gate scope order). Forge sync never writes it, so an ingested issue is ordered by its stored Pareto priority; absent or `[]` means pure Pareto order. Legacy ingest-appended entries are removed by `scripts/queue-migrate.ts` (§ Legacy values) |
 
 **Per-issue fields** (`issues.<n>.*`):
 
@@ -70,6 +71,7 @@ name alone.
 | `stacked_on_pr` | number \| null | Optional (default `null`); the canonical stack edge: the open PR number this issue's PR is based on. Unlike `stacked_on` it can name a PR that has no queue issue (the owner's own PR, another session's PR), so an external parent is representable. Set once at stack creation, in the same atomic write as `stacked_on` when the parent is a queue issue. Overlap against every open PR in the repo, not only queue rows, is read from the open-PR snapshot (`scripts/lib/open-pr-snapshot.ts`, `scripts/lib/stack-overlap.ts`) |
 | `parent_branch` | string \| null | Optional (default `null`); the head branch of `stacked_on_pr`, recorded with it. It is the branch the child's PR targets; a queue parent's value is `blackhole/issue-<stacked_on>` |
 | `parent_tip_sha` | string \| null | Optional (issue #794, default `null`); `stacked_on`'s branch tip, captured by `git rev-parse` **at stack creation**. It is the merge base the post-merge stacked-child replay merge uses (`merge-gate.md` § 7). Capturing it at merge time is already too late: once the parent branch is deleted the boundary cannot be reconstructed without reading the merged PR's commit list by hand. Written only by `scripts/stack-repair.ts capture --apply`, run by the orchestrator (`blackhole-state.md` § Single-writer invariant) through the state-write-guard |
+| `pareto` | `{gain, effort, priority}` \| absent | Optional; parsed by the forge sync from the issue body's `Pareto: gain=G effort=E priority=N` line (`scripts/lib/pareto.ts`: `priority = gain * (11 - effort)`, buckets P1 >= 70, P2 50-69, P3 30-49, P4 < 30), synced every turn, never hand-edited. Absent when the body has no valid line; such an issue sorts last in its wave |
 | `milestone` | string \| null | Optional (ADR-005); the issue's forge milestone **title** (not number), synced from forge every turn (`forge-sync.md` § 5 — never hand-edited). Consumed by `merge-gate.md` § 1 Condition 3 for gated-batch scope matching against `config.json`'s `scope_milestone` |
 | `labels` | string[] | Optional (ADR-005, default `[]`); the issue's forge label names, synced from forge every turn (`forge-sync.md` § 5 — never hand-edited). Consumed by `merge-gate.md` § 1 Condition 3 for gated-batch scope matching against `config.json`'s `scope_labels` |
 | `merged_by` | `"blackhole"` \| absent | Optional (ADR-005); set **only** by `phase-loop.md` § Merge protocol step 4, in the same atomic write that sets `status: merged` — a causal marker meaning "blackhole's own orchestrator executed this merge." Absent (not `false` — absent) means "not merged by blackhole in this session" (either not merged at all, or merged by an external actor). This is the sole signal `merge-gate.md` § 3 uses to attribute `V-MERGE-01` vs `V-MERGE-02` — deliberately **not** `status: in-flight`, which reflects concurrent worker activity unrelated to who called `gh pr merge` |
@@ -91,6 +93,13 @@ A queue written before the enums above were enforced can still carry a legacy `s
 bun run scripts/queue-migrate.ts            # dry run: prints each change, writes nothing
 bun run scripts/queue-migrate.ts --apply    # snapshots queue.json to archive/, installs through the guard
 ```
+
+The same pass cleans `user_queue_order`, which holds **only owner pins** (written by the owner's
+reorder, `clarify-gates.md`; never by ingest). Older forge syncs appended every ingested issue to it,
+which put ingest order ahead of Pareto order. Ingest left no marker, so the migration drops a number
+only when its issue has no queue entry, is `merged`/`closed`, or is still `ready` with an ingest note
+(`auto-sync ...` or `Ingested ...`), and keeps every other entry, listing it as `kept pin: #N` for the
+owner to review. A repeated run changes nothing.
 
 `--campaign-dir <dir>` points it at a campaign directory other than `./.blackhole`. Run `--apply`
 only while no orchestrator runs: the orchestrator is the single writer of `queue.json`
@@ -276,7 +285,9 @@ branch.
 
 For each pair in ready set, first remove `REGENERATED_PATHS` members (`scripts/lib/stack-overlap.ts`,
 ADR-055) from each issue's `touch_paths`; an issue whose list holds only such files has no
-overlap. Then, if the remaining `touch_paths` globs overlap on likely files,
+overlap. `APPEND_ONLY_PATHS` members are not filtered from `touch_paths` either, but Step 3b drops one from
+the overlap when the parent PR's diff against its merge base only adds lines to it
+(`pureAdditionFiles`, ADR-055 amendment); an edit keeps it an overlap. Then, if the remaining `touch_paths` globs overlap on likely files,
 keep the issue earlier in `user_queue_order`. Defer the other (set `blocked`
 with note `overlap with #N`) only while the blocker has no PR yet; once the blocker has an open PR, Step 3b stacks the issue on
 it instead. The stack depth cap is not applied at dispatch (`pickStackParent` has none): it is
@@ -358,7 +369,7 @@ Before batch selection, compute **execution waves** via topological sort on `dep
 
 1. Wave 0: issues with empty `depends_on` (and ready per Step 2)
 2. Wave N: issues whose dependencies are all `merged` or `closed` in prior waves
-3. Within each wave, apply conflict filter (Step 3) and Pareto sort (descending Priority)
+3. Within each wave, apply conflict filter (Step 3), then order by stored Pareto priority desc, effort asc, oldest issue first (`bun run scripts/pareto-order.ts`, the executable form of Steps 4-5)
 
 Log wave number before spawning: `WAVE <N>: issues [301, 298, ...]`.
 
@@ -367,7 +378,8 @@ Waves respect both dependency order and touch_paths conflict deferral. An issue 
 ### Step 5 — Batch selection
 
 Take up to `parallel_max` (default 4 from config) from the **current wave's** ready set, ordered by
-`user_queue_order` then Pareto Priority. Spawn workers in **one orchestrator turn**.
+owner pins from `user_queue_order`, then the Step 4 order (stored Pareto priority desc, effort asc,
+oldest issue first). Spawn workers in **one orchestrator turn**.
 
 ### Step 6 — Persist
 

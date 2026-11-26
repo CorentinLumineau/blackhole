@@ -1,14 +1,15 @@
 name: Release Cadence
 
 # Every-N-merged-PR release cut (N = CADENCE_THRESHOLD in scripts/lib/release-cadence.ts).
-# Cut job gated by repository variable RELEASE_CADENCE_ENABLED == 'true'
-# (owner enablement — see documentation/runbooks/release-cadence.md).
+# On by default. Owner kill switch: repository variable RELEASE_CADENCE_ENABLED == 'false'
+# (see documentation/runbooks/release-cadence.md).
 # A package.json already above the latest tag cuts early, below the threshold.
 # When disabled, `disabled-notice` surfaces a warning so skips are not silent.
 #
-# This workflow never publishes a GitHub Release. It commits notes, bumps
-# VERSIONED_MANIFESTS, and pushes an annotated v* tag; .github/workflows/release.yml
-# is the sole publisher.
+# The cut job commits notes, bumps VERSIONED_MANIFESTS, and pushes an annotated v* tag.
+# A tag pushed with GITHUB_TOKEN starts no new workflow run, so the `publish` job calls
+# .github/workflows/release.yml (workflow_call) for the new tag. release.yml stays the
+# sole publisher.
 
 on:
   schedule:
@@ -31,20 +32,22 @@ concurrency:
 
 jobs:
   disabled-notice:
-    if: vars.RELEASE_CADENCE_ENABLED != 'true'
+    if: vars.RELEASE_CADENCE_ENABLED == 'false'
     name: cadence-disabled (notice)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Surface disabled bootstrap gate
         run: |
-          echo "::warning title=Release Cadence disabled::RELEASE_CADENCE_ENABLED is not 'true'. Every-N-PR cuts are skipped. Owner enablement: gh variable set RELEASE_CADENCE_ENABLED -b true — see documentation/runbooks/release-cadence.md. Agents must not set this variable."
+          echo "::warning title=Release Cadence disabled::RELEASE_CADENCE_ENABLED is 'false' (owner kill switch). Every-N-PR cuts are skipped. Re-enable by deleting the variable — see documentation/runbooks/release-cadence.md. Agents must not set this variable."
 
   cut:
-    if: vars.RELEASE_CADENCE_ENABLED == 'true'
+    if: vars.RELEASE_CADENCE_ENABLED != 'false'
     name: cut-release (gate + prepare + tag)
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      tag: ${{ steps.cut.outputs.tag }}
     permissions:
       contents: write        # git push main + release tag
       pull-requests: read    # gh api repos/.../pulls
@@ -86,6 +89,7 @@ jobs:
       # If the secret is absent, the CLI install is skipped and notes stay deterministic.
       # A failed/timed-out/invalid model call never fails the cut.
       - name: Cut release (gate + notes + optional Haiku + tag)
+        id: cut
         if: steps.fresh.outputs.stale == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -108,7 +112,12 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.force }}" = "true" ]; then
             ARGS+=(--force)
           fi
+          before=$(git tag -l 'v*' --sort=-v:refname | head -n1)
           bun run release-cadence "${ARGS[@]}"
+          after=$(git tag -l 'v*' --sort=-v:refname | head -n1)
+          if [ -n "$after" ] && [ "$after" != "$before" ]; then
+            echo "tag=$after" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Close the failing-cut issue
         if: success() && steps.fresh.outputs.stale == 'false'
@@ -190,3 +199,15 @@ jobs:
               labels: ["blackhole/backlog"],
             });
             core.notice(`Opened tracking issue #${created.data.number}`);
+
+  # A tag pushed with GITHUB_TOKEN does not trigger release.yml's `push: tags`,
+  # so the cadence calls it directly for the tag it just pushed.
+  publish:
+    needs: cut
+    if: needs.cut.outputs.tag != ''
+    name: publish-release
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.cut.outputs.tag }}

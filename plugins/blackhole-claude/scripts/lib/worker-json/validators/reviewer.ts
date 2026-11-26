@@ -1,5 +1,6 @@
 import { REVIEWER_STATUSES } from '../constants.ts';
-import { isObject, isString, pushEnumError, requireField } from '../predicates.ts';
+import { isObject, isString, isStringArray, pushEnumError, requireField } from '../predicates.ts';
+import { AUDIT_MODULE_TRIGGERS } from '../../audit-module-triggers.ts';
 import {
   validateFindingsArray,
   validatePartialResult,
@@ -33,6 +34,18 @@ export function validateReviewer(data: unknown): string[] {
   // ADR-036 (issue #815) — sibling to recheck[]/verification[], optional.
   if ('verification_legs' in data) {
     errors.push(...validateVerificationLegsArray(data.verification_legs, 'verification_legs'));
+  }
+
+  // Issue #1387 — on-demand audit modules the reviewer Read; `review-aggregate.ts
+  // --audit-context-file` compares it against the modules whose trigger holds for the diff.
+  if ('loaded_modules' in data) {
+    if (!isStringArray(data.loaded_modules)) {
+      errors.push('loaded_modules: expected string[]');
+    } else {
+      for (const m of data.loaded_modules) {
+        if (!(m in AUDIT_MODULE_TRIGGERS)) errors.push(`loaded_modules: unknown audit module "${m}"`);
+      }
+    }
   }
 
   if (data.status === 'error') {

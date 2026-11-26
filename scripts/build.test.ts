@@ -566,7 +566,7 @@ describe('bundled shadcn skill wiring', () => {
 
   test('planner and DESIGN.md-authority audit cite the wrapper', () => {
     expect(read('src/agents/planner.md')).toContain('shadcn-skill.md');
-    expect(read('src/references/audits/10-companion-file-audit.md')).toContain('shadcn apply');
+    expect(read('src/references/audit-modules/10-companion-file-audit.md')).toContain('shadcn apply');
   });
 });
 

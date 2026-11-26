@@ -274,8 +274,8 @@ For issue N, PR P:
    building the ready set in step 2. Hunted issues never displace human-authored ones beyond
    their own computed Priority rank in step 2's descending sort — this step only decides
    *whether a wave fires this turn*, not queue ordering.
-1. Run forge sync
-2. Build ready set per `queue-dag.md` and **sort in descending order** of their Pareto Priority score.
+1. Run forge sync, then score what it ingested unscored or changed: `bun run scripts/pareto-score.ts detect`; when it lists issues, score them and run `apply` per `forge-sync.md` § Score on ingest and re-score, so the batch below ranks them by their own current priority
+2. Build ready set per `queue-dag.md` and take the next batch from `bun run scripts/pareto-order.ts --require-scored` (lowest wave, owner-pinned `user_queue_order` first, then stored priority, effort, oldest). Exit 1 names an unscored issue in the batch: run `detect` and `apply` for it per `forge-sync.md` § Score on ingest and re-score, then take the batch again.
 3. For each selected issue, set `in-flight`, spawn worker at correct phase:
    - New issues start at **handle** or **plan** if handle complete
    - Returned-from-review start at **implement**
@@ -289,7 +289,7 @@ file or schedule discoveries until incident mode exits.
 - For every codebase improvement suggestion:
   1. Calculate the Priority score: $\text{Priority} = \text{Gain} \times (11 - \text{Effort})$.
   2. If $\text{Priority} \ge 30$:
-     - If not yet filed, execute `scope_args=$(bun scripts/forge-scope.ts create-args) || exit 1; gh issue create --title "[Discovery] <Name>" --body "..." $scope_args` (explain context, gain, effort, and priority score).
+     - If not yet filed, execute `scope_args=$(bun scripts/forge-scope.ts create-args) || exit 1; gh issue create --title "[Discovery] <Name>" --body "..." $scope_args` (explain context, gain, effort, and priority score). Add the `Pareto:` line and `pareto:P*` label per `forge-sync.md` § Pareto line and label: `pareto_line=$(bun scripts/pareto-file.ts line --gain G --effort E) || exit 1` and `pareto_label=$(bun scripts/pareto-file.ts label --gain G --effort E) || exit 1`, the body ends with `$pareto_line`, and `--label "$pareto_label"` joins the flags.
      - Map the ledger's `deferred_to_issue` field to the new issue ID.
      - The next auto-sync step reconciles the new issue into `queue.json` as a new campaign backlog item.
   3. If $\text{Priority} < 30$:
@@ -382,6 +382,7 @@ increment, do not mark a dry wave, do not touch `hunt_state` at all. Re-evaluate
    mechanism § Continuous Discovery of Improvements already uses — never a second filing code
    path, `V-INT-02`) with:
    - Title: `[Kaizen] <summary>`
+   - `Pareto:` line and `pareto:P*` label from `scripts/pareto-file.ts` per `forge-sync.md` § Pareto line and label (`pareto_line` closes the body, `--label "$pareto_label"`)
    - Body: `src/references/hunt/filing.md` template verbatim
    - Size label: effort 1–2 → `size:xs`; effort 3 → `size:s`; effort 4–6 → `size:m`;
      effort 7–8 → `size:l`; effort 9–10 **or** multi-file blast radius (any effort) →

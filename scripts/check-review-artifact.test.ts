@@ -24,6 +24,18 @@ describe('reviewArtifactPresent', () => {
     );
     expect(reviewArtifactPresent(title, 687, [target], { enabled: true, write_governance: true })).toBe(true);
   });
+
+  // config-template.md: write_governance defaults to true once the block is present.
+  test('enabled:true with write_governance unset is active: the artifact is required', () => {
+    const title = 'Unset write governance';
+    const target = reviewTargetPath(title, 688);
+    expect(reviewArtifactPresent(title, 688, ['src/foo.ts'], { enabled: true })).toBe(false);
+    expect(reviewArtifactPresent(title, 688, [target], { enabled: true })).toBe(true);
+  });
+
+  test('enabled unset (block present) is inert even with write_governance true', () => {
+    expect(reviewArtifactPresent('Inert', 689, [], { write_governance: true })).toBe(true);
+  });
 });
 
 // Issue #806 AC4 — the CLI's `--manifest` flag is gone; every path-shaped flag
