@@ -75,7 +75,7 @@ describe('applyScores', () => {
       ['issueEdit', 3, { body: 'x\n\nPareto rationale: cheap and broad\n\nPareto: gain=7 effort=5 priority=42' }],
       ['labelAdd', { type: 'issue', number: 3 }, ['pareto:P3']],
     ]);
-    expect(r.queue.issues!['3']!.pareto).toEqual({ gain: 7, effort: 5, priority: 42, scored_at: NOW.toISOString(), rationale: 'cheap and broad' });
+    expect(r.queue.issues!['3']!.pareto).toEqual({ gain: 7, effort: 5, priority: 42, scored_at: NOW.toISOString(), rationale: 'cheap and broad', basis: { deps: {}, pr: null } });
     expect(r.outcomes).toEqual([{ number: 3, result: 'scored' }]);
   });
 
@@ -145,6 +145,47 @@ describe('staleness', () => {
   });
 });
 
+describe('staleness from the queue basis', () => {
+  const at = ago(1);
+  const scored = (basis?: { deps: Record<string, string>; pr: number | null }) => ({ pareto: { gain: 8, effort: 4, priority: 56, scored_at: at, ...(basis ? { basis } : {}) } });
+  const q = (deps: Record<string, string>) => Object.fromEntries(Object.entries(deps).map(([n, status]) => [n, { status }]));
+  test('a dependency whose status moved since the score is dependency stale', () => {
+    const entry = { ...scored({ deps: { '5': 'blocked' }, pr: null }), depends_on: [5] };
+    expect(staleness(entry, {}, NOW, 7, q({ '5': 'merged' }))).toBe('dependency');
+    expect(staleness(entry, {}, NOW, 7, q({ '5': 'blocked' }))).toBeNull();
+  });
+  test('a dependency added, dropped or gone from the queue is dependency stale', () => {
+    const basis = { deps: { '5': 'merged' }, pr: null };
+    expect(staleness({ ...scored(basis), depends_on: [5, 6] }, {}, NOW, 7, q({ '5': 'merged', '6': 'ready' }))).toBe('dependency');
+    expect(staleness({ ...scored(basis), depends_on: [] }, {}, NOW, 7, q({}))).toBe('dependency');
+    expect(staleness({ ...scored(basis), depends_on: [5] }, {}, NOW, 7, q({}))).toBe('dependency');
+  });
+  test('a linked PR that appeared or went away since the score is linked-pr stale', () => {
+    expect(staleness({ ...scored({ deps: {}, pr: 40 }), pr: null }, {}, NOW, 7, {})).toBe('linked-pr');
+    expect(staleness({ ...scored({ deps: {}, pr: null }), pr: 41 }, {}, NOW, 7, {})).toBe('linked-pr');
+    expect(staleness({ ...scored({ deps: {}, pr: 41 }), pr: 41 }, {}, NOW, 7, {})).toBeNull();
+  });
+  test('a score without a basis, or a call without the queue, is not flagged for dependencies', () => {
+    expect(staleness({ ...scored(), depends_on: [5] }, {}, NOW, 7, q({ '5': 'merged' }))).toBeNull();
+    expect(staleness({ ...scored({ deps: { '5': 'blocked' }, pr: null }), depends_on: [5] }, {}, NOW)).toBeNull();
+  });
+  test('an edit outranks a dependency change, which outranks age', () => {
+    const entry = { pareto: { ...scored({ deps: { '5': 'blocked' }, pr: null }).pareto, scored_at: ago(9) }, depends_on: [5] };
+    expect(staleness(entry, {}, NOW, 7, q({ '5': 'merged' }))).toBe('dependency');
+    expect(staleness(entry, { updatedAt: ago(1) }, NOW, 7, q({ '5': 'merged' }))).toBe('edited');
+  });
+  test('apply records the basis and the next detect sees a later dependency merge', async () => {
+    const queueNow = queue({ '3': { status: 'ready', depends_on: [5], pr: null }, '5': { status: 'blocked' } });
+    const { adapter } = fake();
+    const r = await applyScores(adapter, queueNow, [issue(3, 'x', ['ready'])], [{ number: 3, gain: 7, effort: 5, rationale: 'r' }], { now: NOW, rescore: {} });
+    expect(r.queue.issues!['3']!.pareto!.basis).toEqual({ deps: { '5': 'blocked' }, pr: null });
+    const merged = { ...r.queue, issues: { ...r.queue.issues!, '5': { status: 'merged' } } };
+    const later = new Date(NOW.getTime() + 60_000);
+    expect(scoreRequests(r.queue, [issue(3, `x\n\n${'Pareto: gain=7 effort=5 priority=35'}`)], { now: later })).toEqual([]);
+    expect(scoreRequests(merged, [issue(3, `x\n\n${'Pareto: gain=7 effort=5 priority=35'}`)], { now: later }).map((x) => x.rescore?.reason)).toEqual(['dependency']);
+  });
+});
+
 describe('scoreRequests with re-scoring', () => {
   const scored = (at?: string) => ({ status: 'ready', pareto: { gain: 8, effort: 4, priority: 56, ...(at ? { scored_at: at } : {}) } });
   test('lists stale scored entries with their current score and reason, alongside unscored ones', () => {
@@ -171,7 +212,7 @@ describe('applyScores re-scoring', () => {
       ['labelRemove', { type: 'issue', number: 3 }, ['pareto:P2']],
       ['labelAdd', { type: 'issue', number: 3 }, ['pareto:P4']],
     ]);
-    expect(r.queue.issues!['3']!.pareto).toEqual({ gain: 3, effort: 2, priority: 27, scored_at: NOW.toISOString(), rationale: 'now cheap' });
+    expect(r.queue.issues!['3']!.pareto).toEqual({ gain: 3, effort: 2, priority: 27, scored_at: NOW.toISOString(), rationale: 'now cheap', basis: { deps: {}, pr: null } });
     expect(r.outcomes).toEqual([{ number: 3, result: 'rescored' }]);
   });
   test('a current score is left alone even when rescoring is on', async () => {

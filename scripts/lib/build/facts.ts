@@ -66,7 +66,15 @@ export const INCLUDE_MARKER_SITES: string[] = ['src/agents/reviewer.md', 'src/ag
  * is the shape a reviewer checks. Declared side of a V-GROUND-01 pair; scan side is an
  * independent `listFiles` of the directory, never derived from this constant.
  */
-export const IMPLEMENTER_GATE_MODULE_COUNT = 16;
+export const IMPLEMENTER_GATE_MODULE_COUNT = 11;
+
+/**
+ * `.md` module count of `src/references/gate-modules/`: the implementer gates whose first clause is
+ * mechanical (plan `task_type`, spawn mode, config key, `components.json`). They ship as reference
+ * files like `audit-modules/`, and `implementer.md` carries one stub each (V-GATE-01 stub drift).
+ * Independent scan side: `scripts/checks/ground-truth.check.ts` listing the directory.
+ */
+export const IMPLEMENTER_ONDEMAND_GATE_MODULE_COUNT = 6;
 
 /**
  * Number of reviewer audit modules under `src/references/audits/` (V-AUDIT-01), the ones inlined

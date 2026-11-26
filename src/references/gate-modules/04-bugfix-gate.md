@@ -1,3 +1,6 @@
+---
+section: Bugfix Gate
+---
 ## Bugfix Gate
 
 `task_type: bugfix` on any plan (stamped by `planner.md` § Quick Track's or § Standard Track's
@@ -21,5 +24,3 @@ whether or not this gate is active.
 *   **Scout Check**: see the canonical Scout Check section above — unconditional for every
     execution mode and plan track, not specific to this gate; applies here exactly as it applies
     after any other successful implementation.
-
----

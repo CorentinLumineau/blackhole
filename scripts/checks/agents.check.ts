@@ -3,6 +3,7 @@ import * as path from 'path';
 import { parseFrontmatterFields, parseMdFrontmatter } from '../lib/build/content.ts';
 import { root, read, type CheckResult } from './check-utils.ts';
 import { findMissingGateMarkers, readComposedAgentDoc } from '../lib/check-common.ts';
+import { findOnDemandStubDrift, IMPLEMENTER_GATE_STUB_SHAPE, loadAuditModules, ONDEMAND_GATE_MODULE_DIR } from './audit-modules.check.ts';
 
 // ADR-007 T5/R2' — agents.check.ts: agent roster frontmatter, tool-policy, delegation-contract,
 // and gate-marker checks (split from the former catch-all check file, issue #322).
@@ -196,6 +197,7 @@ const checkGateContentAssertions = (): CheckResult => {
   const errors = [
     ...implementerMissing.map((m) => `implementer.md missing "${m}"`),
     ...reviewerMissing.map((m) => `reviewer.md missing "${m}"`),
+    ...findOnDemandStubDrift(read('src/agents/implementer.md'), loadAuditModules(path.join(root, ONDEMAND_GATE_MODULE_DIR)), IMPLEMENTER_GATE_STUB_SHAPE),
   ];
 
   if (errors.length) return { id: 'V-GATE-01', ok: false, detail: errors.join('; ') };

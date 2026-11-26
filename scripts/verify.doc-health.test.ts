@@ -55,8 +55,8 @@ const FM = (fields: Record<string, string>): string =>
 describe('findMissingFrontmatter (V-DOC-GOV-02)', () => {
   test('flags a doc missing any required lifecycle field', () => {
     const files = [
-      { relPath: 'foo.md', hasType: true, hasStatus: false, hasReviewTrigger: true, hasCreated: true, hasLastUpdated: true, hasSummary: true },
-      { relPath: 'bar.md', hasType: false, hasStatus: true, hasReviewTrigger: true, hasCreated: true, hasLastUpdated: true, hasSummary: true },
+      { relPath: 'foo.md', hasType: true, hasStatus: false, hasReviewTrigger: true, hasCreated: true, hasLastUpdated: true },
+      { relPath: 'bar.md', hasType: false, hasStatus: true, hasReviewTrigger: true, hasCreated: true, hasLastUpdated: true },
       {
         relPath: 'baz.md',
         hasType: true,
@@ -64,7 +64,6 @@ describe('findMissingFrontmatter (V-DOC-GOV-02)', () => {
         hasReviewTrigger: false,
         hasCreated: true,
         hasLastUpdated: true,
-        hasSummary: true,
       },
       {
         relPath: 'clean.md',
@@ -73,7 +72,6 @@ describe('findMissingFrontmatter (V-DOC-GOV-02)', () => {
         hasReviewTrigger: true,
         hasCreated: true,
         hasLastUpdated: true,
-        hasSummary: true,
       },
     ];
     expect(findMissingFrontmatter(files)).toEqual([
@@ -92,7 +90,6 @@ describe('findMissingFrontmatter (V-DOC-GOV-02)', () => {
         hasReviewTrigger: false,
         hasCreated: false,
         hasLastUpdated: false,
-        hasSummary: false,
       },
       {
         relPath: 'milestones/_archived/old.md',
@@ -101,25 +98,23 @@ describe('findMissingFrontmatter (V-DOC-GOV-02)', () => {
         hasReviewTrigger: false,
         hasCreated: false,
         hasLastUpdated: false,
-        hasSummary: false,
       },
     ];
     expect(findMissingFrontmatter(files)).toEqual([]);
   });
 
-  test('flags a doc whose only missing lifecycle field is summary', () => {
+  test('does not flag a doc lacking only summary, an optional key (#1403)', () => {
     const files = [
-      {
-        relPath: 'no-summary.md',
-        hasType: true,
-        hasStatus: true,
-        hasReviewTrigger: true,
-        hasCreated: true,
-        hasLastUpdated: true,
-        hasSummary: false,
-      },
+      { relPath: 'no-summary.md', hasType: true, hasStatus: true, hasReviewTrigger: true, hasCreated: true, hasLastUpdated: true },
     ];
-    expect(findMissingFrontmatter(files)).toEqual([{ relPath: 'no-summary.md', keys: ['summary'] }]);
+    expect(findMissingFrontmatter(files)).toEqual([]);
+  });
+
+  test('a doc missing status still reports exactly status (#1403)', () => {
+    const files = [
+      { relPath: 'x.md', hasType: true, hasStatus: false, hasReviewTrigger: true, hasCreated: true, hasLastUpdated: true },
+    ];
+    expect(findMissingFrontmatter(files)).toEqual([{ relPath: 'x.md', keys: ['status'] }]);
   });
 });
 
@@ -133,7 +128,7 @@ describe('evaluateFrontmatterPresence (V-DOC-GOV-02, advisory)', () => {
     last_updated: '2026-01-01',
   };
 
-  test('reports a doc missing summary by path and missing key, staying advisory (ok:true)', () => {
+  test('a doc missing only summary is not reported (#1403)', () => {
     withFixtureDir((dir) => {
       const { summary: _omitted, ...withoutSummary } = COMPLETE;
       write(dir, 'audits/no-summary.md', FM(withoutSummary));
@@ -141,12 +136,11 @@ describe('evaluateFrontmatterPresence (V-DOC-GOV-02, advisory)', () => {
       expect(evaluateFrontmatterPresence(dir)).toEqual({
         id: 'V-DOC-GOV-02',
         ok: true,
-        detail: 'missing lifecycle frontmatter: audits/no-summary.md (summary)',
       });
     });
   });
 
-  test('carries no detail when every doc has all six lifecycle keys', () => {
+  test('carries no detail when every doc has all five required lifecycle keys', () => {
     withFixtureDir((dir) => {
       write(dir, 'audits/complete.md', FM(COMPLETE));
       expect(evaluateFrontmatterPresence(dir)).toEqual({ id: 'V-DOC-GOV-02', ok: true });
