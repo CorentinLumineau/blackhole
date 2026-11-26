@@ -81,7 +81,7 @@ const OWNER_GATE_STEPS: Record<string, string> = {
   'awaiting-ruling-recheck': 'Owner: re-confirm the product ruling',
   'awaiting-owner-on-return': 'Owner: answer the parked decision — run /blackhole decide',
 };
-const ADDRESSES_OWNER = /^\s*owner:|needs-owner/i;
+export const ADDRESSES_OWNER = /^\s*owner:|needs-owner/i;
 
 function classifyBlockedRows(blocked: IssueRow[], issues: Record<string, QueueIssue>, lane: string | null): BlockedClass[] {
   return groupBlockedRows(blocked, issues, lane).map(({ kind, label, rows }) => {
