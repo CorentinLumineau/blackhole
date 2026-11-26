@@ -105,7 +105,8 @@ When classification is **genuine** (or environment repair is exhausted):
 2. **`queue.json`**: set `phase: implement`, `status: ready`, `review_iteration += 1` for the
    issue.
 3. **STOP** merge protocol steps 3–5 for this turn — do not attempt `gh pr merge`.
-4. **Spawn implementer** on the next scheduling pass with CI context (below).
+4. **Spawn implementer** on the next scheduling pass with CI context (below), or continue the
+   warm one per `orchestrator-delegation.md` § Fix-round continuation (SendMessage).
 
 The existing `phase-loop.md` checklist line ("BLOCK/WARN unresolved? → phase implement") and
 `review-core.md` § Review convergence are the retry ceiling — **no second counter**:
