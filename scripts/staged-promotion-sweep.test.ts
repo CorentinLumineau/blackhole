@@ -60,6 +60,15 @@ describe('staged-promotion-sweep CLI', () => {
     expect(sweep('--package-root', 'services/b').rows[0].state).toBe('unpromoted_merged');
   });
 
+  test('a malformed queue.json exits 1 naming the file; an absent one is treated as no queue', () => {
+    write('.blackhole/queue.json', '{ not json');
+    const bad = sweep();
+    expect(bad.code).toBe(1);
+    expect(bad.stderr).toContain('queue.json');
+    fs.rmSync(path.join(campaign, 'queue.json'));
+    expect(sweep().code).toBe(0);
+  });
+
   test('an unknown flag exits 2 with usage', () => {
     const { code, stderr } = sweep('--bogus', 'x');
     expect(code).toBe(2);

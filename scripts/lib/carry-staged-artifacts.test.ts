@@ -909,6 +909,13 @@ describe('isCarryTargetAllowed — package-scoped targets (monorepo sibling of #
     ['.git/documentation/x.md', '.git', false],
     ['a b/documentation/x.md', 'a b', false],
     ['x/documentation/y.md', 'x\n..', false],
+    ['/.git/documentation/x.md', './/.git', false],
+    ['/.github/documentation/x.md', './//.github', false],
+    ['/etc/documentation/x.md', './/etc', false],
+    ['.GIT/documentation/x.md', './.GIT', false],
+    ['a//b/documentation/x.md', 'a//b', false],
+    ['a/.git/documentation/x.md', 'a/.git', false],
+    ['a\\b/documentation/x.md', 'a\\b', false],
   ])('isCarryTargetAllowed(%s, %j) === %s', (targetPath, packageRoot, expected) => {
     expect(isCarryTargetAllowed(targetPath, packageRoot)).toBe(expected);
   });

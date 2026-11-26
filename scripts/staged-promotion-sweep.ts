@@ -42,10 +42,14 @@ function main(): void {
   });
 
   let queue: Record<string, { status?: string }> = {};
-  try {
-    queue = ((readJsonFile(path.join(campaignDir, 'queue.json'), 'queue.json') as { issues?: typeof queue }).issues ?? {});
-  } catch {
-    /* no queue: every issue is treated as open */
+  const queuePath = path.join(campaignDir, 'queue.json');
+  if (fs.existsSync(queuePath)) {
+    try {
+      queue = ((readJsonFile(queuePath, 'queue.json') as { issues?: typeof queue }).issues ?? {});
+    } catch (error) {
+      console.error(`staged-promotion-sweep: cannot read ${queuePath}: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(1);
+    }
   }
 
   const targetExists = (target: string): boolean =>

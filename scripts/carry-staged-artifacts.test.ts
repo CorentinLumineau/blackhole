@@ -338,6 +338,64 @@ describe('carry-staged-artifacts CLI — carry target allowlist (issue #784 AC1)
   });
 });
 
+describe('carry-staged-artifacts CLI — --package-root (issue #1394)', () => {
+  const setup = (target: string): { repoRoot: string; manifestPath: string } => {
+    const repoRoot = path.join(dir, 'repo');
+    fs.mkdirSync(repoRoot, { recursive: true });
+    const stagedRel = '.blackhole/staged/1/p.md';
+    fs.mkdirSync(path.join(repoRoot, path.dirname(stagedRel)), { recursive: true });
+    fs.writeFileSync(path.join(repoRoot, stagedRel), '# P\n');
+    const manifestPath = path.join(dir, 'manifest.json');
+    fs.writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        issue: 1,
+        updated_at: '2026-08-06T18:00:00.000Z',
+        entries: [
+          {
+            route: 'plan',
+            sub_mode: null,
+            produced_by: 'planner',
+            declared_at: '2026-08-06T17:58:00.000Z',
+            staged_path: stagedRel,
+            target_path: target,
+            target_kind: 'new_file',
+          },
+        ],
+      }),
+    );
+    return { repoRoot, manifestPath };
+  };
+  const exec = async (args: string[]) => {
+    const proc = run(args);
+    const [code, stdout, stderr] = await Promise.all([proc.exited, new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
+    return { code, stdout, stderr };
+  };
+
+  test('--package-root services/x carries the package tree target; without the flag it is skipped by the allowlist', async () => {
+    const { repoRoot, manifestPath } = setup('services/x/documentation/p.md');
+    const withFlag = await exec(['--manifest', manifestPath, '--repo-root', repoRoot, '--package-root', 'services/x']);
+    expect(withFlag.code).toBe(0);
+    expect(JSON.parse(withFlag.stdout)).toContain('services/x/documentation/p.md');
+    expect(fs.existsSync(path.join(repoRoot, 'services/x/documentation/p.md'))).toBe(true);
+
+    fs.rmSync(path.join(repoRoot, 'services'), { recursive: true, force: true });
+    const without = await exec(['--manifest', manifestPath, '--repo-root', repoRoot]);
+    expect(without.code).toBe(1);
+    expect(without.stderr).toContain('is outside the carry allowlist');
+    expect(fs.existsSync(path.join(repoRoot, 'services/x/documentation/p.md'))).toBe(false);
+  });
+
+  test('--package-root ".//.git" never admits a /.git target and nothing is written under .git', async () => {
+    const { repoRoot, manifestPath } = setup('/.git/documentation/x.md');
+    const r = await exec(['--manifest', manifestPath, '--repo-root', repoRoot, '--package-root', './/.git']);
+    expect(r.code).toBe(1);
+    expect(JSON.parse(r.stdout)).toEqual([]);
+    expect(r.stderr).toContain('is outside the carry allowlist');
+    expect(fs.existsSync(path.join(repoRoot, '.git'))).toBe(false);
+  });
+});
+
 describe('carry-staged-artifacts CLI — docs_governance gate (issue #1400)', () => {
   const stagedRel = '.blackhole/staged/1/plan-x.md';
   const writeStagedPlan = (root: string): string => {

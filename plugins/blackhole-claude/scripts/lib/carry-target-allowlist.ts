@@ -23,10 +23,14 @@ export const CARRY_TARGET_ALLOWLIST = ['documentation/**', 'ARCHITECTURE.md'] as
  * whose writes the campaign or CI executes.
  */
 const safePackageRoot = (value: string | undefined): string => {
-  if (!value || /[\r\n]/.test(value)) return '';
-  const root = path.posix.normalize(planPackageRoot(`---\npackage_root: ${value}\n---\n`) || '.');
-  if (root === '.' || root === '..' || root.startsWith('../')) return '';
-  return /^\.git(hub)?(\/|$)/.test(root) ? '' : root;
+  if (!value || /[\r\n\\]/.test(value)) return '';
+  // `planPackageRoot` rejects a leading `/` before it strips `./`, so `.//.git` survives as
+  // `/.git`; the structural checks below run on the stripped result and refuse every such form.
+  const stripped = planPackageRoot(`---\npackage_root: ${value}\n---\n`) || '.';
+  const root = path.posix.normalize(stripped);
+  if (root === '.' || path.posix.isAbsolute(stripped) || stripped.includes('//')) return '';
+  const forbidden = (segment: string): boolean => segment === '' || segment === '..' || /^\.git(hub)?$/i.test(segment);
+  return root.split('/').some(forbidden) ? '' : root;
 };
 
 /**
