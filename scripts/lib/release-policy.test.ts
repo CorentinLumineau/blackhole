@@ -1,6 +1,9 @@
 import { describe, expect, test } from 'bun:test';
+import { AGENTS_BUILD_ROOT, CODEX_TARGET_DIRS, COMMITTED_TARGET_TREES } from './build/paths.ts';
 import {
+  SHIPPED_PATHS,
   decideCut,
+  matchesPathRule,
   evaluateFreshness,
   nextCutVersion,
   parseFirstParentLog,
@@ -167,5 +170,26 @@ describe('nextCutVersion', () => {
   test('the cut never goes below a hand-bumped manifest, and ignores release commits', () => {
     const commits = [commit(1), commit(0, { isReleaseCommit: true, prNumber: null, subject: 'feat: release [skip release]' })];
     expect(nextCutVersion('0.36.0', '0.36.6', commits).version).toBe('0.36.6');
+  });
+});
+
+describe('SHIPPED_PATHS', () => {
+  const MAINTAINER_ONLY = new Set(['cursor', 'claude-native']);
+
+  test('covers every consumer-facing committed target tree', () => {
+    const missed = COMMITTED_TARGET_TREES.filter((tree) => !MAINTAINER_ONLY.has(tree.id))
+      .flatMap((tree) => tree.paths)
+      .filter((p) => p !== `${AGENTS_BUILD_ROOT}/`)
+      .filter((p) => !matchesPathRule(`${p}probe`, SHIPPED_PATHS) && !matchesPathRule(p, SHIPPED_PATHS));
+    expect(missed).toEqual([]);
+  });
+
+  test('covers every codex target directory', () => {
+    for (const dir of CODEX_TARGET_DIRS) expect(matchesPathRule(`${dir}/x`, SHIPPED_PATHS)).toBe(true);
+  });
+
+  test('leaves maintainer-only trees out', () => {
+    expect(matchesPathRule('.cursor/rules/x.mdc', SHIPPED_PATHS)).toBe(false);
+    expect(matchesPathRule('.claude/settings.json', SHIPPED_PATHS)).toBe(false);
   });
 });

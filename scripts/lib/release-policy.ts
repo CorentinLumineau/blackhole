@@ -4,6 +4,7 @@
 import {
   CADENCE_THRESHOLD,
   classifyBatch,
+  headHasSkipRelease,
   higherCutVersion,
   type MergedPr,
   type SemverBump,
@@ -84,7 +85,7 @@ export function parseFirstParentLog(raw: string): PendingCommit[] {
       body: body.trim(),
       paths,
       prNumber: pr ? Number(pr[1]) : null,
-      isReleaseCommit: subject.includes('[skip release]'),
+      isReleaseCommit: headHasSkipRelease(subject),
       immediate: isImmediate(subject, body, paths),
       touchesShipped: paths.some((file) => matchesPathRule(file, SHIPPED_PATHS)),
     });
@@ -107,6 +108,10 @@ export type CutDecision = {
   pending: number;
 };
 
+/**
+ * Inputs for `decideCut`. `isVerified` must be built from the M2 freshness result
+ * (`evaluateFreshness`): a commit is verified only when the newest green main run covers it.
+ */
 export type CutInput = {
   commits: PendingCommit[];
   now: Date;
@@ -114,15 +119,15 @@ export type CutInput = {
   force?: boolean;
   /** M2: only an immediate commit already verified by main CI may cut at once. Absent means all are. */
   isVerified?: (sha: string) => boolean;
-  threshold?: number;
-  maxAgeMs?: number;
-  cooldownMs?: number;
 };
 
+/**
+ * Decide whether to cut now. Class precedence, first match wins: nothing pending, `force`, no
+ * shipped path changed, `immediate` (only a verified commit), then `batch`/`age` unless the
+ * last tag is inside the cooldown (`cooldown`, no cut), else `none`. The caller must pass an
+ * `isVerified` built from the M2 freshness result; omitting it treats every commit as verified.
+ */
 export function decideCut(input: CutInput): CutDecision {
-  const threshold = input.threshold ?? RELEASE_THRESHOLD;
-  const maxAgeMs = input.maxAgeMs ?? RELEASE_MAX_AGE_MS;
-  const cooldownMs = input.cooldownMs ?? RELEASE_COOLDOWN_MS;
   const open = input.commits.filter((c) => !c.isReleaseCommit);
   const batch = counted(input.commits);
   const pending = batch.length;
@@ -137,18 +142,18 @@ export function decideCut(input: CutInput): CutDecision {
     return { class: 'immediate', cut: true, reason: `immediate change ${urgent[0].sha.slice(0, 7)}`, pending };
   }
 
-  const cooling = input.lastTagAt !== null && input.now.getTime() - input.lastTagAt.getTime() < cooldownMs;
+  const cooling = input.lastTagAt !== null && input.now.getTime() - input.lastTagAt.getTime() < RELEASE_COOLDOWN_MS;
   const oldest = batch.reduce((min, c) => Math.min(min, Date.parse(c.committedAt)), Infinity);
-  const batchDue = pending >= threshold;
-  const ageDue = pending >= 1 && input.now.getTime() - oldest >= maxAgeMs;
+  const batchDue = pending >= RELEASE_THRESHOLD;
+  const ageDue = pending >= 1 && input.now.getTime() - oldest >= RELEASE_MAX_AGE_MS;
 
   if (batchDue || ageDue) {
     if (cooling) return { class: 'cooldown', cut: false, reason: 'last tag is within the cooldown window', pending };
     return batchDue
-      ? { class: 'batch', cut: true, reason: `${pending} pending PRs reach the threshold of ${threshold}`, pending }
+      ? { class: 'batch', cut: true, reason: `${pending} pending PRs reach the threshold of ${RELEASE_THRESHOLD}`, pending }
       : { class: 'age', cut: true, reason: 'oldest pending PR reached the age limit', pending };
   }
-  return none(`${pending} of ${threshold} pending PRs, none old enough`);
+  return none(`${pending} of ${RELEASE_THRESHOLD} pending PRs, none old enough`);
 }
 
 export type VerifyRun = {

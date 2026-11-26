@@ -20,6 +20,11 @@ const defaultGit: GitRunner = (args) => execFileSync('git', args, { cwd: root, e
 
 export type PolicyReport = CutDecision & { tag: string | null; nextVersion: string | null };
 
+/**
+ * Offline release decision for the checkout: reads tags and first-parent history through `git`
+ * and decides with `decideCut`. It does not read verify runs, so `isVerified` is unset and every
+ * immediate commit counts as verified; the wiring slice supplies the M2 freshness check.
+ */
 export function reportPolicy(git: GitRunner, manifestVersion: string, now: Date, force = false): PolicyReport {
   const tag = parseLatestVTagList(git(['tag', '-l', 'v*', '--sort=-version:refname']));
   const range = tag ? [`${tag}..HEAD`] : [];
