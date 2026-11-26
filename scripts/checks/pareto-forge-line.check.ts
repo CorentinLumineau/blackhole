@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { root, type CheckResult } from './check-utils.ts';
 
-// Issue #1530 — pareto-forge-line.check.ts: a ready issue on the forge carries the `Pareto:` body
+// pareto-forge-line.check.ts: a ready issue on the forge carries the `Pareto:` body
 // line and exactly the matching `pareto:P*` bucket label (V-PARETO-02), and every build ships the
 // prose that makes each filing and ingest site write both. Two halves:
 //   1. findParetoLineViolations — pure detector over forge issues (lives in lib/pareto-score.ts so

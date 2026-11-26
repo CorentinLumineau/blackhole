@@ -18,7 +18,7 @@ const issue = (labels: string[], body = 'x') => ({ number: 4, body, labels: labe
 describe('rescoreIssue', () => {
   test('edits the body and swaps the label', async () => {
     const { adapter, calls } = fake();
-    await rescoreIssue(adapter, issue(['ready', 'pareto:P3']), { gain: 8, effort: 4 });
+    expect(await rescoreIssue(adapter, issue(['ready', 'pareto:P3']), { gain: 8, effort: 4 })).toBe(true);
     expect(calls).toEqual([
       ['issueEdit', 4, { body: 'x\n\nPareto: gain=8 effort=4 priority=56' }],
       ['labelRemove', { type: 'issue', number: 4 }, ['pareto:P3']],
@@ -27,7 +27,7 @@ describe('rescoreIssue', () => {
   });
   test('makes no adapter call when already correct', async () => {
     const { adapter, calls } = fake();
-    await rescoreIssue(adapter, issue(['pareto:P2'], 'x\n\nPareto: gain=8 effort=4 priority=56'), { gain: 8, effort: 4 });
+    expect(await rescoreIssue(adapter, issue(['pareto:P2'], 'x\n\nPareto: gain=8 effort=4 priority=56'), { gain: 8, effort: 4 })).toBe(false);
     expect(calls).toEqual([]);
   });
   test('propagates an adapter error', async () => {
