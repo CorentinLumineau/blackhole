@@ -22,16 +22,20 @@ const codesNamedIn = (text: string): Set<string> =>
 export const stubBody = (lines: string[], stub: ReturnType<typeof markdownHeadings>[number]): string =>
   lines.slice(stub.line, sectionEnd(markdownHeadings(lines), stub, lines.length)).join('\n');
 
-// Leg D — one `###` stub in the reviewer source per on-demand module. Pure over the source text so
-// the fixture tests can break each property on its own.
-export const findOnDemandStubDrift = (
-  reviewerSrc: string,
-  modules: StubModule[],
-  agentFile = 'reviewer.md',
-  moduleDir = 'audit-modules',
-): string[] => {
-  const lines = reviewerSrc.split('\n');
-  const headings = markdownHeadings(lines).filter((h) => h.level === 3);
+// Leg D — one stub in the agent shell per on-demand module. Pure over the source text so the
+// fixture tests can break each property on its own. The shape names the shell, module directory
+// and heading level: the reviewer and planner use `###` stubs, the implementer's gates `##`.
+export type StubShape = { shell: string; modulesDir: string; level: number };
+export const REVIEWER_STUB_SHAPE: StubShape = { shell: 'reviewer.md', modulesDir: 'audit-modules', level: 3 };
+export const PLANNER_STUB_SHAPE: StubShape = { shell: 'planner.md', modulesDir: 'planner-tracks', level: 3 };
+// The implementer's on-demand gates: bodies under `references/gate-modules/`, one `##` stub each in
+// `src/agents/implementer.md`. `agents.check.ts` (V-GATE-01) runs the drift rule over them.
+export const IMPLEMENTER_GATE_STUB_SHAPE: StubShape = { shell: 'implementer.md', modulesDir: 'gate-modules', level: 2 };
+export const ONDEMAND_GATE_MODULE_DIR = 'src/references/gate-modules';
+
+export const findOnDemandStubDrift = (shellSrc: string, modules: StubModule[], shape: StubShape = REVIEWER_STUB_SHAPE): string[] => {
+  const lines = shellSrc.split('\n');
+  const headings = markdownHeadings(lines).filter((h) => h.level === shape.level);
   const errors: string[] = [];
   for (const m of modules) {
     if (!m.section) {
@@ -40,18 +44,18 @@ export const findOnDemandStubDrift = (
     }
     const stubs = headings.filter((h) => stubMatchesSection(h.text.replace(/`/g, ''), m.section!));
     if (stubs.length !== 1) {
-      errors.push(stubs.length === 0 ? `${m.file}: no stub heading for section "${m.section}" in ${agentFile}` : `${m.file}: ${stubs.length} stubs for section "${m.section}" in ${agentFile}`);
+      errors.push(stubs.length === 0 ? `${m.file}: no stub heading for section "${m.section}" in ${shape.shell}` : `${m.file}: ${stubs.length} stubs for section "${m.section}" in ${shape.shell}`);
       continue;
     }
     const body = stubBody(lines, stubs[0]);
+    const readPath = `references/${shape.modulesDir}/${m.file}`;
     if (!/\*\*Load when\*\*:/.test(body)) errors.push(`${m.file}: stub has no \`Load when\` trigger line`);
-    if (!body.includes(`references/${moduleDir}/${m.file}`)) errors.push(`${m.file}: stub has no \`Read\` path to references/${moduleDir}/${m.file}`);
+    if (!body.includes(readPath)) errors.push(`${m.file}: stub has no \`Read\` path to ${readPath}`);
     const named = codesNamedIn(body);
     for (const code of m.vcodes) if (!named.has(code)) errors.push(`${m.file}: stub does not name ${code}`);
   }
   return errors;
 };
-
 
 // V-AUDIT-02 — `src/agents/planner.md` keeps one stub per track module. On top of the shared stub
 // shape, a directive-only track's `Load when` must name its exact `track: <name>` directive: that
@@ -69,5 +73,5 @@ export const findPlannerTrackDrift = (plannerSrc: string, modules: StubModule[])
       const load = stubBody(lines, stub).split('\n').find((l) => l.includes('**Load when**:')) ?? '';
       return load.includes(`\`track: ${m.track}\``) ? [] : [`${m.file}: stub \`Load when\` does not name the \`track: ${m.track}\` directive`];
     });
-  return [...findOnDemandStubDrift(plannerSrc, modules, 'planner.md', 'planner-tracks'), ...directiveErrors];
+  return [...findOnDemandStubDrift(plannerSrc, modules, PLANNER_STUB_SHAPE), ...directiveErrors];
 };

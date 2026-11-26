@@ -206,3 +206,42 @@ hand-arithmetic — see the implementation plan's T5 for the current baseline).
   - **Measured.** Compiled `agents/reviewer.md` 22,247 to 13,538 estimated tokens (54,152 B), about 8,709
     saved per reviewer spawn (`bun run scripts/worker-context-size.ts`). The saving remains
     because a normal backend diff in a repo without `docs_governance` triggers none of the 14.
+
+- **2026-11-26, issue #1541 (on-demand modules for the implementer's mechanically gated gates).**
+  The same rule applies to the implementer's gates. Six of its 17 gate modules open with a
+  mechanical clause: Bugfix Gate (plan `task_type: bugfix`), Conflict Resolution Gate (spawn
+  mode), Promote Review Artifact (merge-readiness spawn), Companion-file Sync (`docs_governance`
+  keys), Visual Evidence Capture (`display_targets` and `route.ui`) and the bundled shadcn skill
+  (`components.json`). They moved from `src/references/gates/` to `src/references/gate-modules/`,
+  mirrored into the reference trees like `audit-modules/`, and `implementer.md` keeps one `##`
+  stub each with the gate's own heading text, a `Load when` line and a `Read` path. The Runtime
+  Proof section used to share a file with Visual Evidence Capture; its trigger is a judgment
+  (a user-visible change), so it split out to the inlined `gates/17-runtime-proof.md`.
+  - **Measured.** Compiled `agents/implementer.md` 13,334 to 11,204 estimated tokens (53,338 to
+    44,816 B), about 2,130 saved per implementer spawn once the stubs are counted; the gate
+    bodies were about 12,077 B. A ceiling test in `scripts/worker-context-size.test.ts` guards it.
+  - **Checks.** `V-GATE-01` reuses Leg D (`findOnDemandStubDrift`) over `gate-modules/` with the
+    implementer's shell name and heading level. `IMPLEMENTER_GATE_MODULE_COUNT` (11, inlined) and
+    `IMPLEMENTER_ONDEMAND_GATE_MODULE_COUNT` (6) are each checked against a directory scan by
+    `V-GROUND-01`.
+  - **Stub shape decision.** Hand-written stubs stay. Two consumers now share one drift function,
+    and a generated stub would have to derive free-form trigger prose from frontmatter, which
+    moves the wording out of the shell the agent reads. The generated alternative stays deferred
+    until a third consumer or a stub that drifts despite Leg D.
+  - **Residual risk.** Unlike the reviewer, the implementer has no script-side trigger predicate
+    and no `loaded_modules[]` declaration: the orchestrator cannot see which gates a worker read.
+    The stub states that a gate whose condition holds and whose module was not read is a skipped
+    gate; the reviewer's plan-compliance audit remains the evidence the gate ran.
+
+## Worker V-code lookup
+
+Every worker shell's `Binding rules:` line used to point at `blackhole-vcodes.md`, which a worker
+read whole (37,283 B, about 9.3k estimated tokens per spawn). The six shells now carry one
+identical line telling the worker to `grep -nF 'V-<FAMILY>-'` the table for each code it cites or
+a gate names, and to read the whole table only when the task needs the full code set. The table
+stays the single source: a family prefix matches the grouped rows (`V-SOLID-01/03`,
+`V-KISS-01 / V-YAGNI-01`), and the row's Severity column is the only source of a finding's
+severity, which `review-aggregate.ts` post-processes. `scripts/worker-vcode-lookup.test.ts` pins
+the six lines as identical and runs the lookup against the table. Residual risk: a worker that
+never looks a code up can miss a rule it would have read; the reviewer's V-code audit remains the
+backstop.

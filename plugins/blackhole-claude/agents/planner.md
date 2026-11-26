@@ -9,7 +9,7 @@ disallowedTools: [Delete]
 
 You are the **backlog campaign planner agent**. Your job is to produce a structured, high-quality implementation plan for a backlog issue.
 
-Binding rules: `${CLAUDE_PLUGIN_ROOT}/rules/blackhole-vcodes.md`.
+Binding rules: look up each V-code you cite with `grep -nF 'V-<FAMILY>-' ${CLAUDE_PLUGIN_ROOT}/rules/blackhole-vcodes.md`; the row's Severity column is the only source of severity. Read the whole table only when the task needs the full code set.
 
 **Bundled shadcn skill**: when the target repo has `components.json` and the issue
 is UI or design-system work, follow `${CLAUDE_PLUGIN_ROOT}/skills/blackhole/references/shadcn-skill.md`

@@ -1,14 +1,16 @@
 ---
-description: V-code enforcement table for Blackhole agents — restate in every worker prompt
+description: V-code enforcement table for Blackhole agents — workers look codes up by grep, not by reading the table whole
 globs:
 alwaysApply: false
 ---
 
 # Blackhole V-Codes
 
-Restate this table in every implementation and review agent prompt. Do not paste
-longer definitions (token cost, drift). Persist every finding to
-`findings-ledger.json`.
+Workers look a code up with `grep -nF 'V-<FAMILY>-' <this file>` (the family prefix
+matches grouped rows such as `V-SOLID-01/03` and `V-KISS-01 / V-YAGNI-01`) and read the
+whole table only when the task needs the full code set. The Severity column of the row is
+the only source of a finding's severity. Do not paste the table or longer definitions
+into a prompt (token cost, drift). Persist every finding to `findings-ledger.json`.
 
 | Code | Rule | Severity | Primary enforcement site |
 |------|------|----------|--------------------------|
@@ -94,7 +96,7 @@ longer definitions (token cost, drift). Persist every finding to
 | V-CONFIG-01 | New config/env keys follow established naming, registered | WARN | reviewer.md § Integration Coherence (Config/env key naming) |
 | V-CONFIG-02 | New `.blackhole/config.json` keys registered in config-template.md | WARN | scripts/checks/config-registration.check.ts |
 | V-CONFIG-03 | A top-level config block registered in config-template.md declares no status page dataset (or `none` with a reason) in § Status page coverage, or names a dataset the plugin does not write, a row it does not emit, or one no template panel draws; or its `Launch summary` cell is empty, names no launch summary row, a row whose `LAUNCH_ROW_CLAIMS` do not cover it, or `Other config` on a claimed block, or leaves out a row that claims it | BLOCK | scripts/checks/status-coverage.check.ts |
-| V-GATE-01 | A required gate marker went missing from an agent prompt — `implementer.md`'s 5-step verification-evidence gate or `reviewer.md` § Suggestion Proportionality Gate no longer carries its declared marker text, so the gate can be edited away without any check noticing | WARN | scripts/checks/agents.check.ts |
+| V-GATE-01 | A required gate marker went missing from an agent prompt — `implementer.md`'s 5-step verification-evidence gate or `reviewer.md` § Suggestion Proportionality Gate no longer carries its declared marker text, so the gate can be edited away without any check noticing; or an on-demand `src/references/gate-modules/*.md` module has no `implementer.md` stub, or its stub lacks the `Load when` line or the `Read` path | WARN | scripts/checks/agents.check.ts |
 | V-GATE-02 | Gate-resolution clause restated outside its config-template.md `**Resolution**` sentence instead of cited by reference | WARN | scripts/checks/gate-resolution-citation.check.ts |
 | V-TREE-01 | Committed target tree drift — paths.ts's COMMITTED_TARGET_TREES diverges from documentation/architecture.md § Committed target trees or README § Installation Paths, or the build-tree-install-resolution audit's Tree-coverage table, named per-doc | WARN | scripts/checks/tree-registry.check.ts |
 | V-SCOPE-01 | No refactoring untouched code | WARN | reviewer.md § Suggestion Proportionality Gate |
