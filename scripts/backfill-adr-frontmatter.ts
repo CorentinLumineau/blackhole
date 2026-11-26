@@ -7,8 +7,8 @@ import { parseIndexTableRows, walkMdFilesAbs } from './lib/check-common.ts';
 import { parseFlags } from './lib/argv-flags.ts';
 import { root } from './checks/check-utils.ts';
 
-// Issue #923 — one-time migration CLI: backfills the six `doc-governance.md` lifecycle
-// frontmatter keys (type, summary, status, review_trigger, created, last_updated) onto every
+// Issue #923 — one-time migration CLI: backfills the five required `doc-governance.md`
+// lifecycle keys plus the optional `summary` (type, summary, status, review_trigger, created, last_updated) onto every
 // `documentation/decisions/ADR-*.md` file missing at least one. `status` is always present
 // already and is never touched (governed separately by V-ADR-01). `type` is the constant "adr"
 // for every file in this folder. `summary`/`review_trigger` are copied verbatim from the file's
@@ -180,7 +180,7 @@ const renderKeyLine = (key: RequiredKey, fields: AdrFrontmatterFields): string =
 // `supersedes:` — all widely present across this corpus, confirmed by a full-corpus scan before
 // writing this function). Splicing only the missing lines in place, leaving every other line
 // byte-for-byte untouched, is strictly safer and still produces the canonical relative order for
-// the six required keys (Decision Record, PR body).
+// the six keys this CLI manages: the five required ones plus `summary`, which an ADR carries so its frontmatter matches its decisions-index row (Decision Record, PR body).
 export const insertMissingFrontmatterKeys = (
   frontmatterLines: string[],
   fields: AdrFrontmatterFields,

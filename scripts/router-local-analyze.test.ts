@@ -266,6 +266,13 @@ describe('blackhole-vcodes.md — documentation alignment registration (#446)', 
     expect(row).toContain('last_updated');
   });
 
+  test('summary is optional with an H1 fallback everywhere a required-key list is stated', () => {
+    const governance = read('src/references/doc-governance.md');
+    const maintenance = governance.slice(governance.indexOf('**Generated, not hand-appended'));
+    expect(maintenance.slice(0, 700)).toContain('first H1');
+    expect(read('scripts/backfill-adr-frontmatter.ts')).not.toMatch(/the six required keys|six `doc-governance\.md` lifecycle/);
+  });
+
   test('product-principles template uses retired ruling status enum', () => {
     const template = read('templates/companion-files/product-principles.md.template');
     expect(template).toContain('active | superseded | retired');
