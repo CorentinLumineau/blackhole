@@ -4,7 +4,7 @@
 |---------|-----|-------------|
 | Scope | acme/widgets · milestone **v2.0** · 2 ready / 3 blocked / 6 in flight · 9 open issues / 6 open PRs | The campaign works only these issues; anything outside the filter is left alone. |
 | Order | bugs first, then Pareto priority · stacking on | Bugs land before features; a PR that overlaps another stacks on it instead of waiting. |
-| Roadmap | #110 unscored · #111 unscored · 0 re-scored this run | Workers take ready issues in this order: dependency wave, priority, effort, oldest. Stale scores are redone first. |
+| Roadmap | #110 unscored · #111 unscored · 0 re-scored this run | Workers take ready issues in this order: dependency wave, owner pins, priority, effort, oldest. Stale scores are redone first. |
 | Merge | leave-open · you merge | Every PR is driven to LGTM and left open for you to review and merge. |
 | Pacing | usage_budget enabled · 5h 85/90% · weekly 78/80% · windows all · max 3 workers · pace gate max age 600 s · reading source rate-limit-cache, 0 s old · no catchup preset | Spawns stop at 5h 85%, the campaign at weekly 80%; a reading older than 600 s is not trusted. |
 | Budget | GO · 5h 40% (resets Fri 13 Nov 13:30 UTC) · weekly 50% (resets Mon 16 Nov 09:30 UTC) · 1 worker allowed · stops 5h 85/90%, weekly 78/80% · forecast 0.52%/h, weekly stop Sun 15 Nov 19:06 UTC | 1 worker starts now; spawning stops at 5h 85%, the campaign at weekly 80%. |

@@ -55,6 +55,8 @@ export type QueueIssue = {
 export type QueueJson = {
   refreshed_at?: string;
   campaign_started_at?: string;
+  /** Owner pins: the run takes these first (`selectBatch`). */
+  user_queue_order?: number[];
   issues?: Record<string, QueueIssue>;
 };
 

@@ -338,6 +338,9 @@ contract tier shown (`M` is a path outside the assigned root).
 | `case ${x:-a b} in a)env "GIT_TRACE=M/x" git status;; esac` (case word split on a space) | silent | BLOCK (T1) |
 | `set -a; cat <<EOF` with `GIT_TRACE` only in the heredoc body or a comment | silent | WARN (T2-8) |
 | `${X:+a b} env "GIT_TRACE=M/x" git status` (braced expansion holding a space, which may expand to nothing) | silent | BLOCK (T1) |
+| `${X}${Y} env "GIT_TRACE=M/x" git status` (adjacent braced expansions, each may expand to nothing) | silent | BLOCK (T1) |
+| `$X$Y env "GIT_TRACE=M/x" git status` (adjacent parameter expansions) | silent | BLOCK (T1) |
+| `${X}$(true) 2> ./log env "GIT_TRACE=M/x" git status` (expansion adjacent to a substitution, then a redirect) | silent | BLOCK (T1) |
 
 The allexport mention test (T2-8) now reads the whole command rather than the heredoc-masked
 view of one text. A value inside the assigned root, a relative value and a non-file value such as

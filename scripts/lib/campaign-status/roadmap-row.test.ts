@@ -54,6 +54,21 @@ describe('roadmapRow', () => {
     expect(roadmapRow(q).value).toBe('#1 P10 · #2 P90 · 0 re-scored this run');
   });
 
+  test('puts owner pins in user_queue_order first, in pin order, as the workers take them', () => {
+    const q = { ...queue({ '1': scored(80, 2, BEFORE), '2': scored(56, 4, BEFORE), '3': scored(10, 8, BEFORE), '4': scored(30, 5, BEFORE) }), user_queue_order: [3, 4] };
+    expect(roadmapRow(q).value).toBe('#3 P10 · #4 P30 · #1 P80 · #2 P56 · 0 re-scored this run');
+  });
+
+  test('a pin behind an unmet dependency does not jump the wave-0 issues', () => {
+    const q = { ...queue({ '1': scored(10, 5, BEFORE), '2': scored(90, 1, BEFORE, { depends_on: [1] }), '3': scored(50, 3, BEFORE) }), user_queue_order: [2] };
+    expect(roadmapRow(q).value).toBe('#3 P50 · #1 P10 · #2 P90 · 0 re-scored this run');
+  });
+
+  test('a pin that is not ready is ignored', () => {
+    const q = { ...queue({ '1': scored(80, 2, BEFORE), '2': { status: 'merged' } }), user_queue_order: [2, 9] };
+    expect(roadmapRow(q).value).toBe('#1 P80 · 0 re-scored this run');
+  });
+
   test('names an unscored ready issue instead of hiding it', () => {
     const q = queue({ '1': scored(56, 4, BEFORE), '2': { status: 'ready' } });
     expect(roadmapRow(q).value).toBe('#1 P56 · #2 unscored · 0 re-scored this run');
