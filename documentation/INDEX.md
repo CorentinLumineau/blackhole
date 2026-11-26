@@ -272,5 +272,5 @@
 | reviews/review-usage-normalize-pin-mixed-shape-precedence-and-the-expired-desktop-window-in-fil.md | Review artifact for issue #1374 (LGTM) | review | current | on file change |
 | reviews/review-usage-ts-pace-floor-ts-usage-reject-the-ccd-get-usage-payload-that-usage-probe-f.md | Review artifact for issue #1361 (LGTM) | review | current | on file change |
 | runbooks/cloud-agent-plugins.md | Cloud Agents on this repo install Mercure and Blackhole from GitHub, not the marketplace cache | runbook | current | on file change |
-| runbooks/release-cadence.md | Day-2 operations for the every-20-merged-PR release cadence: owner enablement, optional Haiku notes, force cuts, and failure recovery | runbook | current | on release workflow, release-cadence, or release script change |
+| runbooks/release-cadence.md | Day-2 operations for the every-10-merged-PR release cadence: owner kill switch, optional Haiku notes, force cuts, and failure recovery | runbook | current | on release workflow, release-cadence, or release script change |
 | runbooks/shadcn-skill.md | Blackhole vendors the official shadcn/ui skill at a pinned commit and loads it for UI work when components.json exists | runbook | current | on file change |

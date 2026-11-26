@@ -1,3 +1,4 @@
+import type { WorkerContextRecord } from '../worker-context-report.ts';
 import type { UsageVerdictName, WeeklyPace } from '../usage-budget.ts';
 
 // Mirrors the `route` object SSOT — `queue-dag.md` § `route` object. Field names and enum
@@ -44,6 +45,8 @@ export type QueueIssue = {
   /** Parent epic issue; a workstream source (`status_page.streams.from: epic`). */
   epic_parent?: number | null;
   route?: Route;
+  /** Parsed from the forge body's `Pareto:` line by the forge sync (`scripts/lib/pareto.ts`); absent when unscored. `scored_at`/`rationale` are written by `scripts/pareto-score.ts apply` and kept by the sync while the forge line is unchanged. */
+  pareto?: { gain: number; effort: number; priority: number; scored_at?: string; rationale?: string };
 };
 
 export type QueueJson = {
@@ -390,6 +393,8 @@ export type StatusReport = {
   run: RunPanel;
   /** The parked owner decisions, most-blocking first: the "Decisions waiting for you" panel. Additive. */
   pending_decisions: PendingRow[];
+  /** The runtime worker-context report `scripts/worker-context-report.ts --record` wrote; null when none is recorded. Additive. */
+  worker_context: WorkerContextRecord | null;
 };
 
 /** The status page's usage-budget panel. Times are ISO 8601; every number is null when the window or the reading is absent. */

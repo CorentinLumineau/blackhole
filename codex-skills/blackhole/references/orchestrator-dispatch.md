@@ -82,7 +82,8 @@ On `planner` returning `status: ready, track: brainstorm`:
    `codex-skills/blackhole/references/phase-loop.md` § Continuous Discovery of
    Improvements path — one Priority computation and one `gh issue create` per child clearing
    the `>= 30` gate; children below the gate are logged `archived` in the ledger, never filed
-   (identical rule, not a new one).
+   (identical rule, not a new one). Each filed child carries the `Pareto:` line and `pareto:P*`
+   label from `scripts/pareto-file.ts` (`forge-sync.md` § Pareto line and label).
 5. Close the original brainstorm issue: `queue.json` status transition `* → closed`
    (`queue-dag.md` § Status transitions, existing enum, no new status value) with `notes:
    "satisfied-by-children:<n1>,<n2>,..."` (extends the existing free-text `notes` convention)

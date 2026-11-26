@@ -6,7 +6,8 @@ vcodes: [V-DOCFACT-01]
 *   **Detection**: fires when the diff touches `documentation/**` or a root companion file
     (`ARCHITECTURE.md`, `AGENTS.md`, `DESIGN.md`, `README.md` at repo root) — cross-reference
     § Companion-File Audit's companion-file surface and § Docs-Only Execution Mode Compliance's documentation path patterns; cite, do not restate
-    keyword lists (`V-INT-02`).
+    keyword lists (`V-INT-02`). Both are on-demand modules: Read `audit-modules/10-companion-file-audit.md`
+    and `audit-modules/08-docs-only-execution-mode.md` under the references directory when you need those lists.
 *   **Check**: for added/modified prose asserting a factual or arithmetic claim checkable from
     in-repo evidence, independently re-compute at least one such claim from primary sources
     (`git`, `gh`, `find`/`wc`, etc.). Contradicted claim — severity `WARN`, V-code `V-DOCFACT-01`,

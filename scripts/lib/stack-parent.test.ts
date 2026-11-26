@@ -87,6 +87,17 @@ describe('pickStackParent', () => {
     expect(pickStackParent(q, 11, { parentFiles: { '10': ['docs/z.md'] } })).toBeNull();
     expect(pickStackParent(q, 11, { parentFiles: { '10': ['src/a/x.ts'] } })?.parent).toBe(10);
   });
+  test('a parent that only adds rows to an append-only index is no overlap; any other shared file still is', () => {
+    const IDX = 'documentation/decisions/INDEX.md';
+    const q = {
+      '10': { status: 'in-flight', pr: 100, touch_paths: [IDX] },
+      '11': { status: 'ready', touch_paths: [IDX, 'documentation/decisions/ADR-070.md'] },
+    };
+    const parentFiles = { '10': [IDX] };
+    expect(pickStackParent(q, 11, { parentFiles })?.parent).toBe(10);
+    expect(pickStackParent(q, 11, { parentFiles, pureAdditions: { '10': [IDX] } })).toBeNull();
+    expect(pickStackParent(q, 11, { parentFiles: { '10': [IDX, 'documentation/decisions/ADR-070.md'] }, pureAdditions: { '10': [IDX] } })?.parent).toBe(10);
+  });
   test('each default or broad glob is dropped individually from a mixed list', () => {
     const q = {
       '10': { status: 'in-flight', pr: 100, touch_paths: ['src/a/x.ts'] },

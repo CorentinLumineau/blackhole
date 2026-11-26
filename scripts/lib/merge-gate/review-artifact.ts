@@ -8,8 +8,10 @@ export type DocsGovernanceConfig = {
   write_governance?: boolean;
 };
 
+// `config-template.md` § `docs_governance.enabled` is the SSOT: `enabled` must be the literal
+// `true`; `write_governance` defaults to `true` once the block is present.
 export function writeGovernanceActive(config: DocsGovernanceConfig | undefined): boolean {
-  return config?.enabled === true && config?.write_governance === true;
+  return config?.enabled === true && config?.write_governance !== false;
 }
 
 /** merge-gate.md §5 — review artifact must be on the PR before merge. */
