@@ -62,3 +62,42 @@ describe('bash-write-target-guard.js — redirect-shaped text inside a quoted me
     });
   }
 });
+
+// Issue #1438: a markdown body quoted for `gh` carries backticks and escaped quotes; each used to
+// disable masking for the whole command, so prose like `a > /manifest.json` became a write target.
+// Inside plain single quotes every character is literal; inside double quotes a backslash pair is.
+const LITERAL_QUOTE_TEXT_ONLY = [
+  `gh issue create --title t --body 'writes a > <main>/manifest.json via \`x\` and $(y)'`,
+  `gh issue create --title t --body "writes a > <main>/manifest.json via \\\`x\\\`"`,
+  `gh issue create --title t --body "say \\"a > <main>/manifest.json\\" now"`,
+  `gh issue create --title t --body "costs \\$5 then > <main>/manifest.json"`,
+  `gh pr comment 7 --body "a \\\\ then > <main>/manifest.json"`,
+  `git commit -m 'a > <main>/manifest.json \\ \`b\`'`,
+];
+
+const ACTIVE_QUOTE_TEXT_WRITES = [
+  `gh issue create --title t --body "a \`echo hi > <main>/manifest.json\`"`,
+  `gh issue create --title t --body "a $(echo hi > <main>/manifest.json)"`,
+  `gh issue create --title t --body 'a \`b\`' > <main>/manifest.json`,
+  `gh issue create --title t --body "a \\"b\\"" > <main>/manifest.json`,
+  `gh issue create --title t --body "a > <main>/manifest.json \\"`,
+  `\\gh issue create --title t --body "a" > <main>/manifest.json`,
+];
+
+describe('bash-write-target-guard.js — literal backticks and escapes inside a quoted message (#1438)', () => {
+  for (const command of LITERAL_QUOTE_TEXT_ONLY) {
+    test(`#1438: no write target in ${JSON.stringify(command)}`, async () => {
+      await withLinkedWorktree('blackhole-hook-1438-', async (mainRepo, worktree) => {
+        expect(verdict(command, mainRepo, worktree)).toBeNull();
+      });
+    });
+  }
+
+  for (const command of ACTIVE_QUOTE_TEXT_WRITES) {
+    test(`#1438: an active substitution or real redirect is still denied in ${JSON.stringify(command)}`, async () => {
+      await withLinkedWorktree('blackhole-hook-1438-', async (mainRepo, worktree) => {
+        expect(verdict(command, mainRepo, worktree)).toMatchObject({ tier: 'block' });
+      });
+    });
+  }
+});

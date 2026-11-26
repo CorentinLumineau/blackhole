@@ -496,17 +496,30 @@ const isEveryClausePassive = (visible) =>
  * after it is part of that target (`> "/x"`, `>a"b c"`). */
 const REDIRECT_OPERATOR_TAIL_RE = /(?:&>>|&>|>>|>&|>\||>)\s*[^\s;&|<>]*$/;
 
+/** `text` with every backslash pair blanked: inside a double-quoted span `\X` is one literal
+ * character, so what is left shows only the constructs bash still acts on. */
+const blankEscapePairs = (text) => text.replace(/\\[\s\S]/g, '  ');
+
+/** True when `span` (a `skipQuotedSpan` result) ends with its own closing quote rather than at an
+ * unterminated end (`"x\"` runs to the end of the text, its last quote being escaped). */
+const isClosedQuotedSpan = (span) => {
+  const text = span[0] === '"' ? blankEscapePairs(span) : span;
+  return text.length >= 2 && text[text.length - 1] === span[0];
+};
+
 /** A quoted span `text[start..end)` is inert text (cannot hide a write target) unless it is part
  * of a redirect's target (`> "/x"`, `>a"b"`), unterminated, or a double-quoted span carrying a
  * command substitution (`"$(echo x > /etc/y)"`). A quote of the other kind inside it is literal to
- * bash (`"cat <<'EOF'"`). Where masking runs, `maskingAllowed` has refused any `\`, so no escaped
- * quote can mis-pair a span; the outer view (`blankQuotedText`) is only ever added to the
- * quote-blind scan, so a mis-paired span there cannot hide a target. */
+ * bash (`"cat <<'EOF'"`). A backslash pair inside a double-quoted span is a literal character
+ * (`"\`x\`"`, `"say \"a > b\""`), so it neither ends the span nor opens a substitution; outside
+ * a quoted span `maskingAllowed` refuses any `\`, so no escaped quote can mis-pair a span. The
+ * outer view (`blankQuotedText`) is only ever added to the quote-blind scan, so a mis-paired span
+ * there cannot hide a target. */
 const isInertQuotedSpan = (text, start, end) => {
   const span = text.slice(start, end);
-  if (span.length < 2 || span[span.length - 1] !== span[0]) return false;
+  if (!isClosedQuotedSpan(span)) return false;
   if (REDIRECT_OPERATOR_TAIL_RE.test(text.slice(0, start))) return false;
-  return !(span[0] === '"' && (span.includes('$(') || span.includes('`')));
+  return !(span[0] === '"' && /\$\(|`/.test(blankEscapePairs(span)));
 };
 
 /** Blanks, in `chars`, the contents of every inert quoted span (`isInertQuotedSpan`) of
@@ -537,14 +550,41 @@ const blankQuotedText = (visible) => {
   return chars.join('');
 };
 
-/** True when masking may run on `visible`: nothing in it executes quoted text or nests quotes, and
+/** `visible` with the text bash takes literally blanked, so `QUOTE_REINTERPRETING_RE` sees only
+ * constructs that act: the inside of a plain `'...'` span (a backtick, `$(` or `\` there is
+ * ordinary text) and the backslash pairs inside a closed `"..."` span. Everything else, including
+ * an unclosed span and an ANSI-C `$'` span, stays visible, so an escape or substitution outside a
+ * quote still refuses masking. */
+const literalQuotedTextBlanked = (visible) => {
+  const chars = visible.split('');
+  let i = 0;
+  while (i < visible.length) {
+    const quote = visible[i];
+    if (quote !== "'" && quote !== '"') {
+      i++;
+      continue;
+    }
+    const end = skipQuotedSpan(visible, i, visible.length);
+    const span = visible.slice(i, end);
+    if (isClosedQuotedSpan(span) && !(quote === "'" && visible[i - 1] === '$')) {
+      const inner = quote === "'" ? ' '.repeat(span.length - 2) : blankEscapePairs(span.slice(1, -1));
+      for (let k = 0; k < inner.length; k++) chars[i + 1 + k] = inner[k];
+    }
+    i = end;
+  }
+  return chars.join('');
+};
+
+/** True when masking may run on `visible`: nothing in it executes quoted text or nests quotes (`literalQuotedTextBlanked`), and
  * every clause is a passive filter (`isEveryClausePassive`). A substitution body runs in the outer
  * shell, so the verdict is the AND of this over the command and every body (`evaluateBashWriteTargets`),
  * never a body's alone: a rebinding statement outside the body still changes what its `grep` runs.
  * A shell word inside quoted text (`--body "run sh -c at noon"`) names no command: every clause
  * head is already a bare allowlisted word, so it is only looked for outside quotes. */
 const maskingAllowed = (visible) =>
-  !QUOTE_REINTERPRETING_RE.test(visible) && !SHELL_EXEC_RE.test(blankQuotedText(visible)) && isEveryClausePassive(visible);
+  !QUOTE_REINTERPRETING_RE.test(literalQuotedTextBlanked(visible)) &&
+  !SHELL_EXEC_RE.test(blankQuotedText(visible)) &&
+  isEveryClausePassive(visible);
 
 /** Copy of `visible` with the contents of inert quoted spans blanked (`grep 'a>b'`), for the
  * whole-command `REDIRECT_RE` scan only; positions are preserved. Fails closed: spans are blanked

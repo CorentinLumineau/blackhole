@@ -154,17 +154,19 @@ const variants: Variant[] = [
       return { cwd: fs.realpathSync(wt) };
     },
   },
-  {
-    // D: cwd is inside a real nested repository carrying the forged config.
-    name: 'D: real nested repository',
-    build: () => {
-      const nested = path.join(legit, `nested-${(seq += 1)}`);
-      initRepo(nested);
-      writeConfig(nested, { forge: 'github', scratchpad_dir: main });
-      return { cwd: fs.realpathSync(nested) };
-    },
-  },
 ];
+
+// D: cwd is inside a real nested repository carrying the forged config.
+const nestedVariant: Variant = {
+  name: 'D: real nested repository',
+  build: () => {
+    const nested = path.join(legit, `nested-${(seq += 1)}`);
+    initRepo(nested);
+    writeConfig(nested, { forge: 'github', scratchpad_dir: main });
+    return { cwd: fs.realpathSync(nested) };
+  },
+};
+variants.push(nestedVariant);
 
 const forgedTargets = () => [path.join(main, 'pwn.txt'), path.join(sibling, 'pwn.txt'), path.join(main, '.blackhole', 'plans', 'pwn.md')];
 
@@ -201,19 +203,33 @@ describe('with no anchor, the pre-anchor decision holds, warns once and never ad
 
   // Residual risk, pinned on purpose (nested repository D for Bash tracked in #1609, sandbox in #1357):
   // without an anchor the config a forged clone carries is read as the campaign's, as before the anchor.
-  for (const variant of variants.slice(1)) {
+  for (const variant of variants.slice(1, 3)) {
     test(`${variant.name}: CLAUDE_PROJECT_DIR unset keeps the pre-anchor verdict and emits one warning per tool`, async () => {
       const { cwd } = variant.build();
       const target = path.join(main, 'pwn.txt');
       const { write, bash } = await runBoth(target, cwd, {});
       expect(write.exitCode).toBe(0);
       expect(warningCount(write)).toBe(1);
-      if (!variant.name.startsWith('D')) {
-        expect(bash.exitCode).toBe(0);
-        expect(warningCount(bash)).toBe(1);
-      }
+      expect(bash.exitCode).toBe(0);
+      expect(warningCount(bash)).toBe(1);
     });
   }
+
+  test('D: a real nested repository inside a campaign worktree is contained in both tools', async () => {
+    const { cwd } = nestedVariant.build();
+    for (const target of forgedTargets()) {
+      const { write, bash } = await runBoth(target, cwd, {});
+      expectContainmentDeny(write);
+      expectContainmentDeny(bash);
+    }
+    expect(await verdict(path.join(cwd, 'ok.txt'), cwd)).toBe('allow');
+  });
+
+  test('D: a nested repository outside any campaign worktree still reads as the clone (never a new deny)', async () => {
+    const loose = initRepo(fresh('loose-clone'));
+    const { bash } = await runBoth(path.join(loose, 'f.txt'), loose, {});
+    expect(bash.exitCode).toBe(0);
+  });
 
   test('a legitimate worktree keeps reaching the configured scratchpad and state dir, with one warning per tool', async () => {
     const pad = fresh('pad');
