@@ -1,4 +1,5 @@
-import { runGhApi } from '../forge-adapter/cli.ts';
+import { listPrs } from '../forge-adapter/github-rest.ts';
+import type { ForgePr } from '../forge-adapter/types.ts';
 import { waitReason } from './blocked-classes.ts';
 import { PARK_REASON, type PendingDecision } from './pending-decisions.ts';
 import { isSameRepoKey } from './queue.ts';
@@ -37,40 +38,38 @@ export type OwnerGateRead = { status: 'ok'; prs: OwnerGatePr[] } | { status: 'un
 /** Reads the open PRs carrying `gate.pending_label` in `repo`. Sync, so `campaign-record.ts` stays sync. */
 export type OwnerGateReader = (repo: { repo?: unknown; forge?: unknown }, gate: OwnerGateConfig) => OwnerGateRead;
 
-const PAGE = 100;
-const MAX_PAGES = 10;
-const FORGE_TIMEOUT_MS = 20_000;
+/** At most this many open PRs are read; a repo with more is unavailable, never silently truncated. */
+const OPEN_PR_LIMIT = 1000;
 
-type RestIssueRow = { number?: unknown; title?: unknown; labels?: unknown; pull_request?: unknown };
+/** Lists the open PRs of `repo` (`listPrs` in production, a stub in tests). */
+export type OpenPrLister = (repo: string) => ForgePr[];
 
-const labelNames = (raw: unknown): string[] =>
-  Array.isArray(raw)
-    ? raw.map((l) => (typeof l === 'string' ? l : (l as { name?: unknown })?.name)).filter((n): n is string => typeof n === 'string')
-    : [];
-
-/** GitHub REST: open issues carrying the pending label, keeping the pull requests. Any other forge, or no `repo`, is unavailable without spawning. */
-export const systemOwnerGateReader: OwnerGateReader = (config, gate) => {
-  if (typeof config.repo !== 'string' || !config.repo.includes('/')) return { status: 'unavailable', reason: 'no repo in config.json' };
-  if (config.forge !== undefined && config.forge !== 'github') return { status: 'unavailable', reason: `not read on ${String(config.forge)}` };
-  const prs: OwnerGatePr[] = [];
-  for (let page = 1; page <= MAX_PAGES; page++) {
-    const endpoint = `repos/${config.repo}/issues?state=open&labels=${encodeURIComponent(gate.pending_label)}&per_page=${PAGE}&page=${page}`;
-    const result = runGhApi('GET', endpoint, undefined, { timeoutMs: FORGE_TIMEOUT_MS });
-    if (result.status !== 0) return { status: 'unavailable', reason: result.stderr.trim().split('\n')[0] || 'gh api failed' };
-    let rows: unknown;
+/** Builds a reader over `list`: the open PRs carrying the pending label. Any lister error is unavailable, never a throw. */
+export const ownerGateReaderWith =
+  (list: OpenPrLister): OwnerGateReader =>
+  (config, gate) => {
+    if (typeof config.repo !== 'string' || !config.repo.includes('/')) return { status: 'unavailable', reason: 'no repo in config.json' };
+    if (config.forge !== undefined && config.forge !== 'github') return { status: 'unavailable', reason: `not read on ${String(config.forge)}` };
     try {
-      rows = JSON.parse(result.stdout);
-    } catch {
-      return { status: 'unavailable', reason: 'unreadable forge reply' };
+      const open = list(config.repo);
+      if (open.length >= OPEN_PR_LIMIT) return { status: 'unavailable', reason: `${OPEN_PR_LIMIT} or more open PRs` };
+      const prs = open
+        .filter((p) => p.labels?.includes(gate.pending_label))
+        .map((p) => ({ number: p.number, title: p.title, labels: p.labels ?? [] }));
+      return { status: 'ok', prs };
+    } catch (e) {
+      return { status: 'unavailable', reason: (e instanceof Error ? e.message : String(e)).trim().split('\n')[0] || 'forge read failed' };
     }
-    if (!Array.isArray(rows)) return { status: 'unavailable', reason: 'unreadable forge reply' };
-    for (const r of rows as RestIssueRow[]) {
-      if (r.pull_request == null || !Number.isInteger(r.number)) continue;
-      prs.push({ number: r.number as number, title: typeof r.title === 'string' ? r.title : '', labels: labelNames(r.labels) });
-    }
-    if (rows.length < PAGE) return { status: 'ok', prs };
-  }
-  return { status: 'unavailable', reason: `more than ${PAGE * MAX_PAGES} open PRs carry ${gate.pending_label}` };
+  };
+
+/** GitHub REST through the forge adapter's `listPrs`. Any other forge, or no `repo`, is unavailable without spawning. */
+export const systemOwnerGateReader: OwnerGateReader = ownerGateReaderWith((repo) => listPrs(repo, 'open', OPEN_PR_LIMIT));
+
+/** Forge- and queue-derived text is untrusted data: one line, capped, shown as text only (`decision-parking.md` § Decide round). */
+const ONE_LINE_MAX = 120;
+export const oneLine = (s: string): string => {
+  const t = s.replace(/\s+/g, ' ').trim();
+  return t.length > ONE_LINE_MAX ? `${t.slice(0, ONE_LINE_MAX - 1)}…` : t;
 };
 
 /**
@@ -105,10 +104,11 @@ export function ownerGateDecisions(
   const queue = sameRepo(issues ?? {});
   return prs.filter((pr) => awaitsOwner(pr, gate)).map((pr) => {
     const subject = `PR #${pr.number}`;
+    const title = oneLine(pr.title);
     const implementing = queue.filter(([, i]) => i.pr === pr.number || i.stacked_on_pr === pr.number).map(([n]) => n);
     return {
       id: `PR-${pr.number}`,
-      question: `Approve owner-gated ${subject}${pr.title ? ` (${pr.title})` : ''}?`,
+      question: `Approve owner-gated ${subject}${title ? ` (${title})` : ''}?`,
       options: [
         { label: 'Approve', consequence: `the orchestrator adds ${gate.approved_label} on the current head of ${subject}, citing this answer` },
         { label: 'Hold', consequence: `${subject} stays gated; nothing is labelled` },
@@ -134,10 +134,11 @@ export function blockedReturnDecisions(issues: Record<string, QueueIssue> | null
     .filter(([n, i]) => i.status === 'blocked' && !parkedItems.has(n) && !(i.notes ?? '').trim().startsWith(PARK_REASON) && waitReason(i, all).owner)
     .map(([n, i]) => {
       const subject = `#${n}`;
-      const note = (i.notes ?? '').replace(/^\s*(awaiting-[\w-]+|blocked-escalated):?\s*/, '').trim() || (i.notes ?? '').trim();
+      const title = oneLine(i.title ?? '');
+      const note = oneLine((i.notes ?? '').replace(/^\s*(awaiting-[\w-]+|blocked-escalated):?\s*/, '')) || oneLine(i.notes ?? '');
       return {
         id: `BR-${n}`,
-        question: `${subject}${i.title ? ` (${i.title})` : ''} waits on you: ${note}`,
+        question: `${subject}${title ? ` (${title})` : ''} waits on you: ${note}`,
         options: [
           { label: 'Approve', consequence: `the orchestrator resumes ${subject} with this answer and promotes it blocked → ready` },
           { label: 'Hold', consequence: `${subject} stays blocked` },
