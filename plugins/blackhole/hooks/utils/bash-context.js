@@ -418,7 +418,7 @@ const computeMaskedSpans = (command) => {
 
 /**
  * An additive, independent pass computing a `boolean[]` the same length as
- * `command`, `true` only at heredoc-body character positions — used by `worktree-removal-guard.js`
+ * `command`, `true` only at heredoc-body character positions — used by `shell-invocation-scan.js`
  * to blank heredoc-body text out of the RAW clause text it extracts (`clauseTailFrom`), so a
  * heredoc's prose can never contribute literal `worktree`/`remove` tokens to that guard's
  * token-based detection. Reuses `consumeHeredoc`/`collectHeredocOperatorsOnLine`/
