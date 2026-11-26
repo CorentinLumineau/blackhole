@@ -394,11 +394,13 @@ lane: a consumer contract labels the issues the campaign works, and the campaign
 itself. The lane claim above answers `SKIP` with no lane, so it never releases these.
 
 `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/release-claims.ts --campaign-dir .blackhole` reads the forge: for every `queue.json`
-issue that still carries a `claim_labels` entry it removes the label and posts one comment ("released
+issue the campaign dispatched (status `in-flight`, `merged` or `closed`, never `ready` or `blocked`,
+which another owner may hold) that still carries a `claim_labels` entry it removes the label and posts one comment ("released
 by blackhole stop: no work in flight; claim again to continue"), unless an open PR links the issue
 (`Closes`/`Fixes`/`Resolves`/`Part of`/`Refs #N` in its body, or the number as a whole token of its head
 branch): that PR is the work in flight and the claim is kept. It prints one JSON line `{released,
-kept}` and writes nothing when `claim_labels` is unset. Run it on every `stop` tier
+kept, failed}` and writes nothing when `claim_labels` is unset; a forge error on one issue lands in
+`failed` (issue, label, error), the pass continues and the script exits 1 after printing the report. Run it on every `stop` tier
 (`phase-stop.md`) and when the queue drains at the turn-end gate, so a finished campaign leaves no
 claim label on an issue it is not working.
 
