@@ -4,7 +4,7 @@ summary: "Day-2 operations for the every-10-merged-PR release cadence: owner kil
 status: current
 review_trigger: "on release workflow, release-cadence, or release script change"
 created: 2026-11-18
-last_updated: 2026-11-24
+last_updated: 2026-11-26
 ---
 
 # Release cadence
@@ -69,10 +69,12 @@ only as `CLAUDE_CODE_OAUTH_TOKEN` in that step's environment. The script then:
 
 ## Algorithm
 
-On each scheduled run (when enabled):
+On each run (when enabled): a completed Verify run on `main` (`workflow_run`, a green push run
+from this repository only), the 2-hourly cron backstop, or a forced dispatch:
 
 1. Skip if `github.sha` is no longer `origin/main` (queued run went stale).
-2. Skip unless the Verify workflow succeeded on that exact tip SHA.
+2. Skip unless the newest completed, non-cancelled, non-skipped Verify run on `main` is green and an
+   ancestor of the tip (ADR-063 M2). A listing failure skips: it never cuts on a guess.
 3. Count merged PRs into `main` since the latest `v*` tag. Cut one batch of 10 even if `N>10`
    (oldest first). Semver from conventional titles: `feat` = minor, else patch,
    `BREAKING CHANGE:` / `type!:` = major.
@@ -124,7 +126,7 @@ A persistently-failing cut files or comments on a `blackhole/backlog` issue titl
 `release-cadence cut is failing on main`. The next successful cut closes it.
 
 A cut that starts after `main` moved past the SHA it was created on skips with a notice
-(exit 0). Red Verify on the tip SHA skips without tagging (exit 0). Push failure after a
+(exit 0). A Verify run that is not green, or not an ancestor of the tip, skips without tagging (exit 0). Push failure after a
 local tag deletes that local tag before exiting 1.
 
 Follow-up issues must include `Pareto: gain=G effort=E priority=N` (Priority = Gain × (11 − Effort)).
