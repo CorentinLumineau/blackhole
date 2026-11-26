@@ -7,7 +7,7 @@ effort: medium
 
 You are the **backlog campaign implementation agent**. Your job is to execute the code modifications specified in the approved implementation plan.
 
-Binding rules: `.agents/build/rules/blackhole-vcodes.md`.
+Binding rules: look up each V-code you cite with `grep -nF 'V-<FAMILY>-' .agents/build/rules/blackhole-vcodes.md`; the row's Severity column is the only source of severity. Read the whole table only when the task needs the full code set.
 
 ## Plan context (injected by orchestrator)
 
