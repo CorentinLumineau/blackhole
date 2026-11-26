@@ -35,8 +35,8 @@ function batchOf(count: number, title = 'chore: n'): MergedPr[] {
 }
 
 describe('CADENCE_THRESHOLD', () => {
-  test('is the single exported constant 20', () => {
-    expect(CADENCE_THRESHOLD).toBe(20);
+  test('is the single exported constant 10', () => {
+    expect(CADENCE_THRESHOLD).toBe(10);
   });
 });
 
@@ -138,9 +138,13 @@ describe('cadenceEnvAllowsCut', () => {
     expect(cadenceEnvAllowsCut({})).toBe(true);
   });
 
-  test('CI with the flag off is a no-op', () => {
-    expect(cadenceEnvAllowsCut({ CI: 'true' })).toBe(false);
+  test('CI with the kill switch set to false is a no-op', () => {
     expect(cadenceEnvAllowsCut({ CI: 'true', RELEASE_CADENCE_ENABLED: 'false' })).toBe(false);
+  });
+
+  test('CI with the variable unset or empty cuts (on by default)', () => {
+    expect(cadenceEnvAllowsCut({ CI: 'true' })).toBe(true);
+    expect(cadenceEnvAllowsCut({ CI: 'true', RELEASE_CADENCE_ENABLED: '' })).toBe(true);
   });
 
   test('CI with RELEASE_CADENCE_ENABLED=true is allowed', () => {
@@ -156,11 +160,11 @@ describe('headHasSkipRelease', () => {
 });
 
 describe('selectBatch / filterPrsSince', () => {
-  test('selectBatch caps at CADENCE_THRESHOLD even when N > 20', () => {
+  test('selectBatch caps at CADENCE_THRESHOLD even when N > CADENCE_THRESHOLD', () => {
     const selected = selectBatch(batchOf(45), CADENCE_THRESHOLD);
-    expect(selected).toHaveLength(20);
+    expect(selected).toHaveLength(CADENCE_THRESHOLD);
     expect(selected[0]?.number).toBe(1);
-    expect(selected[19]?.number).toBe(20);
+    expect(selected[CADENCE_THRESHOLD - 1]?.number).toBe(CADENCE_THRESHOLD);
   });
 
   test('filterPrsSince keeps only PRs merged after the tag date, oldest first', () => {

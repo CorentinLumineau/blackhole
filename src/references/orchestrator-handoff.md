@@ -49,7 +49,7 @@ instead of duplicated in each role's section above (`V-DRY-01`):
    `--now` cuts at the worker's current position regardless of whether that unit is done.
 3. **Commit and push whatever is already changed**, even if incomplete or broken — a partial
    push the orchestrator can see beats clean work it loses. This directly narrows what issue
-   #524's worktree-removal guard has to catch: a worker that reliably pushes on request leaves
+   the push-before-removal rule has to catch: a worker that reliably pushes on request leaves
    less unpushed history behind (cited, not duplicated — #524 owns the orchestrator-side removal
    check itself).
 4. **State plainly what is done and what is not**, in whatever channel the worker's natural
@@ -80,7 +80,7 @@ Before ledger append or phase transition:
 
 1. Parse worker JSON; on parse failure → treat as worker error, do not advance phase
 2. For implementer: reject if `touch_paths_honored === false` or `tests_passed === false`
-3. Run `scripts/review-aggregate.ts` on reviewer output; pass `--review-iteration <review_iteration>`; route to implement only when aggregate `status === changes_requested`; on `rethink` escalate per `review-core.md` § Review convergence
+3. Build the audit context with `scripts/audit-context.ts`, then run `scripts/review-aggregate.ts` on reviewer output; pass `--audit-context-file <audit-context.json>` (required, review-core.md § Aggregate invocation) and `--review-iteration <review_iteration>`; route to implement only when aggregate `status === changes_requested`; on `rethink` escalate per `review-core.md` § Review convergence
 4. Append aggregate `findings` to ledger with `phase: review` and `pr_ref` set
 
 ### Barrier triage

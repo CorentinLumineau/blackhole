@@ -44,6 +44,67 @@ describe('usage-budget CLI', () => {
     });
   }
 
+  test('--ci-capacity lowers workers when queued jobs exceed idle runners and reports why', () => {
+    withTempDir('usage-budget-cli', (dir) => {
+      const r = run(dir, ['--usage', usageJson(10, 10), '--ci-capacity', '{"idle_runners":0,"queued_jobs":3}']);
+      expect(r.code).toBe(0);
+      expect(r.out).toMatchObject({ verdict: 'GO', workers: 1 });
+      expect(r.out.reasons.join(' ')).toContain('ci capacity');
+    });
+  });
+
+  test('--ci-capacity never raises workers and leaves a blocking verdict at zero', () => {
+    withTempDir('usage-budget-cli', (dir) => {
+      expect(run(dir, ['--usage', usageJson(10, 10), '--ci-capacity', '{"idle_runners":9,"queued_jobs":0}']).out.workers).toBe(run(dir, ['--usage', usageJson(10, 10)]).out.workers);
+      expect(run(dir, ['--usage', usageJson(90, 10), '--ci-capacity', '{"idle_runners":9,"queued_jobs":0}']).out.workers).toBe(0);
+    });
+  });
+
+  test('--ci-capacity-file is read like the inline flag; an unreadable file fails open', () => {
+    withTempDir('usage-budget-cli', (dir) => {
+      const file = path.join(dir, 'ci.json');
+      fs.writeFileSync(file, '{"idle_runners":0,"queued_jobs":3}');
+      expect(run(dir, ['--usage', usageJson(10, 10), '--ci-capacity-file', file]).out.workers).toBe(1);
+      const missing = run(dir, ['--usage', usageJson(10, 10), '--ci-capacity-file', path.join(dir, 'absent.json')]);
+      expect(missing.code).toBe(0);
+      expect(missing.out.workers).toBe(run(dir, ['--usage', usageJson(10, 10)]).out.workers);
+      expect(missing.err).toContain('ci capacity');
+    });
+  });
+
+  test('a malformed --ci-capacity fails open: warns, exit 0, workers unchanged', () => {
+    withTempDir('usage-budget-cli', (dir) => {
+      const r = run(dir, ['--usage', usageJson(10, 10), '--ci-capacity', '{"idle_runners":-1,"queued_jobs":0}']);
+      expect(r.code).toBe(0);
+      expect(r.out.workers).toBe(run(dir, ['--usage', usageJson(10, 10)]).out.workers);
+      expect(r.err).toContain('ci capacity');
+    });
+  });
+
+  test('--ci-capacity with no value, or both ci flags together, warn and leave workers unchanged', () => {
+    withTempDir('usage-budget-cli', (dir) => {
+      const base = run(dir, ['--usage', usageJson(10, 10)]).out.workers;
+      const valueless = run(dir, ['--usage', usageJson(10, 10), '--ci-capacity']);
+      expect(valueless.code).toBe(0);
+      expect(valueless.out.workers).toBe(base);
+      expect(valueless.err).toContain('--ci-capacity needs a value');
+      const file = path.join(dir, 'ci.json');
+      fs.writeFileSync(file, '{"idle_runners":0,"queued_jobs":3}');
+      const both = run(dir, ['--usage', usageJson(10, 10), '--ci-capacity', '{"idle_runners":0,"queued_jobs":3}', '--ci-capacity-file', file]);
+      expect(both.code).toBe(0);
+      expect(both.out.workers).toBe(base);
+      expect(both.err).toContain('exclusive');
+    });
+  });
+
+  test('--ci-capacity with every runner busy caps workers before anything queues', () => {
+    withTempDir('usage-budget-cli', (dir) => {
+      const r = run(dir, ['--usage', usageJson(10, 10), '--ci-capacity', '{"idle_runners":0,"busy_runners":2,"queued_jobs":0}']);
+      expect(r.out.workers).toBe(1);
+      expect(r.out.reasons.join(' ')).toContain('busy');
+    });
+  });
+
   test('usage_budget.windows drops a --usage window: weekly-only gating', () => {
     withTempDir('usage-budget-cli', (dir) => {
       const r = run(dir, ['--usage', usageJson(95, 10)], { usage_budget: { enabled: true, windows: ['seven_day'] } });

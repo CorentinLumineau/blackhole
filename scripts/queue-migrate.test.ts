@@ -4,7 +4,7 @@ import * as path from 'path';
 import { makeTempDir } from './lib/fs.ts';
 import { validateStateWrite } from './lib/state-write-guard.ts';
 import { waitReason } from './lib/campaign-status/blocked-classes.ts';
-import { EXCLUDED_NOTE, LEGACY_PHASE_MAP, LEGACY_STATUS_MAP, migrateQueueEntries, parseCliArgs, runQueueMigration } from './queue-migrate.ts';
+import { EXCLUDED_NOTE, LEGACY_PHASE_MAP, LEGACY_STATUS_MAP, migrateQueueEntries, migrateUserQueueOrder, parseCliArgs, runQueueMigration } from './queue-migrate.ts';
 
 // Fixture-driven coverage for the legacy queue status/phase mapping and the one-shot file
 // protocol, isolated from any live `.blackhole/queue.json` via makeTempDir.
@@ -74,6 +74,34 @@ describe('migrateQueueEntries', () => {
   });
 });
 
+describe('migrateUserQueueOrder', () => {
+  const queue = {
+    user_queue_order: [9, 1, 2, 3, 4, 5, 6],
+    issues: {
+      '1': { status: 'merged' },
+      '2': { status: 'closed' },
+      '3': { status: 'ready', notes: 'auto-sync ingest (turn 7)' },
+      '4': { status: 'ready', notes: 'Ingested turn 13 from forge' },
+      '5': { status: 'ready', notes: null },
+      '6': { status: 'ready', notes: 'owner pin: do first' },
+    },
+  };
+  test('drops missing, terminal and untouched ingest entries; keeps the rest in order', () => {
+    expect(migrateUserQueueOrder(queue)).toEqual({ order: [5, 6], dropped: [9, 1, 2, 3, 4], kept: [5, 6] });
+  });
+  test('an ingest note on a non-ready entry is kept: someone has touched it', () => {
+    const q = { user_queue_order: [1], issues: { '1': { status: 'in-flight', notes: 'auto-sync ingest' } } };
+    expect(migrateUserQueueOrder(q).order).toEqual([1]);
+  });
+  test('is idempotent', () => {
+    const once = migrateUserQueueOrder(queue);
+    expect(migrateUserQueueOrder({ ...queue, user_queue_order: once.order }).dropped).toEqual([]);
+  });
+  test('an absent user_queue_order is empty', () => {
+    expect(migrateUserQueueOrder({ issues: {} })).toEqual({ order: [], dropped: [], kept: [] });
+  });
+});
+
 describe('runQueueMigration', () => {
   const dirs: string[] = [];
   afterEach(() => {
@@ -110,13 +138,30 @@ describe('runQueueMigration', () => {
     expect(Object.keys(written.issues)).toEqual(['1', '2']);
     expect(written.issues['1']).toMatchObject({ status: 'merged', phase: 'done' });
     expect(written.issues['2']).toMatchObject({ status: 'blocked', phase: 'handle' });
-    expect(written.user_queue_order).toEqual([1, 2]);
+    expect(written.user_queue_order).toEqual([2]);
     expect(written.refreshed_at).toBe('2026-11-23T00:00:00.000Z');
     const snapshots = fs.readdirSync(path.join(dir, 'archive')).filter((f) => f.startsWith('queue-'));
     expect(snapshots.length).toBe(1);
     const snapshot = JSON.parse(fs.readFileSync(path.join(dir, 'archive', snapshots[0]), 'utf8'));
     expect(snapshot.issues['1'].status).toBe('done');
     expect(snapshot.issues['2'].status).toBe('excluded');
+  });
+
+  test('--apply drops ingest-appended pins from a queue with no legacy values, then a second run is a no-op', () => {
+    const dir = makeTempDir('queue-migrate-order');
+    dirs.push(dir);
+    const queue = {
+      user_queue_order: [1, 2],
+      issues: { '1': { status: 'ready', phase: 'handle', notes: 'auto-sync ingest' }, '2': { status: 'ready', phase: 'handle', notes: 'owner pin' } },
+    };
+    fs.writeFileSync(path.join(dir, 'queue.json'), `${JSON.stringify(queue, null, 2)}\n`);
+    expect(runQueueMigration(dir)).toMatchObject({ applied: false, orderDropped: [1], orderKept: [2] });
+    expect(JSON.parse(fs.readFileSync(path.join(dir, 'queue.json'), 'utf8')).user_queue_order).toEqual([1, 2]);
+    expect(runQueueMigration(dir, { apply: true })).toMatchObject({ applied: true, orderDropped: [1] });
+    const written = JSON.parse(fs.readFileSync(path.join(dir, 'queue.json'), 'utf8'));
+    expect(written.user_queue_order).toEqual([2]);
+    expect(Object.keys(written.issues)).toEqual(['1', '2']);
+    expect(runQueueMigration(dir, { apply: true })).toMatchObject({ applied: false, orderDropped: [] });
   });
 
   test('a clean queue is a no-op even with --apply', () => {

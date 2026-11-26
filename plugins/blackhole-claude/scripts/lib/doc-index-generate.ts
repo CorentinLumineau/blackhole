@@ -29,6 +29,13 @@ const decodeYamlScalar = (raw: string): string => {
 const isExcludedPath = (relPath: string): boolean =>
   relPath === 'INDEX.md' || relPath.startsWith('decisions/') || relPath.startsWith('milestones/_archived/');
 
+// A doc authored without a `summary:` key still gets a useful row: its first H1, flattened to one
+// line with `|` replaced, since a row cell cannot hold either (parseIndexTableRows splits on `|`).
+const h1Fallback = (body: string): string => {
+  const h1 = /^#[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$/m.exec(body)?.[1] ?? '';
+  return h1.replace(/\|/g, '/').replace(/\s+/g, ' ').trim();
+};
+
 // Walks `docsDir`, excluding decisions/**, milestones/_archived/**, and INDEX.md itself
 // (Touch-Paths scope), and builds one RootIndexRow per remaining doc from its frontmatter.
 export const buildDocIndexRows = (docsDir: string): RootIndexRow[] => {
@@ -49,10 +56,11 @@ export const rootIndexRowFor = (relPath: string, content: string): RootIndexRow 
   isExcludedPath(relPath) ? null : docIndexRow(relPath, content);
 
 const docIndexRow = (relPath: string, content: string): RootIndexRow => {
-  const fm = parseFrontmatterFields(parseMdFrontmatter(content).frontmatter);
+  const { frontmatter, body } = parseMdFrontmatter(content);
+  const fm = parseFrontmatterFields(frontmatter);
   return {
     path: relPath,
-    summary: fm.summary ? decodeYamlScalar(fm.summary) : '',
+    summary: (fm.summary ? decodeYamlScalar(fm.summary) : '') || h1Fallback(body),
     type: fm.type ?? '',
     status: fm.status ?? '',
     reviewTrigger: fm.review_trigger ? decodeYamlScalar(fm.review_trigger) : '',

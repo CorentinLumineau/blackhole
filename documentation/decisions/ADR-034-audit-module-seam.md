@@ -143,3 +143,105 @@ duplicate content in nine trees until `V-INCLUDE-01` fails CI.
 **Protocol surface.** One new BLOCK V-code (`V-INCLUDE-01`), one new check file, one
 `src/references/blackhole-vcodes.md` row-count bump (verified from a live table count, not
 hand-arithmetic — see the implementation plan's T5 for the current baseline).
+
+## Post-acceptance amendments
+
+- **2026-11-25, issue #1387 (on-demand modules for mechanically gated audits).** The seam above
+  rejected runtime loading because it adds fetches to every turn. Measured at spawn, that cost is
+  the smaller one: every reviewer spawn paid for all 33 modules (22,247 estimated tokens, bytes / 4)
+  although 14 of them open with a clause that says "skip this section" (a config key, plan
+  frontmatter or heading, a diff path, a queue field, or the spawn mode). This amendment allows a
+  hybrid and reverses nothing: the build seam, `{{INCLUDE:<dir>/*}}`, `BUILD_INPUT_ONLY_DIRS` and
+  the 19 inlined modules are unchanged.
+  - **Rule.** A module may be on-demand only if its first detection or gate clause is mechanical.
+    Judgment-triggered modules (for example `V-DOCSYNC-01`'s public-API surface, `V-PROOF-01`'s
+    user-visible change) stay inlined, as do modules that apply to every diff.
+  - **Where.** On-demand bodies live in `src/references/audit-modules/` and are mirrored into the
+    reference trees like `hunt/` (not build-input-only). `src/agents/reviewer.md` keeps one `###`
+    stub per module under `## On-demand audit modules`, with the module's own heading text, a
+    one-line `Load when` trigger and a `Read` path, so `§ <Section>` citations still resolve.
+  - **Fail-open.** One sentence in that section: when unsure whether a trigger holds, Read the
+    module; a module whose trigger holds must be read before the final JSON.
+  - **Checks.** `V-AUDIT-01` Legs A to C scan both directories and count each against its own
+    constant (`REVIEWER_AUDIT_MODULE_COUNT`, `REVIEWER_ONDEMAND_AUDIT_MODULE_COUNT`); Leg D fails a
+    module with no stub, a stub without its `Load when` line, its `Read` path or a V-code the module
+    claims. Leg E fails a module with no predicate in `AUDIT_MODULE_TRIGGERS`
+    (`scripts/lib/audit-module-triggers.ts`) and a predicate with no module. The generated-stub
+    alternative stays deferred until a second consumer exists.
+  - **Mechanical load check (V-PARETO-02).** Eleven of the 14 modules enforce `BLOCK` codes, so
+    "keep every BLOCK module inlined" would have undone the split. Instead the reviewer return
+    carries `loaded_modules[]` (module file names; `validateReviewer` rejects unknown names), and
+    `review-aggregate.ts --audit-context-file <json>` re-evaluates each module's trigger from facts
+    the orchestrator holds (diff paths, plan text, config, route, queue, dispatch kind) and exits 1
+    naming any module whose trigger holds but is absent from `loaded_modules` (an absent list fails
+    every triggered module). The check is fail-closed and wired: the orchestrator builds the
+    context with `scripts/audit-context.ts` before every aggregate (`review-core.md` § Aggregate
+    invocation), and the CLI exits non-zero when the flag is absent. The context builder takes the
+    plan, config, queue and issue as required inputs and fails with a named error on a missing or
+    unreadable file or an issue absent from the queue (a no-plan track declares the absence with
+    `--no-plan-reason`). `--direct-review` (the orchestrator's own review, no reviewer spawned) is
+    conditional, not an opt-out: it needs the same context and is accepted only when every changed
+    path is in the docs-only doc-path set and no module trigger other than the docs-only one holds.
+    The frontend-diff predicate for module 14 reads its path set from `scripts/detect-frontend.sh`
+    (`scripts/lib/frontend-paths.ts`), so the keyword set has one home. The reviewer-facing
+    `Load when` stubs stay the wording; the predicate table is the script-side copy. Leg E keeps the
+    directories aligned and fails a stub that does not spell every path glob its predicate uses
+    (`AUDIT_TRIGGER_GLOBS`). A stub and its predicate can still disagree in meaning beyond those
+    globs; that residual is a review concern, not a gate.
+  - **Module 24 stays inline.** The independent-security-verification procedure is read by a
+    verification spawn whose envelope is never aggregated on its own, so a load check for it had no
+    call site. Rather than add a second aggregate hop, it moved back to `src/references/audits/`
+    (19 inlined, 14 on-demand).
+  - **Direct review follows module 08's predicate.** `--direct-review` is accepted only when module
+    08's own plan-first trigger holds (a plan declaring neither `execution_mode: docs-only` nor
+    `task_type: docs` is not docs-only, whatever the extensions) as well as the path and
+    other-trigger checks. `audit-context.ts` refuses `--no-plan-reason` when a plan artifact exists
+    next to the queue file, records the reason in the context (echoed by the aggregate as
+    `no_plan_reason`), fails on an empty diff, and resolves the route through `latestRoute`
+    (latest ledger `routing_decisions` row, else the queue entry).
+  - **Residual risk.** `loaded_modules[]` is a declaration by the reviewer. The gate proves a module
+    was listed, not that it was read or applied: a reviewer can name a module without reading it. The
+    check closes the silent-skip case, not the dishonest one; the reviewer's own findings and the
+    recheck pass remain the only evidence the audit ran.
+  - **Measured.** Compiled `agents/reviewer.md` 22,247 to 13,538 estimated tokens (54,152 B), about 8,709
+    saved per reviewer spawn (`bun run scripts/worker-context-size.ts`). The saving remains
+    because a normal backend diff in a repo without `docs_governance` triggers none of the 14.
+
+- **2026-11-26, issue #1541 (on-demand modules for the implementer's mechanically gated gates).**
+  The same rule applies to the implementer's gates. Six of its 17 gate modules open with a
+  mechanical clause: Bugfix Gate (plan `task_type: bugfix`), Conflict Resolution Gate (spawn
+  mode), Promote Review Artifact (merge-readiness spawn), Companion-file Sync (`docs_governance`
+  keys), Visual Evidence Capture (`display_targets` and `route.ui`) and the bundled shadcn skill
+  (`components.json`). They moved from `src/references/gates/` to `src/references/gate-modules/`,
+  mirrored into the reference trees like `audit-modules/`, and `implementer.md` keeps one `##`
+  stub each with the gate's own heading text, a `Load when` line and a `Read` path. The Runtime
+  Proof section used to share a file with Visual Evidence Capture; its trigger is a judgment
+  (a user-visible change), so it split out to the inlined `gates/17-runtime-proof.md`.
+  - **Measured.** Compiled `agents/implementer.md` 13,334 to 11,204 estimated tokens (53,338 to
+    44,816 B), about 2,130 saved per implementer spawn once the stubs are counted; the gate
+    bodies were about 12,077 B. A ceiling test in `scripts/worker-context-size.test.ts` guards it.
+  - **Checks.** `V-GATE-01` reuses Leg D (`findOnDemandStubDrift`) over `gate-modules/` with the
+    implementer's shell name and heading level. `IMPLEMENTER_GATE_MODULE_COUNT` (11, inlined) and
+    `IMPLEMENTER_ONDEMAND_GATE_MODULE_COUNT` (6) are each checked against a directory scan by
+    `V-GROUND-01`.
+  - **Stub shape decision.** Hand-written stubs stay. Two consumers now share one drift function,
+    and a generated stub would have to derive free-form trigger prose from frontmatter, which
+    moves the wording out of the shell the agent reads. The generated alternative stays deferred
+    until a third consumer or a stub that drifts despite Leg D.
+  - **Residual risk.** Unlike the reviewer, the implementer has no script-side trigger predicate
+    and no `loaded_modules[]` declaration: the orchestrator cannot see which gates a worker read.
+    The stub states that a gate whose condition holds and whose module was not read is a skipped
+    gate; the reviewer's plan-compliance audit remains the evidence the gate ran.
+
+## Worker V-code lookup
+
+Every worker shell's `Binding rules:` line used to point at `blackhole-vcodes.md`, which a worker
+read whole (37,283 B, about 9.3k estimated tokens per spawn). The six shells now carry one
+identical line telling the worker to `grep -nF 'V-<FAMILY>-'` the table for each code it cites or
+a gate names, and to read the whole table only when the task needs the full code set. The table
+stays the single source: a family prefix matches the grouped rows (`V-SOLID-01/03`,
+`V-KISS-01 / V-YAGNI-01`), and the row's Severity column is the only source of a finding's
+severity, which `review-aggregate.ts` post-processes. `scripts/worker-vcode-lookup.test.ts` pins
+the six lines as identical and runs the lookup against the table. Residual risk: a worker that
+never looks a code up can miss a rule it would have read; the reviewer's V-code audit remains the
+backstop.

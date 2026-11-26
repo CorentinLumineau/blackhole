@@ -1,6 +1,6 @@
 # Phase 4 — Review
 
-Binding: [review-core.md](review-core.md), [worker-schemas.md](worker-schemas.md).
+Binding: [review-core.md](review-core.md), [reviewer-schemas.md](reviewer-schemas.md), [worker-schemas.md](worker-schemas.md).
 
 ## Checklist
 
@@ -14,19 +14,19 @@ Binding: [review-core.md](review-core.md), [worker-schemas.md](worker-schemas.md
 - [ ] Route check: read route.plan_mode → scope plan-conformance audit to quick/full; skip → compensating no-API-surface check (see review-core.md § Skip-PR compensating control)
 - [ ] Recheck check: read recheck-mode trigger (review_iteration >= 1, no new touch-paths, no new BLOCK surface — see review-core.md § Recheck mode) → when satisfied, dispatch reviewer in recheck mode against the fix commits only, instead of a full-diff audit
 - [ ] Security-mode PR → confirm merge-gate validator (V-SEC-08) before LGTM
-- [ ] Run scripts/review-aggregate.ts on reviewer JSON, passing `--review-iteration <queue review_iteration>`, `--base-ref <PR base branch> --repo-dir <PR worktree> --head <PR head>` (ADR-134 slop citation check) and (when verification ran) `--verification-file` (see review-core.md § Aggregate invocation)
+- [ ] Build the audit context with `scripts/audit-context.ts` (review-core.md § Aggregate invocation), then run scripts/review-aggregate.ts on reviewer JSON, passing `--audit-context-file <audit-context.json>` (required; add `--direct-review` only for a docs-only direct review, which the script refuses unless the diff is docs-only and no other module trigger holds), `--review-iteration <queue review_iteration>`, `--base-ref <PR base branch> --repo-dir <PR worktree> --head <PR head>` (ADR-134 slop citation check) and (when verification ran) `--verification-file` (see review-core.md § Aggregate invocation)
 - [ ] Aggregate output → ledger append (phase: review)
   - [ ] Issue #485: before appending, transition any prior ledger row named `fixed` in the aggregate's consumed `recheck[]` to `status: resolved` (see findings-ledger.md § Status transitions), so the write-time dedup check (findings-ledger.md § Write protocol step 3) never silently absorbs the new, distinct finding sharing that row's key
   - [ ] Issue #485: if `unresolved_recheck` (worker-schemas.md § Review aggregate) is non-empty, do not silently proceed as a normal changes_requested iteration — surface it to the coordinator via the existing blocked-iteration/escalation path (review-core.md § Review convergence)
 - [ ] V-ADA-01/V-ADA-05 findings: before append, dedup by (vcode, file) ignoring issue_ref — skip append if an open/deferred row already exists for that (vcode, file) under any issue_ref (see findings-ledger.md).
-- [ ] BLOCK → increment review_iteration; back to phase implement (see review-core.md § Review convergence)
+- [ ] BLOCK → increment review_iteration; back to phase implement (see review-core.md § Review convergence); the fix round continues the warm implementer when `orchestrator-delegation.md` § Fix-round continuation (SendMessage) holds
 - [ ] Round limit reached → `rethink` verdict, escalate to coordinator (`AskQuestion`, review-iteration
   escalation gate class per `clarify-gates.md` § Gate Content Contract (R-003)): What — the
   PR/issue and its open BLOCK findings; Why — the round limit in review-core.md § Review convergence;
   Evidence — the finding ids still open, from the ledger; Options — re-plan / accept and defer /
   manual fix, each with its consequence.
 - [ ] WARN → fix in PR OR defer (file issue + ledger deferred_to_issue)
-- [ ] Docs-only PR (determined by `reviewer.md` § Docs-Only Execution Mode Compliance's plan-first detection — file-extension match is a no-plan fallback only, not restated here) → orchestrator direct review, still run review-aggregate.ts
+- [ ] Docs-only PR (determined by `reviewer.md` § Docs-Only Execution Mode Compliance's plan-first detection — file-extension match is a no-plan fallback only, not restated here) → orchestrator direct review, still run review-aggregate.ts with `--direct-review`
 - [ ] LGTM (aggregate lgtm: true) → proceed to phase loop (merge); review durable artifact promotion runs at merge step 2.5 (`phase-loop.md`, `implementer.md` § Promote Review Artifact) — not during this phase
 - [ ] Write campaign-checkpoint.md per checkpoint-protocol.md
 ```
@@ -42,7 +42,7 @@ Binding: [review-core.md](review-core.md), [worker-schemas.md](worker-schemas.md
 - PR number + diff summary
 - Dispatch mode (`full` / `security-mode` / `recheck` / `verification`) plus that mode's inputs — V-code checklist scope, PR diff scope, Touch-Paths baseline, findings input, attack-signature scan — per `review-core.md` § Reviewer prompt requirements (per-mode table; not restated here)
 - Model: use the designated worker agent (`reviewer`)
-- Output format: `worker-schemas.md` reviewer contract
+- Output format: `reviewer-schemas.md` reviewer contract
 - Route check: when the recheck-mode trigger is satisfied, see `review-core.md` § Recheck mode for the exact trigger conditions and scoped-audit mechanism (not restated here)
 
 ## Audit Checklist Extensions

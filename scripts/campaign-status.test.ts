@@ -15,11 +15,14 @@ import {
   groupIssuesByPhase,
   parseCheckpointFrontmatter,
   parseStatusArgs,
+  readDocCarry,
   renderConfigSummary,
   renderPluginDriftWarning,
   renderRouteChain,
   type Route,
 } from './campaign-status';
+import { doneIssues } from './lib/campaign-status/decide-round.ts';
+import { computeStatusCounts } from './lib/campaign-status/queue.ts';
 import { SCAN_BOUNDARY_NOTE, type PluginDriftSignal, type PluginDriftSource } from './plugin-drift-signal';
 
 const fullRoute: Route = {
@@ -106,6 +109,14 @@ describe('renderRouteChain', () => {
 });
 
 describe('computeWaves', () => {
+  test('a cross-repo key is skipped, not turned into NaN (#1499)', () => {
+    const result = computeWaves({
+      '10': { status: 'ready' },
+      'blackhole#1168': { status: 'ready', depends_on: [10] },
+    });
+    expect(result).toEqual({ waves: [[10]], unresolved: [] });
+  });
+
   test('empty queue yields no waves and no unresolved', () => {
     const { waves, unresolved } = computeWaves({});
     expect(waves).toEqual([]);
@@ -205,6 +216,20 @@ last_completed_phase: review
 });
 
 describe('groupIssuesByPhase', () => {
+  test('a cross-repo key yields only integer rows and is listed in crossRepo (#1499)', () => {
+    const grouped = groupIssuesByPhase({
+      '10': { status: 'ready' },
+      'blackhole#1168': { status: 'ready' },
+    });
+    expect(grouped.active.map((r) => r.num)).toEqual([10]);
+    expect(grouped.active.every((r) => Number.isInteger(r.num))).toBe(true);
+    expect(grouped.crossRepo).toEqual(['blackhole#1168']);
+  });
+
+  test('doneIssues drops a done cross-repo key instead of emitting NaN (#1499)', () => {
+    expect(doneIssues({ '10': { status: 'merged' }, 'blackhole#1162': { status: 'merged' } })).toEqual([10]);
+  });
+
   test('splits active vs done and in-flight', () => {
     const grouped = groupIssuesByPhase({
       '22': { title: 'A', phase: 'review', status: 'in-flight', pr: 40 },
@@ -977,12 +1002,12 @@ describe('status --summary (the launch summary)', () => {
     expect(() => parseStatusArgs(['--now', '1'])).toThrow(/--summary/);
   });
 
-  test('prints the 13-row table for the fixture campaign', () => {
+  test('prints the 14-row table for the fixture campaign', () => {
     const proc = summary('--campaign-dir', FULL, '--now', '1763026200');
     expect(proc.exitCode).toBe(0);
     const out = proc.stdout.toString();
     expect(out).toContain('## Launch summary');
-    for (const label of ['Scope', 'Order', 'Merge', 'Pacing', 'Budget', 'Status page', 'Kaizen and staging', 'Autonomy', 'Resource policy', 'Wave scheduling', 'Peers', 'Decisions', 'Other config']) expect(out).toContain(`| ${label} |`);
+    for (const label of ['Scope', 'Order', 'Roadmap', 'Merge', 'Pacing', 'Budget', 'Status page', 'Kaizen and staging', 'Autonomy', 'Resource policy', 'Wave scheduling', 'Peers', 'Decisions', 'Other config']) expect(out).toContain(`| ${label} |`);
     expect(out).toContain('pacing off');
   });
 
@@ -991,7 +1016,7 @@ describe('status --summary (the launch summary)', () => {
     expect(proc.exitCode).toBe(0);
     const parsed = JSON.parse(proc.stdout.toString());
     expect(parsed.rows.map((r: { key: string }) => r.key)).toEqual([
-      'scope', 'order', 'merge', 'pacing', 'budget', 'status_page', 'kaizen_staging',
+      'scope', 'order', 'roadmap', 'merge', 'pacing', 'budget', 'status_page', 'kaizen_staging',
       'autonomy', 'resource_policy', 'wave_scheduling', 'peers', 'decisions', 'other_config',
     ]);
     expect(Array.isArray(parsed.cards)).toBe(true);
@@ -1023,18 +1048,18 @@ describe('status --summary (the launch summary)', () => {
     expect(() => parseStatusArgs(['--summary', '--mode', 'other'])).toThrow(/--mode/);
   });
 
-  test('--mode catchup --usage-file prints 13 rows and the pacing object; a run prints 13 too', () => {
+  test('--mode catchup --usage-file prints 14 rows and the pacing object; a run prints 14 too', () => {
     const NOW_FRI = '1794562200';
     const file = path.join(FULL, 'usage.catchup.json');
     const catchup = summary('--campaign-dir', FULL, '--mode', 'catchup', '--usage-file', file, '--now', NOW_FRI, '--json');
     expect(catchup.exitCode).toBe(0);
     const parsed = JSON.parse(catchup.stdout.toString());
     expect(parsed.rows.map((r: { key: string }) => r.key)).toEqual([
-      'scope', 'order', 'merge', 'pacing', 'budget', 'status_page', 'kaizen_staging',
+      'scope', 'order', 'roadmap', 'merge', 'pacing', 'budget', 'status_page', 'kaizen_staging',
       'autonomy', 'resource_policy', 'wave_scheduling', 'peers', 'decisions', 'other_config',
     ]);
     expect(parsed.pacing).toMatchObject({ status: 'ok', floor_pct: 45.71, elapsed_h: 96, target_pct: 80, shortfall_pct: 15.71 });
-    expect(JSON.parse(summary('--campaign-dir', FULL, '--now', NOW_FRI, '--json').stdout.toString()).rows).toHaveLength(13);
+    expect(JSON.parse(summary('--campaign-dir', FULL, '--now', NOW_FRI, '--json').stdout.toString()).rows).toHaveLength(14);
     const adjusted = JSON.parse(summary('--campaign-dir', FULL, '--mode', 'catchup', '--usage-file', file, '--floor', '80', '--now', NOW_FRI, '--json').stdout.toString());
     expect(adjusted.pacing).toMatchObject({ floor_pct: 80, shortfall_pct: 50 });
   });
@@ -1092,6 +1117,19 @@ describe('status --summary (the launch summary)', () => {
   test('a run context with no question channel: no question card', () => {
     expect(summaryJson(tempCampaign({}, { 'run-context.json': runContext('claude', 'none') })).cards).toEqual([]);
     expect(summaryJson(tempCampaign({}, { 'run-context.json': runContext('claude', 'ask-user-question') })).cards.length).toBeGreaterThan(0);
+  });
+
+  test('--data reads a recorded worker-context.json into the overview, and omits worker columns without one', () => {
+    const overviewOf = (dir: string) => {
+      const out = path.join(dir, 'data-out');
+      const proc = Bun.spawnSync({ cmd: ['bun', 'run', 'scripts/campaign-status.ts', '--no-gh', '--campaign-dir', dir, '--data', out], cwd: root });
+      expect(proc.exitCode).toBe(0);
+      return JSON.parse(fs.readFileSync(path.join(out, 'overview.json'), 'utf-8'))[0] as Record<string, unknown>;
+    };
+    const none = overviewOf(tempCampaign({}));
+    expect(Object.keys(none).filter((k) => k.startsWith('worker_'))).toEqual([]);
+    const record = { recorded_at: '2026-11-11T11:30:00.000Z', workers: 9, unattributed: 1, median_first_turn_tokens: 110_228, roles: {}, merged_prs: 2, spawns_per_merged_pr: 3.5, respawns: { total: 4, warm: 1, cold: 3 } };
+    expect(overviewOf(tempCampaign({}, { 'worker-context.json': record }))).toMatchObject({ worker_median_first_turn_tokens: 110_228, worker_respawns_cold: 3 });
   });
 
   test('a valid --usage changes the Budget row', () => {
@@ -1272,5 +1310,31 @@ describe('the launch target (issue #1410)', () => {
   test('target refuses an unknown flag or an empty --stated with exit 2', () => {
     expect(status('target', '--campaign-dir', FULL, '--state', 'x').exitCode).toBe(2);
     expect(status('target', '--campaign-dir', FULL, '--stated', '').exitCode).toBe(2);
+  });
+});
+
+describe('cross-repo queue keys (#1499)', () => {
+  test('computeStatusCounts leaves a cross-repo key out of by_status', () => {
+    const { queue } = computeStatusCounts({ '10': { status: 'ready' }, 'blackhole#1162': { status: 'ready' } }, []);
+    expect(queue.by_status).toEqual({ ready: 1 });
+    expect(queue.ready).toBe(1);
+  });
+
+  test('readDocCarry skips a cross-repo key instead of reporting issue NaN', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'doc-carry-'));
+    try {
+      const campaignDir = path.join(dir, '.blackhole');
+      fs.mkdirSync(campaignDir);
+      const queue = {
+        issues: {
+          '10': { status: 'in-flight', phase: 'review' },
+          'blackhole#1162': { status: 'in-flight', phase: 'review' },
+        },
+      };
+      const read = readDocCarry(campaignDir, { docs_governance: { enabled: true } }, queue, {});
+      expect(read).toMatchObject({ unrouted: [10] });
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

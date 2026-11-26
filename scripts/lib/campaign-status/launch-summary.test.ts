@@ -67,7 +67,7 @@ const PAGE: StatusPageInput = {
   nowIso: NOW_ISO,
 };
 const fullRows = (): LaunchRow[] =>
-  buildLaunchSummary({ report, config: SAMPLE_CONFIG, budget: panel(SAMPLE_CONFIG, USAGE), statusPage: PAGE });
+  buildLaunchSummary({ report, config: SAMPLE_CONFIG, budget: panel(SAMPLE_CONFIG, USAGE), statusPage: PAGE, queue: state.queue });
 
 describe('the launch summary of the full fixture', () => {
   const rows = fullRows();
@@ -92,9 +92,9 @@ describe('the launch summary of the full fixture', () => {
     expect(lines.slice(1)).toEqual(renderLaunchSummary(rows, ['W1']).split('\n').slice(1));
   });
 
-  test('exactly 13 rows, in fixed order', () => {
+  test('exactly 14 rows, in fixed order', () => {
     expect(rows.map((r) => r.key)).toEqual([
-      'scope', 'order', 'merge', 'pacing', 'budget', 'status_page', 'kaizen_staging',
+      'scope', 'order', 'roadmap', 'merge', 'pacing', 'budget', 'status_page', 'kaizen_staging',
       'autonomy', 'resource_policy', 'wave_scheduling', 'peers', 'decisions', 'other_config',
     ]);
     expect([...LAUNCH_ROW_KEYS]).toEqual(rows.map((r) => r.key));
@@ -322,6 +322,7 @@ describe('gateCards', () => {
     const asked = cards.flatMap((c) => c.questions).map((q) => q.row);
     for (const row of rows.filter((r) => !r.adjustable)) expect(asked).not.toContain(row.key);
     expect(asked).not.toContain('order');
+    expect(asked).not.toContain('roadmap');
     expect(asked).not.toContain('peers');
     expect(asked).not.toContain('decisions');
   });
@@ -388,7 +389,7 @@ describe('the catchup launch summary', () => {
   const rowsFor = (catchup: CatchupInput, limits: RateLimits | null = CATCHUP_LIMITS): LaunchRow[] => {
     const budget = 'budget' in catchup ? catchup.budget : undefined;
     const b = limits ? buildBudgetPanel({ limits, reason: null, ageSeconds: 0, now: NOW, config: SAMPLE_CONFIG, budget }) : { ...NOT_PROBED, reason: 'no usage' };
-    return buildLaunchSummary({ report, config: SAMPLE_CONFIG, budget: b, statusPage: PAGE, catchup });
+    return buildLaunchSummary({ report, config: SAMPLE_CONFIG, budget: b, statusPage: PAGE, catchup, queue: state.queue });
   };
   const rows = rowsFor(input());
   const pacingOf = (r: LaunchRow[]) => r.find((x) => x.key === 'pacing') as LaunchRow;
@@ -397,7 +398,7 @@ describe('the catchup launch summary', () => {
     expect(renderLaunchSummary(fullRows())).toBe(fs.readFileSync(EXPECTED, 'utf-8'));
   });
 
-  test('13 rows in LAUNCH_ROW_KEYS order, the same keys as a run', () => {
+  test('14 rows in LAUNCH_ROW_KEYS order, the same keys as a run', () => {
     expect(rows.map((r) => r.key)).toEqual([...LAUNCH_ROW_KEYS]);
     expect(rows.map((r) => r.key)).toEqual(fullRows().map((r) => r.key));
   });
@@ -429,7 +430,7 @@ describe('the catchup launch summary', () => {
     expect(pacingOf(all[4]).consequence).toContain('invalid');
   });
 
-  test('gate cards: Pacing is adjustable, Order, Peers and Decisions are not, 4 per card; print-only asks nothing', () => {
+  test('gate cards: Pacing is adjustable, Order, Roadmap, Peers and Decisions are not, 4 per card; print-only asks nothing', () => {
     const cards = gateCards(rows, { printOnly: false });
     const asked = cards.flatMap((c) => c.questions).map((q) => q.row);
     expect(asked).toEqual(['scope', 'merge', 'pacing', 'budget', 'status_page', 'kaizen_staging']);

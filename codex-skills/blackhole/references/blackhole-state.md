@@ -37,6 +37,7 @@ Mutations to `.blackhole/queue.json` and
 | `doc-health.json` | Doc-tree health signal, Scope-1 only (gitignored, see § Doc-Health Signal) |
 | `pace-log.jsonl` | Per-spawn-round pace/resource verdicts, planned batch and effective concurrency, newest 200 lines (gitignored, written by `scripts/pace-log.ts`, diagnostic only) |
 | `usage-history.jsonl` | Weekly usage readings (`observed_at`, `used_percentage`, `resets_at`), one per `observed_at`, newest 200 lines (gitignored, appended by `scripts/usage-probe.ts`, read by the status page's Pace row) |
+| `worker-context.json` | Runtime worker cost: median first-turn cache creation per role, spawns per merged PR, fix-round respawns split cache-warm/cold (gitignored, per machine, written by `scripts/worker-context-report.ts --record`, read by `campaign-status.ts`) |
 | `run-context.json` | What this run can do and the route resolved from it, rewritten at every bootstrap and resume (see `run-context.md`) |
 | `owner-decisions.json` | `{"decisions": [{date, text, refs?}]}` — the owner's answers and scope/priority instructions, appended only by `scripts/campaign-record.ts decision` (gitignored; travels on the state branch; see `status-page.md` § What the orchestrator records) |
 | `pending-decisions.json` | `{"next_id", "decisions": [{id, question, options, recommended, evidence?, blocks, gate?, created_at}]}` — owner questions parked for `/blackhole decide` (by default, `decisions.mode`), written only by `scripts/campaign-record.ts park`/`resolve` through the write guard (entity key `decisions`; gitignored; travels on the state branch; see `decision-parking.md`) |
@@ -60,7 +61,7 @@ The same guards also trust the validated harness scratchpad and the linked workt
 On a machine whose disk does not outlive the session (`state_store: branch`), these files are
 also kept on the `blackhole/state` branch: pushed at every turn end and restored on resume
 (`state-branch.md`). `archive/`, `hook-events/`, `.tmp/`, `*.tmp` and the per-machine signals
-(`run-context.json`, `plugin-drift.json`, `doc-health.json`, `pace-log.jsonl`, `usage-history.jsonl`) stay local.
+(`run-context.json`, `plugin-drift.json`, `doc-health.json`, `pace-log.jsonl`, `usage-history.jsonl`, `worker-context.json`) stay local.
 
 Full schemas: `codex-skills/blackhole/references/findings-ledger.md`,
 `queue-dag.md`.
@@ -244,7 +245,7 @@ writing agent (`planner`, `investigator`), not left to individual judgment.
 ```
 
 The `design` triple above stages an ADR body, its `documentation/decisions/INDEX.md` row, and
-(when the Cross-Cutting Heuristic promotes a finding, `planner.md` §4.8 Trigger A) an
+(when the Cross-Cutting Heuristic promotes a finding, `planner-tracks/04-design-track.md` §4.8 Trigger A) an
 `ARCHITECTURE.md` `## Active Constraints` bullet — issue #474. The `analyze`/`investigate` entry
 stages an investigator-authored note carrying its own `summary` field directly on the `new_file`
 entry (issue #832, ADR-031 Phase 2) — the root **documentation/INDEX.md** row is reproduced
@@ -267,7 +268,7 @@ by `reviewer` (ADR-021 A2). `plan` and `review` extend the `route` enum; `implem
 | `entries[].produced_by` | `planner` \| `investigator` \| `implementer` | Which agent staged the artifact; `implementer` is review-artifact-only (generated at merge-readiness per ADR-021 A2, issue #445) |
 | `entries[].declared_at` | ISO8601 | When the entry was staged |
 | `entries[].staged_path` | string | Repo-relative path under `.blackhole/staged/<issue>/` |
-| `entries[].target_path` | string | Repo-relative target path. Usually under `documentation/`, per `artifact-contract.md`'s route table. For `target_kind: append_row` this is `documentation/decisions/INDEX.md` (`design` route, `planner.md` §4.8) or `ARCHITECTURE.md` **at the repo root** — not under `documentation/` — for the Active Constraints append (`design`/`analyze` routes, `planner.md` §4.8 Trigger A / Step 4 Trigger B, issue #474). `documentation/INDEX.md` is no longer a valid `append_row` target for any route (issue #832, ADR-031 Phase 2) — the root index is regenerated automatically at carry time instead |
+| `entries[].target_path` | string | Repo-relative target path. Usually under `documentation/`, per `artifact-contract.md`'s route table. For `target_kind: append_row` this is `documentation/decisions/INDEX.md` (`design` route, `planner-tracks/04-design-track.md` §4.8) or `ARCHITECTURE.md` **at the repo root** — not under `documentation/` — for the Active Constraints append (`design`/`analyze` routes, `planner-tracks/04-design-track.md` §4.8 Trigger A / Step 4 Trigger B, issue #474). `documentation/INDEX.md` is no longer a valid `append_row` target for any route (issue #832, ADR-031 Phase 2) — the root index is regenerated automatically at carry time instead |
 | `entries[].target_kind` | `new_file` \| `append_row` | Tells the carry-step whether to copy a whole file or append a row fragment to an existing file (`documentation/decisions/INDEX.md`) or bullet list (`ARCHITECTURE.md` `## Active Constraints`) |
 | `entries[].summary` | string, optional | Set on a `new_file` entry in place of the retired paired root-INDEX `append_row` entry (issue #832, ADR-031 Phase 2) — `rewriteInvestigatorFrontmatter` writes it onto the promoted investigator note's own frontmatter; a `plan`-route entry's plan body already carries its own `summary` in lifecycle frontmatter, so this field mirrors that value rather than introducing a second source of truth. `documentation/INDEX.md`'s row for the promoted doc is then reproduced automatically from this frontmatter field at carry time (`doc-index-generate.ts`'s `buildDocIndexRows`) |
 
@@ -299,7 +300,7 @@ at escalation — never overlapping for one issue), so there is no lost-update r
   value" — a table-row assumption that did not generalize to the `ARCHITECTURE.md`
   `## Active Constraints` bullet target added above, which has no table or `path` column.
   `implementer.md` now dedups that target by the `(ADR-{NNN})` / `(analyze: issue #N)` citation
-  suffix `planner.md`'s own near-duplicate check (§4.8 Trigger A / Step 4 Trigger B) already
+  suffix the near-duplicate checks in `planner-tracks/04-design-track.md` §4.8 Trigger A and `planner.md` Step 4 Trigger B already
   uses — reused, not reinvented.
 - **Mechanized (issue #715, R-10)**: the carry-step's shape guard, `target_kind` dispatch,
   9-row frontmatter rewrite, and both `append_row` dedup discriminators above are implemented at

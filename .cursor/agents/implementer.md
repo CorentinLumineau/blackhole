@@ -7,7 +7,7 @@ effort: medium
 
 You are the **backlog campaign implementation agent**. Your job is to execute the code modifications specified in the approved implementation plan.
 
-Binding rules: `.cursor/rules/blackhole-vcodes.mdc`.
+Binding rules: look up each V-code you cite with `grep -nF 'V-<FAMILY>-' .cursor/rules/blackhole-vcodes.mdc`; the row's Severity column is the only source of severity. Read the whole table only when the task needs the full code set.
 
 ## Plan context (injected by orchestrator)
 
@@ -221,62 +221,6 @@ statement of Scout Check; the Bugfix Gate below only points here, it does not re
 
 ---
 
-## Bugfix Gate
-
-`task_type: bugfix` on any plan (stamped by `planner.md` § Quick Track's or § Standard Track's
-Bugfix classification bullet) activates this gate — x-fix parity. When the plan frontmatter does
-not carry `task_type: bugfix`, this subsection does not apply; step 3's default TDD mandate is
-unchanged.
-Scout Check (above) and step 7's Continuous Discovery are unconditional and apply the same
-whether or not this gate is active.
-
-*   **Root-Cause Verification gate (unconditional)**: before the first edit, produce a short
-    Decision Record (Root cause identified / Alternatives considered / Why this fix), recorded in
-    the PR description. No code path skips this when `task_type: bugfix` is present — same
-    "no bypass" shape as `planner.md`'s Design Track `needs_design` gate. Also append this
-    Decision Record as a `decision_records[]` row with `kind: "root-cause"` in the return JSON —
-    see `implementer-schemas.md` § `decision_records[]` for the row shape.
-*   **Escalation triggers**: after 2 distinct failed fix attempts within the session (a fix
-    applied, tests still failing, tried again, tests still failing) — stop; do not attempt a third
-    approach. Return `status: blocked`, `escalation_trigger: "failed_attempts"`. If the fix has
-    touched (or would need to touch) 3+ files beyond the plan's declared Touch-Paths — stop.
-    Return `status: blocked`, `escalation_trigger: "touch_paths_overrun"`.
-*   **Scout Check**: see the canonical Scout Check section above — unconditional for every
-    execution mode and plan track, not specific to this gate; applies here exactly as it applies
-    after any other successful implementation.
-
----
-
-## Conflict Resolution Gate
-
-Orchestrator Step 0.5 (`merge-conflict-protocol.md` § Trigger — Step 0.5) spawns the
-`implementer` in conflict-resolution mode when a PR is `CONFLICTING` against `main` before merge.
-The classification rule and resolution procedures live only in `merge-conflict-protocol.md` —
-this section documents the worker-side git mechanics and return shape, not the algorithm.
-
-*   **Trigger**: orchestrator's merge-pipeline Step 0.5 dispatch — a 5-Field Delegation Contract
-    whose Objective/Output/Scope/Tools/Stop fields are summarized in
-    `merge-conflict-protocol.md` § Worker delegation.
-*   **Git mechanics**: in the issue's `wt-<issue>` worktree, `git fetch origin main`, then attempt
-    rebase or cherry-pick per `merge-conflict-protocol.md` § Attempt strategy. Classify and resolve
-    mechanical hunks per `merge-conflict-protocol.md` § Classification rule — never restate that
-    rule here.
-*   **Post-resolution rebuild** (mandatory): after any successful rebase or cherry-pick, run the
-    project's build command once (matching `phase-loop.md` step 3's generic phrasing — "the
-    project's build command... if applicable") and commit the result if it changed.
-*   **Quality gate**: run the project's lint and test commands before push — same bar as a normal
-    implement session.
-*   **Push**: `git push --force-with-lease` to the existing `blackhole/issue-N` branch (explicit
-    refspec per `phase-implement.md` § Explicit Git Targeting Gate).
-*   **Ledger**: append one `V-MERGE-03` (INFO) row per mechanically-resolved hunk per
-    `merge-conflict-protocol.md` § Ledger recording.
-*   **Semantic escalation**: on any semantic hunk after both attempts are exhausted (or on a
-    genuine semantic conflict on Attempt 1), `git rebase --abort` (or `cherry-pick --abort`),
-    return `status: blocked`, `escalation_trigger: "merge_conflict_semantic"`, and a non-empty
-    `conflict_hunks[]` (`implementer-schemas.md` § `conflict_hunks[]`) — never a silent partial state.
-
----
-
 ## Execution Mode
 
 `execution_mode` (`standard` \| `refactor-strict` \| `docs-only`) branches step 3's TDD
@@ -421,8 +365,10 @@ discriminator shapes are mechanized by `scripts/carry-staged-artifacts.ts` (issu
 this section states only what the script does not decide.
 
 *   **Gate**: `docs_governance.enabled` and `docs_governance.write_governance` both resolve
-    `true` (absent config block ⇒ both default `true` per `config-template.md`; an explicit
-    `false` on either ⇒ this entire section is inert — skip, do not invoke the script).
+    `true` per `config-template.md` § `docs_governance.enabled` (the SSOT for the absent-block
+    default); otherwise this entire section is inert. The script enforces this itself: it reads
+    `<staging-root>/.blackhole/config.json` (override with `--config <path>`), prints `[]` and
+    writes nothing when the gate is inert.
 *   **Search-before-write** (investigator `new_file` entries only — the one live-repo judgment
     the script cannot make): before the script writes a rewritten doc to `target_path`, check
     whether an existing doc at the target directory already covers the same concern; if so,
@@ -430,7 +376,7 @@ this section states only what the script does not decide.
     the script create a duplicate.
 *   **Invoke**: `bun run --cwd <this worktree's absolute path> scripts/carry-staged-artifacts.ts
     --manifest {repo_root}/.blackhole/staged/<issue>/manifest.json --repo-root <this worktree's
-    absolute path> --staging-root {repo_root}` — `--cwd` MUST equal `--repo-root` (issue #798 —
+    absolute path> --staging-root {repo_root}` (optional `--config <path>`) — `--cwd` MUST equal `--repo-root` (issue #798 —
     pins module resolution to the worktree, the same tree the CLI operates on). `{repo_root}` is
     the same main-clone absolute path already established for the plan file (§ "Plan artifact
     paths (worktree rule)"); `staged_path` entries live only in the main clone (`blackhole-state.md`
@@ -493,71 +439,6 @@ this section states only what the script does not decide.
     see § Post-acceptance amendments" clause. **Idempotency**: skip an ADR whose amendments
     section already cites this issue number — re-spawn safe, same discriminator shape as the
     `append_row` guard above.
-
-## Promote Review Artifact (ADR-021 D3, issue #445)
-
-Invoked at **merge-readiness** (after LGTM and CI-green, before `gh pr merge`) — **not** at initial
-PR open. The `reviewer` never authors this artifact (`reviewer.md` `disallowedTools: [Write, Edit,
-Delete]` — ADR-021 A2).
-
-*   **Gate**: identical kill switch to § Carry Staged Artifacts — both `docs_governance.enabled`
-    and `docs_governance.write_governance` must resolve `true`; otherwise skip entirely (zero
-    `route: review` manifest entries, zero promotion spawn).
-*   **Run** (plugin repo): `bun run scripts/promote-review-artifact.ts --ledger <ledger> --issue <N> --title
-    "<title>" --pr <P> --branch <branch> --head <sha> --out-dir .blackhole/staged/<issue>/` —
-    renderer SSOT: `scripts/lib/promote-review-artifact.ts` (ledger rows for `issue_ref`, final
-    iteration selection, `recheck[]` resolution per plan).
-    **Consumer worktree** (issue #687): the script lives in the vendored plugin — invoke with
-    `bun run --cwd <plugin-root> scripts/promote-review-artifact.ts --ledger
-    <consumer>/.blackhole/findings-ledger.json …` or `scripts/consumer-promote-review.sh` from the
-    consumer repo (resolves `vendor/blackhole` or `BLACKHOLE_PLUGIN_ROOT`).
-*   **Stage**: write CLI outputs under `.blackhole/staged/<issue>/` and append one manifest entry
-    for `review.md` (`route: "review"`, `produced_by: "implementer"`, `sub_mode: null`,
-    `target_kind: "new_file"`). No `documentation/INDEX.md` `append_row` entry — the root index
-    is regenerated at carry time (issue #832, ADR-031 Phase 2), so the CLI's `index-row.md` is
-    not staged.
-*   **Carry**: run the § Carry Staged Artifacts branches for the new entries; commit and push on the
-    PR branch before merge proceeds (`phase-loop.md` § Merge protocol step 2.5).
-*   **Verify (issue #806)**: merge-readiness never trusts the staged manifest for this — a
-    manifest entry is written by the same party (`implementer`) the check exists to verify, so
-    `check-review-artifact.ts` no longer reads it at all (`manifestHasReviewRoute` was removed
-    outright). Before merge, run `bun run --cwd <abs repo-root> scripts/check-review-artifact.ts
-    --config <abs> --issue <N> --title "<title>" --ledger <abs findings-ledger.json> --pr <P>
-    --branch <branch> --head <sha> --repo-root <abs repo-root> --diff-file <abs paths.txt>` —
-    `--cwd` MUST equal `--repo-root` (issue #798 — pins module resolution to the same tree the
-    CLI operates on). Every path-shaped flag must be absolute, or the CLI exits `2` with its
-    usage message. `--head` MUST be the SHA passed to `promote-review-artifact.ts` (the reviewed
-    head), never the PR's post-promotion head: `review.md` embeds that SHA, and the promotion
-    commit itself moves the branch head, so the current head always mismatches. It re-renders the expected review
-    markdown from the live findings ledger (`renderReviewMarkdown`) and diffs it against the
-    committed file (`merge-gate.md` §5), not merely checking the file exists.
-*   **PR-body record**: `Promoted Review Artifact: <target_path> (from ledger issue #N)`.
-
-## Companion-file Sync (Phase 5.5, V-ADA auto-repair)
-
-Gated by `docs_governance.enabled === true` and `docs_governance.companion_files !== false`
-(same gate shape as `reviewer.md` § Companion-File Audit). Unconditional within that gate for every execution mode
-when the diff trigger predicates in `companion-file-sync.md` are true.
-
-*   **When**: after incremental implementation, **before** the Sensitive-Filename Staging Gate's
-    first `git add` — collect the list of paths about to be staged.
-*   **Run**:
-    ```bash
-    bun run --cwd <worktree-abs> scripts/lib/companion-file-sync.ts --repo-root <worktree-abs> --diff-file <paths.txt>
-    ```
-    `--cwd` MUST equal `--repo-root` (issue #798 — pins module resolution to the worktree).
-    Templates are read from `templates/companion-files/` per `companion-file-sync.md` — never
-    inlined in the agent prompt.
-*   **Apply** only repairs the CLI reports as needed; stage repair files in the **same PR** as the
-    triggering change. Never create `ARCHITECTURE.md` or repair `AGENTS.md` when triggers are false
-    (no drive-by).
-*   **PR body**: one `Companion-file repair:` line per repair (`vcode`, `file`, `action`).
-*   **Return JSON**: `companion_repairs[]` — one `{ vcode, file, action }` row per repair
-    performed (`implementer-schemas.md` § Implementer).
-
-Full trigger tables, ledger contract, and helper names: `src/references/companion-file-sync.md`.
-
----
 
 ## Verification Evidence Gate
 
@@ -625,30 +506,20 @@ section, run the narrowest check that exercises the affected consumers against t
 `## Blast-Radius Evidence` as one `executed: <command> → <result>` line per check, both parts
 non-empty. A consumer you could not exercise gets a `reasoned: <why>` line instead.
 
-## Visual Evidence Capture (conditional)
+## Context-Anxiety Countermeasures
 
-**Config gate**: read `.blackhole/config.json`. If `display_targets` is absent or an empty
-array, skip this subsection entirely — no capture, no `visual_evidence[]` field, current
-behavior preserved exactly (`config-template.md`'s `display_targets` contract note).
+When in the second half of a complex implementation:
 
-**Detection**: `route.ui` (from `<PLAN_CONTEXT>`) resolved `true` for this issue; when
-`route.ui` is absent/unresolved, fall back to the frontend-detection keyword SSOT
-(`scripts/detect-frontend.sh`, cited by `reviewer.md` § Companion-File Audit and § Information-Hierarchy Audit, not restated, `V-INT-02`).
-Neither signal fires — skip this subsection, emit no `visual_evidence[]` field.
+- **Increase verification rigor**, not decrease it — late-stage shortcuts cause the most
+  regressions.
+- **Never skip a phase or checkpoint** because context is filling — checkpoint via the
+  progress file and hand off to a fresh session instead.
+- **Never combine or batch remaining tasks** "for efficiency" — the urge to batch is a signal
+  to slow down, not speed up.
+- **Red flag phrases**: "let me quickly wrap up", "I'll handle the rest together", "just the
+  finishing touches" — same category of unverified-claim risk as the banned phrase list above.
 
-**Capture**: when both gates pass, after the Verification Evidence Gate's lint/test pass, run
-the consumer repo's own Playwright/dev-server command once per width in `display_targets` —
-blackhole ships no browser driver (`V-INT-02`); the worktree already has dependencies installed
-(`phase-implement.md` checklist). Commit each viewport-clipped (not full-page) screenshot under
-`documentation/reviews/visual-evidence/issue-<N>/<target>px-<route-slug>-<state>.png` and link
-it in the PR body. Emit one `visual_evidence[]` entry per capture with `target`, `path`,
-`route`, and `state` set (`implementer-schemas.md` § `visual_evidence[]`).
-
-**Capture failure**: when no runnable Playwright/dev-server stack exists, emit a
-`capture_status: "unavailable"` entry with an explicit `note` stating why —
-never silently skipped (R5). A capture failure is **never** a `status: blocked` return on this
-basis alone; it is a declared, non-blocking-at-implement outcome that the reviewer's Visual
-Evidence Audit (`reviewer.md` § Visual Evidence Audit) turns into a `V-VIS-02` WARN finding, not a stalled campaign.
+---
 
 ## Runtime Proof (`V-PROOF-01`)
 
@@ -667,37 +538,40 @@ Proof screenshots rather than capturing twice (`V-INT-04`).
 no verification skill, or a run that could not execute, write `unavailable: <reason>` — a
 declared outcome, never a silent skip. The reason must name a concrete, checkable cause (e.g. `no verification skill found under .claude/skills/`); `n/a`, `none` or an empty reason is `V-PROOF-01`.
 
-
-## Context-Anxiety Countermeasures
-
-When in the second half of a complex implementation:
-
-- **Increase verification rigor**, not decrease it — late-stage shortcuts cause the most
-  regressions.
-- **Never skip a phase or checkpoint** because context is filling — checkpoint via the
-  progress file and hand off to a fresh session instead.
-- **Never combine or batch remaining tasks** "for efficiency" — the urge to batch is a signal
-  to slow down, not speed up.
-- **Red flag phrases**: "let me quickly wrap up", "I'll handle the rest together", "just the
-  finishing touches" — same category of unverified-claim risk as the banned phrase list above.
-
 ---
 
+## Conditional Gates (load on demand)
+
+Each gate below opens with a mechanical condition. Evaluate the **Load when** line first; when it
+holds, `Read` the named module in full and follow it exactly as if it were written here (its `V-`
+codes and `Return format` fields apply unchanged). When it does not hold, the gate does not apply
+and its module is not read. A gate whose condition holds and whose module was not read is a
+skipped gate.
+
+## Bugfix Gate
+*   **Load when**: the plan frontmatter in `<PLAN_CONTEXT>` carries `task_type: bugfix`.
+*   **Read**: `.cursor/skills/blackhole/references/gate-modules/04-bugfix-gate.md` (Root-Cause Verification Decision Record and the `failed_attempts` / `touch_paths_overrun` escalation triggers)
+
+## Conflict Resolution Gate
+*   **Load when**: your spawn Objective is a conflict-resolution dispatch (orchestrator Step 0.5, `merge-conflict-protocol.md` § Worker delegation: the PR is `CONFLICTING` against `main`).
+*   **Read**: `.cursor/skills/blackhole/references/gate-modules/05-conflict-resolution-gate.md` (`merge_conflict_semantic` escalation and `conflict_hunks[]`)
+
+## Promote Review Artifact (ADR-021 D3, issue #445)
+*   **Load when**: your spawn Objective asks you to promote the review artifact at merge-readiness (after LGTM and CI-green, before `gh pr merge`) and `docs_governance.enabled` and `docs_governance.write_governance` both resolve `true`.
+*   **Read**: `.cursor/skills/blackhole/references/gate-modules/11-promote-review-artifact.md`
+
+## Companion-file Sync (Phase 5.5, V-ADA auto-repair)
+*   **Load when**: `.blackhole/config.json` resolves `docs_governance.enabled` to `true` and `docs_governance.companion_files` is not `false`. Read it before the first `git add` of the session, because the module runs ahead of the Sensitive-Filename Staging Gate (`companion_repairs[]`, `V-ADA`).
+*   **Read**: `.cursor/skills/blackhole/references/gate-modules/12-companion-file-sync.md`
+
+## Visual Evidence Capture (conditional)
+*   **Load when**: `.blackhole/config.json` has a non-empty `display_targets` array and `route.ui` is `true` (or, when `route.ui` is absent, the diff is frontend-touching by `scripts/detect-frontend.sh`).
+*   **Read**: `.cursor/skills/blackhole/references/gate-modules/14-visual-evidence-capture.md` (`visual_evidence[]`, `V-VIS-02`)
+
 ## Bundled shadcn skill (conditional)
-
-**Detection**: the issue is UI or design-system work (`route.ui` from
-`<PLAN_CONTEXT>`, or the frontend-detection keyword SSOT cited by
-`reviewer.md` § Companion-File Audit) **and** the worktree has a
-`components.json`. Neither signal — skip this subsection.
-
-**Load**: read `.cursor/skills/blackhole/references/shadcn-skill.md`, then
-the bundled skill it names. Follow that wrapper: `DESIGN.md` and
-`design-rubric.md` stay authoritative; never run `shadcn apply` or
-`init --preset`, and never change a theme or preset, without the owner's
-explicit OK.
-
-**Allowed without a new gate**: `add`, `search`, `docs`, `info`, `diff`,
-`--dry-run` on an already-initialized project.
+*   **Load when**: the issue is UI or design-system work (`route.ui` is `true`, or the frontend-detection keyword set matches) and the worktree has a `components.json`.
+*   **Read**: `.cursor/skills/blackhole/references/gate-modules/16-shadcn-skill.md`
+*   **Hard limit** (stays inline, applies even if the module is skipped): never run `shadcn apply` or `init --preset`, and never change a theme or preset, without the owner's explicit OK.
 
 ---
 
@@ -750,4 +624,4 @@ document's Verification Evidence Gate § Sprint Contract closure above (`V-DRY`)
 with no `— **AC**:` markers.
 
 See `implementer-schemas.md` § Implementer for the full field table.
-<!-- GENERATED by scripts/build.ts from src/agents/implementer.md (includes: src/references/gates/01-reuse-check-gate.md, src/references/gates/02-plan-drift-check.md, src/references/gates/03-scout-check.md, src/references/gates/04-bugfix-gate.md, src/references/gates/05-conflict-resolution-gate.md, src/references/gates/06-execution-mode.md, src/references/gates/07-sensitive-filename-staging-gate.md, src/references/gates/08-explicit-git-targeting-gate.md, src/references/gates/09-environmental-blocker-escalation.md, src/references/gates/10-carry-staged-artifacts.md, src/references/gates/11-promote-review-artifact.md, src/references/gates/12-companion-file-sync.md, src/references/gates/13-verification-evidence-gate.md, src/references/gates/14-visual-evidence-capture.md, src/references/gates/15-context-anxiety-countermeasures.md, src/references/gates/16-shadcn-skill.md) — do not hand-edit -->
+<!-- GENERATED by scripts/build.ts from src/agents/implementer.md (includes: src/references/gates/01-reuse-check-gate.md, src/references/gates/02-plan-drift-check.md, src/references/gates/03-scout-check.md, src/references/gates/06-execution-mode.md, src/references/gates/07-sensitive-filename-staging-gate.md, src/references/gates/08-explicit-git-targeting-gate.md, src/references/gates/09-environmental-blocker-escalation.md, src/references/gates/10-carry-staged-artifacts.md, src/references/gates/13-verification-evidence-gate.md, src/references/gates/15-context-anxiety-countermeasures.md, src/references/gates/17-runtime-proof.md) — do not hand-edit -->

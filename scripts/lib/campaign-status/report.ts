@@ -1,3 +1,4 @@
+import type { WorkerContextRecord } from '../worker-context-report.ts';
 import { readScope } from '../../forge-scope.ts';
 import { issueWebUrl, prWebUrl, repoWebUrl } from '../forge-detection.ts';
 import { readLaneConfig } from '../lane.ts';
@@ -11,7 +12,7 @@ import { buildRunPanel, pendingRows, type DocCarryRead, type PendingRead } from 
 import { reconcileMerged } from './merged.ts';
 import { newestFirst, readScopeEntries } from './record.ts';
 import { computeStatusAlerts, isStateStale, newestStateWrite, stateAgeHours, statusPageEnabled } from './staleness.ts';
-import { computeStatusCounts, groupIssuesByPhase, QUEUE_STATUSES } from './queue.ts';
+import { computeStatusCounts, groupIssuesByPhase, isSameRepoKey, QUEUE_STATUSES } from './queue.ts';
 import type {
   BlockedClass,
   BudgetPanel,
@@ -68,6 +69,8 @@ export type StatusReportInput = {
   pending?: PendingRead;
   /** Doc carry totals as read; absent or null ⇒ docs governance off. */
   docCarry?: DocCarryRead;
+  /** The recorded worker-context report; absent or null ⇒ none recorded. */
+  workerContext?: WorkerContextRecord | null;
 };
 
 // Owner-clearable `awaiting-*` gates from queue-dag.md § Field rules (`notes`).
@@ -166,7 +169,7 @@ function readyToMerge(
 ): ReadyToMergeItem[] {
   const items: ReadyToMergeItem[] = [];
   for (const [key, issue] of Object.entries(issues)) {
-    if (issue.status !== 'in-flight' || issue.pr == null) continue;
+    if (!isSameRepoKey(key) || issue.status !== 'in-flight' || issue.pr == null) continue;
     const notes = (issue.notes ?? '').trim();
     const held = heldFor(notes);
     if (held === null && !notes.startsWith(DELIVERED_PREFIX)) continue;
@@ -444,5 +447,6 @@ export function buildStatusReport(input: StatusReportInput): StatusReport {
     budget: input.budget ?? NOT_PROBED,
     run: buildRunPanel({ config: config as Record<string, unknown>, runContext: input.runContext ?? null, pending: input.pending ?? [], docCarry: input.docCarry }),
     pending_decisions: pendingRows(input.pending ?? []),
+    worker_context: input.workerContext ?? null,
   };
 }

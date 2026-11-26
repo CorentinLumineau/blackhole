@@ -1,3 +1,4 @@
+import type { WorkerContextRecord } from '../worker-context-report.ts';
 import type { UsageVerdictName, WeeklyPace } from '../usage-budget.ts';
 
 // Mirrors the `route` object SSOT — `queue-dag.md` § `route` object. Field names and enum
@@ -17,6 +18,9 @@ export type Route = {
   computed_at_phase?: 'handle' | 'plan' | 'implement' | 'review';
   revision?: number;
 };
+
+/** Queue state a score was made against: each dependency's status and the linked PR (`pareto-score.ts` `staleness`). */
+export type ScoreBasis = { deps: Record<string, string>; pr: number | null };
 
 // Narrow view of `queue.json`'s per-issue entry — field names and semantics are frozen in
 // `queue-dag.md` § Field rules; this type reads a subset and never renames or redefines one.
@@ -44,11 +48,15 @@ export type QueueIssue = {
   /** Parent epic issue; a workstream source (`status_page.streams.from: epic`). */
   epic_parent?: number | null;
   route?: Route;
+  /** Parsed from the forge body's `Pareto:` line by the forge sync (`scripts/lib/pareto.ts`); absent when unscored. `scored_at`/`rationale`/`basis` are written by `scripts/pareto-score.ts apply` and kept by the sync while the forge line is unchanged. */
+  pareto?: { gain: number; effort: number; priority: number; scored_at?: string; rationale?: string; basis?: ScoreBasis };
 };
 
 export type QueueJson = {
   refreshed_at?: string;
   campaign_started_at?: string;
+  /** Owner pins: the run takes these first (`selectBatch`). */
+  user_queue_order?: number[];
   issues?: Record<string, QueueIssue>;
 };
 
@@ -390,6 +398,8 @@ export type StatusReport = {
   run: RunPanel;
   /** The parked owner decisions, most-blocking first: the "Decisions waiting for you" panel. Additive. */
   pending_decisions: PendingRow[];
+  /** The runtime worker-context report `scripts/worker-context-report.ts --record` wrote; null when none is recorded. Additive. */
+  worker_context: WorkerContextRecord | null;
 };
 
 /** The status page's usage-budget panel. Times are ISO 8601; every number is null when the window or the reading is absent. */
@@ -469,7 +479,7 @@ export type IssueRow = { num: number; issue: QueueIssue };
 
 /** The launch summary's rows, in display order, for a run and for a catchup alike (`launch-summary.ts`). */
 export const LAUNCH_ROW_KEYS = [
-  'scope', 'order', 'merge', 'pacing', 'budget', 'status_page', 'kaizen_staging',
+  'scope', 'order', 'roadmap', 'merge', 'pacing', 'budget', 'status_page', 'kaizen_staging',
   'autonomy', 'resource_policy', 'wave_scheduling', 'peers', 'decisions', 'other_config',
 ] as const;
 export type LaunchRowKey = (typeof LAUNCH_ROW_KEYS)[number];

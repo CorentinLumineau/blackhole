@@ -108,7 +108,8 @@ describe('blackhole-vcodes.md / reviewer.md — V-UX-01 registration (#271)', ()
   });
 
   test('reviewer.md audits V-UX-01 by reusing the companion-file V-ADA-03 detection, not reimplementing it', () => {
-    const reviewer = read('src/agents/reviewer.md');
+    // On-demand module (issue #1387): the audit body lives in audit-modules/, reviewer.md holds its stub.
+    const reviewer = read('src/references/audit-modules/14-information-hierarchy-audit.md');
     expect(reviewer).toContain('Information-Hierarchy Audit (`V-UX-01`)');
     // Guards V-INT-02: the new audit must cross-reference § Companion-File Audit's frontend-detection keyword
     // set rather than restating or reimplementing it.
@@ -148,7 +149,7 @@ describe('blackhole-vcodes.md — V-AUTO-01/V-AUTO-02 registration', () => {
 });
 
 describe('reviewer.md — § Staged Artifact Carry Audit content (ADR-021 D4, #468)', () => {
-  const section = read('src/references/audits/25-staged-artifact-carry-audit.md');
+  const section = read('src/references/audit-modules/25-staged-artifact-carry-audit.md');
   const reviewer = section;
 
   test('has a named Staged Artifact Carry Audit heading naming V-AUTO-02', () => {
@@ -234,7 +235,8 @@ describe('blackhole-vcodes.md / planner.md / reviewer.md — V-THREAT-01 registr
   });
 
   test('reviewer.md audits V-THREAT-01 by reusing review-core.md security-mode injection and the plan-file stamp, not new detection logic', () => {
-    const reviewer = read('src/agents/reviewer.md');
+    // On-demand module (issue #1387): the audit body lives in audit-modules/, reviewer.md holds its stub.
+    const reviewer = read('src/references/audit-modules/16-threat-model-audit.md');
     expect(reviewer).toContain('Quick-track escalation check (`V-THREAT-01`, `BLOCK`)');
     expect(reviewer).toContain('threat_screen_passed: true');
     expect(reviewer).toMatch(/review-core\.md.*Security-mode\s+review/);
@@ -253,11 +255,11 @@ describe('blackhole-vcodes.md — documentation alignment registration (#446)', 
     },
   );
 
-  test('V-DOC-GOV-02 row requires all six lifecycle frontmatter fields', () => {
+  test('V-DOC-GOV-02 row requires all five lifecycle frontmatter fields', () => {
     const row = vcodes().split('\n').find((line) => line.startsWith('| V-DOC-GOV-02 |'));
     expect(row).toBeDefined();
     expect(row).toContain('`type`');
-    expect(row).toContain('`summary`');
+    expect(row).not.toContain('`summary`');
     expect(row).toContain('`status`');
     expect(row).toContain('review_trigger');
     expect(row).toContain('created');

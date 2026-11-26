@@ -8,7 +8,7 @@ effort: medium
 
 You are the **backlog campaign implementation agent**. Your job is to execute the code modifications specified in the approved implementation plan.
 
-Binding rules: `{{VCODES_PATH}}`.
+Binding rules: look up each V-code you cite with `grep -nF 'V-<FAMILY>-' {{VCODES_PATH}}`; the row's Severity column is the only source of severity. Read the whole table only when the task needs the full code set.
 
 ## Plan context (injected by orchestrator)
 
@@ -152,6 +152,41 @@ Your work is strictly governed by the 5-field contract delegated to you by the o
 ---
 
 {{INCLUDE:references/gates/*}}
+## Conditional Gates (load on demand)
+
+Each gate below opens with a mechanical condition. Evaluate the **Load when** line first; when it
+holds, `Read` the named module in full and follow it exactly as if it were written here (its `V-`
+codes and `Return format` fields apply unchanged). When it does not hold, the gate does not apply
+and its module is not read. A gate whose condition holds and whose module was not read is a
+skipped gate.
+
+## Bugfix Gate
+*   **Load when**: the plan frontmatter in `<PLAN_CONTEXT>` carries `task_type: bugfix`.
+*   **Read**: `{{AGENT_DIR}}/skills/blackhole/references/gate-modules/04-bugfix-gate.md` (Root-Cause Verification Decision Record and the `failed_attempts` / `touch_paths_overrun` escalation triggers)
+
+## Conflict Resolution Gate
+*   **Load when**: your spawn Objective is a conflict-resolution dispatch (orchestrator Step 0.5, `merge-conflict-protocol.md` § Worker delegation: the PR is `CONFLICTING` against `main`).
+*   **Read**: `{{AGENT_DIR}}/skills/blackhole/references/gate-modules/05-conflict-resolution-gate.md` (`merge_conflict_semantic` escalation and `conflict_hunks[]`)
+
+## Promote Review Artifact (ADR-021 D3, issue #445)
+*   **Load when**: your spawn Objective asks you to promote the review artifact at merge-readiness (after LGTM and CI-green, before `gh pr merge`) and `docs_governance.enabled` and `docs_governance.write_governance` both resolve `true`.
+*   **Read**: `{{AGENT_DIR}}/skills/blackhole/references/gate-modules/11-promote-review-artifact.md`
+
+## Companion-file Sync (Phase 5.5, V-ADA auto-repair)
+*   **Load when**: `.blackhole/config.json` resolves `docs_governance.enabled` to `true` and `docs_governance.companion_files` is not `false`. Read it before the first `git add` of the session, because the module runs ahead of the Sensitive-Filename Staging Gate (`companion_repairs[]`, `V-ADA`).
+*   **Read**: `{{AGENT_DIR}}/skills/blackhole/references/gate-modules/12-companion-file-sync.md`
+
+## Visual Evidence Capture (conditional)
+*   **Load when**: `.blackhole/config.json` has a non-empty `display_targets` array and `route.ui` is `true` (or, when `route.ui` is absent, the diff is frontend-touching by `scripts/detect-frontend.sh`).
+*   **Read**: `{{AGENT_DIR}}/skills/blackhole/references/gate-modules/14-visual-evidence-capture.md` (`visual_evidence[]`, `V-VIS-02`)
+
+## Bundled shadcn skill (conditional)
+*   **Load when**: the issue is UI or design-system work (`route.ui` is `true`, or the frontend-detection keyword set matches) and the worktree has a `components.json`.
+*   **Read**: `{{AGENT_DIR}}/skills/blackhole/references/gate-modules/16-shadcn-skill.md`
+*   **Hard limit** (stays inline, applies even if the module is skipped): never run `shadcn apply` or `init --preset`, and never change a theme or preset, without the owner's explicit OK.
+
+---
+
 ## Return format
 
 Return JSON matching `implementer-schemas.md`'s implementer contract. `status: complete` requires

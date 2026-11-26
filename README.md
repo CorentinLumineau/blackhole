@@ -240,7 +240,7 @@ Optional pre-commit build hook: `bash scripts/install-hook.sh`
 
 ## Maintainer: Creating a release
 
-Automated every-20-merged-PR cadence (owner-gated by `RELEASE_CADENCE_ENABLED`) is documented in
+Automated every-10-merged-PR cadence (on by default; owner kill switch `RELEASE_CADENCE_ENABLED=false`) is documented in
 [documentation/runbooks/release-cadence.md](documentation/runbooks/release-cadence.md). Agents must
 not set that variable or the optional `CLAUDE_CODE_OAUTH_TOKEN` secret.
 

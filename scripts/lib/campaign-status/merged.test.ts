@@ -155,3 +155,16 @@ describe('drift on the page header', () => {
     expect(buildBlockers('## Blocking the run\n\n- Vendor SDK is not out\n', [], [], true, [])).toHaveLength(1);
   });
 });
+
+describe('reconcileMerged — cross-repo queue keys (#1499)', () => {
+  test('a cross-repo key is passed through untouched, no NaN drift, while same-repo entries still reconcile', () => {
+    const queue: Record<string, QueueIssue> = {
+      '1': { title: 'same repo', status: 'in-flight', phase: 'review', pr: 11 },
+      'blackhole#7': { title: 'other repo', status: 'in-flight', phase: 'review', pr: 11 },
+    };
+    const out = reconcileMerged(queue, [merged(11, '2026-11-12T09:00:00Z')], START);
+    expect(out.issues['blackhole#7']).toBe(queue['blackhole#7']!);
+    expect(out.drift).toEqual([{ issue: 1, pr: 11, title: 'same repo', queue: 'in-flight', forge: 'merged' }]);
+    expect(out.issues['1']!.status).toBe('merged');
+  });
+});

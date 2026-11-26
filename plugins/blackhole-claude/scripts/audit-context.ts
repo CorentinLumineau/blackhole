@@ -1,0 +1,148 @@
+import * as fs from 'fs';
+import * as path from 'path';
+import { readJsonFile } from './lib/fs.ts';
+import { parseFlags } from './lib/argv-flags.ts';
+import { isFrontendPath, loadFrontendPathSet } from './lib/frontend-paths.ts';
+import { latestRoute } from './lib/route-artifacts.ts';
+import type { AuditContext } from './lib/audit-module-triggers.ts';
+
+// Usage: bun run scripts/audit-context.ts --repo-dir <PR worktree> --base-ref <diff base> --head <PR head>
+//   --issue-ref <N> --dispatch <full|recheck> (--plan-file <PLAN_ABSOLUTE_PATH> | --no-plan-reason <why>)
+//   --config-file <.blackhole/config.json> --queue-file <.blackhole/queue.json> [--ledger-file <findings-ledger.json>] [--out <file>]
+// Builds the audit-context JSON `review-aggregate.ts --audit-context-file` consumes (ADR-034
+// amendment, V-AUDIT-01): the facts that decide which on-demand reviewer audit modules a spawn had
+// to load. Every input is required and a missing or unreadable one is a named error, never a
+// silently dropped fact: a context built from less than the full facts would let a module whose
+// trigger holds go unchecked. The one declared absence is the plan (`--no-plan-reason`, for a
+// no-plan track). For a recheck dispatch pass the last reviewed head as --base-ref, so changedFiles
+// is the fix commits' files.
+
+export const DISPATCH_KINDS = ['full', 'recheck'] as const;
+export type DispatchKind = (typeof DISPATCH_KINDS)[number];
+
+export type AuditContextInput = {
+  repoDir: string;
+  baseRef: string;
+  head: string;
+  dispatch: DispatchKind;
+  issueRef: string;
+  /** Exactly one of `planFile` / `noPlanReason`. */
+  planFile?: string;
+  noPlanReason?: string;
+  /** Findings ledger holding `routing_decisions`; defaults to `findings-ledger.json` next to the queue file when present. */
+  ledgerFile?: string;
+  configFile: string;
+  queueFile: string;
+};
+
+const PRODUCT_PRINCIPLES = 'documentation/reference/product-principles.md';
+const FRONTEND_SCRIPT = path.join(import.meta.dirname, 'detect-frontend.sh');
+
+const run = (cmd: string[], cwd: string): string => {
+  const r = Bun.spawnSync({ cmd, cwd, stdout: 'pipe', stderr: 'pipe' });
+  if (r.exitCode !== 0) throw new Error(`${cmd.join(' ')} failed in ${cwd}: ${r.stderr.toString().trim()}`);
+  return r.stdout.toString();
+};
+
+type QueueEntry = { size?: string; route?: Record<string, unknown> };
+type Queue = { pipeline_detection?: { actionman_workclaude?: boolean }; issues?: Record<string, QueueEntry> };
+
+const readInput = (file: string, label: string): string => {
+  try {
+    return fs.readFileSync(file, 'utf-8');
+  } catch (e) {
+    throw new Error(`${label} ${file} is missing or unreadable: ${(e as Error).message}`);
+  }
+};
+
+// Route resolution is `latestRoute`'s (latest ledger routing_decisions row, else the queue entry).
+const routeFor = (
+  queue: Queue,
+  ledger: unknown,
+  issueRef: string,
+  queueFile: string,
+): NonNullable<AuditContext['route']> => {
+  const entry = queue.issues?.[issueRef];
+  if (!entry) throw new Error(`issue ${issueRef} is absent from queue file ${queueFile}; cannot resolve its route`);
+  const size = typeof entry.size === 'string' ? (entry.size.startsWith('size:') ? entry.size : `size:${entry.size}`) : undefined;
+  const route = latestRoute(ledger as Parameters<typeof latestRoute>[0], queue as Parameters<typeof latestRoute>[1], Number(issueRef));
+  return { ...(route as AuditContext['route']), ...(size ? { size } : {}) };
+};
+
+const planArtifactsNextTo = (queueFile: string, issueRef: string): string[] =>
+  [`issue-${issueRef}.md`, `issue-${issueRef}-design.md`]
+    .map((n) => path.join(path.dirname(queueFile), 'plans', n))
+    .filter((p) => fs.existsSync(p));
+
+export const buildAuditContext = (input: AuditContextInput): AuditContext => {
+  if (!input.issueRef) throw new Error('issue-ref is required');
+  if (!!input.planFile === !!input.noPlanReason) throw new Error('pass exactly one of plan-file or no-plan-reason (a declared absence needs its reason)');
+  if (input.noPlanReason) {
+    const found = planArtifactsNextTo(input.queueFile, input.issueRef);
+    if (found.length > 0) throw new Error(`--no-plan-reason refused: plan artifact(s) exist for issue ${input.issueRef}: ${found.join(', ')}; pass --plan-file`);
+  }
+  const planText = input.planFile ? readInput(input.planFile, 'plan file') : undefined;
+  const config = readJsonFile(input.configFile, `config file ${input.configFile}`) as AuditContext['config'];
+  const queue = readJsonFile(input.queueFile, `queue file ${input.queueFile}`) as Queue;
+  const ledgerFile = input.ledgerFile ?? path.join(path.dirname(input.queueFile), 'findings-ledger.json');
+  const ledger = input.ledgerFile || fs.existsSync(ledgerFile) ? readJsonFile(ledgerFile, `ledger file ${ledgerFile}`) : null;
+  const route = routeFor(queue, ledger, input.issueRef, input.queueFile);
+  const changedFiles = run(['git', 'diff', '--name-only', '--no-renames', `${input.baseRef}...${input.head}`], input.repoDir)
+    .split('\n')
+    .filter(Boolean);
+  if (changedFiles.length === 0) {
+    throw new Error(`the diff ${input.baseRef}...${input.head} is empty (base equals head?); an empty changedFiles would drop every path trigger — pass the real base ref`);
+  }
+  const projectIsFrontend = run(['bash', FRONTEND_SCRIPT], input.repoDir).trim() === 'frontend=yes';
+  const frontendPaths = loadFrontendPathSet();
+  return {
+    changedFiles,
+    ...(planText !== undefined ? { planText } : {}),
+    ...(input.noPlanReason ? { noPlanReason: input.noPlanReason } : {}),
+    config,
+    route,
+    queue: { pipeline_detection: queue.pipeline_detection },
+    dispatch: { recheck: input.dispatch === 'recheck' },
+    productPrinciplesExists: fs.existsSync(path.join(input.repoDir, PRODUCT_PRINCIPLES)),
+    frontendDiff: projectIsFrontend && changedFiles.some((f) => isFrontendPath(f, frontendPaths)),
+  };
+};
+
+if (import.meta.main) {
+  const flags = parseFlags(process.argv.slice(2));
+  const str = (k: string): string | undefined => (typeof flags[k] === 'string' ? (flags[k] as string) : undefined);
+  const dispatch = str('dispatch') as DispatchKind | undefined;
+  const repoDir = str('repo-dir');
+  const baseRef = str('base-ref');
+  const head = str('head');
+  const issueRef = str('issue-ref');
+  const configFile = str('config-file');
+  const queueFile = str('queue-file');
+  const planFile = str('plan-file');
+  const noPlanReason = str('no-plan-reason');
+  const ledgerFile = str('ledger-file');
+  const missing = [
+    ['--repo-dir', repoDir],
+    ['--base-ref', baseRef],
+    ['--head', head],
+    ['--issue-ref', issueRef],
+    ['--config-file', configFile],
+    ['--queue-file', queueFile],
+    ['--dispatch <full|recheck>', dispatch && DISPATCH_KINDS.includes(dispatch) ? dispatch : undefined],
+    ['--plan-file or --no-plan-reason', planFile ?? noPlanReason],
+  ].filter(([, v]) => !v).map(([k]) => k);
+  if (missing.length > 0 || !repoDir || !baseRef || !head || !dispatch || !issueRef || !configFile || !queueFile) {
+    console.error(`audit-context: missing required input(s): ${missing.join(', ')}`);
+    console.error('Usage: bun run scripts/audit-context.ts --repo-dir <PR worktree> --base-ref <diff base> --head <PR head> --issue-ref <N> --dispatch <full|recheck> (--plan-file <path> | --no-plan-reason <why>) --config-file <path> --queue-file <path> [--ledger-file <findings-ledger.json>] [--out <file>]');
+    process.exit(1);
+  }
+  try {
+    const ctx = buildAuditContext({ repoDir, baseRef, head, dispatch, issueRef, planFile, noPlanReason, ledgerFile, configFile, queueFile });
+    const out = str('out');
+    if (out) fs.writeFileSync(out, JSON.stringify(ctx));
+    else console.log(JSON.stringify(ctx));
+  } catch (e) {
+    console.error(`audit-context: ${(e as Error).message}`);
+    process.exit(1);
+  }
+}

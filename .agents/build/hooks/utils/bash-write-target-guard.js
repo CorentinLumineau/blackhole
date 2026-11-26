@@ -53,7 +53,7 @@ const {
   isSettingsFilePath,
 } = require('./hook-event-log');
 const { FILE_WRITE, isTrustedShapedWrite, isTrustedStateWrite } = require('./state-dir-write-shape');
-const { isLiteralPathArg, extractCdTargetText, normalizeShellWord, MAX_CWD_CANDIDATES } = require('./worktree-removal-guard');
+const { isLiteralPathArg, extractCdTargetText, normalizeShellWord, MAX_CWD_CANDIDATES } = require('./shell-invocation-scan');
 
 /** Command words whose write behavior cannot be resolved by static inspection of the command
  * string at all — the residual gap ADR-029 accepts and downgrades to WARN rather than a silent
@@ -175,13 +175,31 @@ const literalWord = (token) => {
   return dynamic ? token : text;
 };
 
+/** Index just past the `}` that closes a `${` whose body starts at `start`, or -1 when none does.
+ * A nested `${` opens its own level, and a quoted span or backslash-escaped character inside the
+ * body is walked whole, so a `}` or space in it never ends the word. */
+const bracedExpansionEnd = (text, start, n) => {
+  let depth = 1;
+  for (let i = start; i < n; ) {
+    const ch = text[i];
+    if (ch === '}' && --depth === 0) return i + 1;
+    if (ch === '$' && text[i + 1] === '{') {
+      depth++;
+      i += 2;
+    } else if (ch === "'" || ch === '"') i = skipQuotedSpan(text, i, n);
+    else i += ch === '\\' ? 2 : 1;
+  }
+  return -1;
+};
+
 /** Quote-aware whitespace tokenizer over an already-visible (masked spans blanked) substring —
  * a quoted span (e.g. a sed script `'s/a/b/'`) is kept as one token, quotes intact, so
  * `stripQuotes` can later decide whether to unwrap it. A backslash-escaped character (`x\ y`)
- * never splits a word. */
+ * never splits a word, and a `${…}` expansion stays one word whatever spaces its body holds. */
 const tokenize = (text) => {
   const tokens = [];
   let current = '';
+  let braceUnclosed = false;
   let i = 0;
   const n = text.length;
   while (i < n) {
@@ -206,6 +224,15 @@ const tokenize = (text) => {
       i = end;
       continue;
     }
+    if (ch === '$' && text[i + 1] === '{' && !braceUnclosed) {
+      const end = bracedExpansionEnd(text, i + 2, n);
+      if (end !== -1) {
+        current += text.slice(i, end);
+        i = end;
+        continue;
+      }
+      braceUnclosed = true;
+    }
     current += ch;
     i++;
   }
@@ -229,7 +256,7 @@ const tokenize = (text) => {
  * F-00034 incident class. Pinned by
  * `scripts/hooks-validate-bash.test.ts`'s `#804: 'sed -i' whose script contains a quoted ';'
  * still resolves its real target (quote-policy pin)` case. Do not make this quote-unaware to
- * match `worktree-removal-guard.js`'s `findClauseStartIndices` — that guard needs the opposite
+ * match `shell-invocation-scan.js`'s `findClauseStartIndices` — that guard needs the opposite
  * policy for its own, equally load-bearing reason (see that function's own `QUOTE POLICY:` note).
  */
 const clauseRanges = (visible) => {
@@ -267,23 +294,71 @@ const COMMAND_PREFIXES = new Set([
 /** Wrapper options whose value is the next word (`sudo -u bob`, `nice -n 5`, `env -C dir`). */
 const PREFIX_VALUE_OPTIONS = new Set(['-u', '-g', '-n', '-C', '-k', '-p', '-I', '-L', '-P', '-o', '-e']);
 
+/** One substitution placeholder (`$(…)` or backticks, see `extractSubstitutions`) or one bare
+ * parameter expansion (`$X`, `$@`), matched at the sticky position: each may expand to nothing. */
+const PLACEHOLDER_AT_RE = /\$(?:\u0001\d+\u0001|[A-Za-z_]\w*|[@*#?!$0-9-])/y;
+
+/** A word made only of whole placeholders and `${…}` expansions, one or several adjacent
+ * (`$X`, `${X}${Y}`, `$X$(true)`): each part may expand to nothing, so the word may be empty. */
+const isPossiblyEmptyWord = (word) => {
+  const n = word.length;
+  let i = 0;
+  while (i < n && word[i] === '$') {
+    if (word[i + 1] === '{') {
+      const end = bracedExpansionEnd(word, i + 2, n);
+      if (end === -1) return false;
+      i = end;
+    } else {
+      PLACEHOLDER_AT_RE.lastIndex = i;
+      if (!PLACEHOLDER_AT_RE.test(word)) return false;
+      i = PLACEHOLDER_AT_RE.lastIndex;
+    }
+  }
+  return n > 0 && i === n;
+};
+
+/** Index of the first word at or after `i` that is not a redirect or a redirect's separate target. */
+const skipRedirectWords = (tokens, i) => {
+  while (i < tokens.length && REDIRECT_WORD_RE.test(tokens[i])) i += REDIRECT_ONLY_WORD_RE.test(tokens[i]) ? 2 : 1;
+  return i;
+};
+
+/** `i` moved past redirects and every word `isOperand` accepts, in any order. */
+const skipOperandsAndRedirects = (tokens, i, isOperand) => {
+  for (let before = -1; before !== i; ) {
+    before = i;
+    i = skipRedirectWords(tokens, i);
+    if (i < tokens.length && isOperand(tokens[i])) i++;
+  }
+  return i;
+};
+
 /** Indices of the words in a clause that run as commands: the first word after any `NAME=value`
- * assignments, and the word after each wrapper or keyword together with its options. */
+ * assignments and redirects, and the word after each wrapper or keyword together with its options.
+ * A word that is only a substitution may expand to nothing, so the word after it is a command too. */
 const commandPositions = (tokens) => {
   const positions = new Set();
   let i = 0;
   while (i < tokens.length) {
-    while (i < tokens.length && /^[A-Za-z_]\w*=/.test(tokens[i])) i++;
+    i = skipOperandsAndRedirects(tokens, i, (t) => /^[A-Za-z_]\w*=/.test(t));
     if (i >= tokens.length) break;
     positions.add(i);
+    if (isPossiblyEmptyWord(tokens[i])) {
+      i++;
+      continue;
+    }
     const prefix = commandName(tokens[i]);
     if (!COMMAND_PREFIXES.has(prefix)) break;
     i++;
-    while (i < tokens.length && (tokens[i].startsWith('-') || /^\d+(?:\.\d+)?[smhd]?$/.test(tokens[i]))) {
-      i += PREFIX_VALUE_OPTIONS.has(tokens[i]) ? 2 : 1;
+    for (let j = -1; j !== i; ) {
+      j = i;
+      i = skipRedirectWords(tokens, i);
+      if (i < tokens.length && (tokens[i].startsWith('-') || /^\d+(?:\.\d+)?[smhd]?$/.test(tokens[i]))) {
+        i += PREFIX_VALUE_OPTIONS.has(tokens[i]) ? 2 : 1;
+      }
     }
     // `env` reads NAME=VALUE operands after quote removal, so `env "A=1" 'tee'` runs `tee`.
-    if (prefix === 'env') while (i < tokens.length && tokens[i].includes('=')) i++;
+    if (prefix === 'env') i = skipOperandsAndRedirects(tokens, i, (t) => t.includes('='));
   }
   return positions;
 };
@@ -1186,14 +1261,34 @@ const openingDelta = (word) => {
   return { parens, ticks };
 };
 
-/** Index of the clause's command word for the trace scan: `k` (from `skipCompoundWords`) moved
- * past a `case WORD in` head, a `function NAME` head and, inside a `case`, a `PATTERN)` word. */
+/** A `case` label glued to the word after it (`a)env`, `"a")env`, `(a|b)export`) split into the
+ * label with its `)` and the rest, or null. The scan keeps quoted spans and escapes whole. */
+const splitGluedCaseLabel = (token) => {
+  for (let i = 0; i < token.length; i++) {
+    const c = token[i];
+    if (c === '\\') i++;
+    else if (c === "'" || c === '"') i = skipQuotedSpan(token, i, token.length) - 1;
+    else if (c === '(' && i > 0) return null;
+    else if (c === ')') return i + 1 < token.length ? [token.slice(0, i + 1), token.slice(i + 1)] : null;
+  }
+  return null;
+};
+
+/** The clause's tokens and the index of its command word for the trace scan: `k` (from
+ * `skipCompoundWords`) moved past a `case WORD in` head (the word may have split on a space), a
+ * `function NAME` head and, inside a `case`, a `PATTERN)` word, which is first split from a
+ * command word it is glued to. */
 const traceCommandStart = (tokens, k, inCase) => {
   let i = k;
-  if (tokens[i - 1] === 'case' && tokens[i + 1] === 'in') i += 2;
+  if (tokens[i - 1] === 'case') {
+    const head = tokens.indexOf('in', i + 1);
+    if (head !== -1) i = head + 1;
+  }
   if (tokens[i] === 'function') i += 2;
-  if ((inCase || i > k) && /\)$/.test(tokens[i] ?? '')) i++;
-  return i;
+  if (!(inCase || i > k)) return { tokens, start: i };
+  const glued = splitGluedCaseLabel(tokens[i] ?? '');
+  if (glued) return { tokens: [...tokens.slice(0, i), ...glued, ...tokens.slice(i + 1)], start: i + 1 };
+  return { tokens, start: /\)$/.test(tokens[i] ?? '') ? i + 1 : i };
 };
 
 /**
@@ -1208,11 +1303,11 @@ const traceCommandStart = (tokens, k, inCase) => {
  * declarer operand, and a nameref declarer make the clause unresolvable. `allexport` reports a
  * `set`/`shopt` that may turn on allexport; the caller weighs it against the whole command.
  */
-const findGitTraceTargets = (tokens, k, inCase) => {
+const findGitTraceTargets = (clauseTokens, k, inCase) => {
   const targets = [];
   let unresolvable = false;
   let allexport = false;
-  const start = traceCommandStart(tokens, k, inCase);
+  const { tokens, start } = traceCommandStart(clauseTokens, k, inCase);
   const positions = new Set([...commandPositions(tokens.slice(start))].map((p) => p + start));
   // `value` is the exact text of a trace value, or null when it cannot be read exactly.
   const judge = (value) => {
@@ -1348,7 +1443,7 @@ const hasPipedScript = (visible) => {
   return false;
 };
 
-/** `isLiteralPathArg` (from `worktree-removal-guard.js`) excludes shell metacharacters that make a
+/** `isLiteralPathArg` (from `shell-invocation-scan.js`) excludes shell metacharacters that make a
  * target dynamic (`$`, `` ` ``, `*`, `?`, `[`, `]`, `{`, `}`) but not bash tilde (`~`) expansion —
  * a target like `~/foo.txt` passes it as "literal," yet `path.resolve(cwd, target)` never performs
  * that expansion (it is a shell-level substitution, not a filesystem one), so the resolved path
@@ -1359,7 +1454,7 @@ const hasPipedScript = (visible) => {
  * (a worktree-spawned implementer's environment is not guaranteed to match), so a `~`-prefixed
  * target is routed to the `warn`/`bash-write-target-unresolvable` tier instead — the same treatment
  * already given to `python3 -c`/`awk`/etc. Scoped to this module's own new usage only:
- * `worktree-removal-guard.js`'s pre-existing `isLiteralPathArg` call is unaffected (see that
+ * `shell-invocation-scan.js`'s pre-existing `isLiteralPathArg` call is unaffected (see that
  * module's own containment check, which fails closed on an unresolvable path rather than allowing
  * it — a different, non-silent-allow failure mode, tracked separately rather than fixed here). */
 const isResolvableLiteralTarget = (raw, decoded = false) =>
@@ -1798,13 +1893,10 @@ const collectWriteSignals = (visible, heredocText, cwd, initialState, onSubstitu
   }
 
   if (hasPipedScript(visible)) unresolvable = true;
-  // Under allexport a builtin that assigns (`read GIT_TRACE`, `printf -v GIT_TRACE`) also exports,
-  // so a command that turns it on and mentions a trace name at all is unresolvable.
-  if (allexport && /GIT_|TRACE/.test(visible.replace(/['"\\]/g, ''))) unresolvable = true;
   if (GIT_EXEC_ENV_RE.test(visible) && splitClauses(visible).some((c) => findCommand(tokenize(c), 'git') !== -1)) {
     unresolvable = true;
   }
-  return { literalTargets, unresolvable };
+  return { literalTargets, unresolvable, allexport };
 };
 
 /**
@@ -1827,6 +1919,7 @@ const evaluateBashWriteTargets = (command, cwd, input = {}) => {
 
   const literalTargets = [];
   let unresolvable = false;
+  let allexport = false;
 
   // The command and each substitution body are scanned once, every body with the directories in
   // effect where its placeholder stands (`maskedSpans` keeps every placeholder visible).
@@ -1850,8 +1943,13 @@ const evaluateBashWriteTargets = (command, cwd, input = {}) => {
         for (const dir of dirs) literalTargets.push({ target, dir, visible, shape });
       }
       if (signals.unresolvable) unresolvable = true;
+      if (signals.allexport) allexport = true;
     }
   }
+  // Under allexport a builtin that assigns (`read GIT_TRACE`, `printf -v GIT_TRACE`) also exports,
+  // so a command that turns it on and mentions a trace name anywhere, heredoc bodies and
+  // comments included, is unresolvable.
+  if (allexport && /GIT_|TRACE/.test(command.replace(/['"\\]/g, ''))) unresolvable = true;
 
   for (const { target, dir, visible, shape } of literalTargets) {
     if (isStreamDeviceTarget(target, visible)) continue;

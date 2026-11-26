@@ -310,7 +310,7 @@ export const withLinkedWorktree = async <T>(
 
 /** Same lifecycle as `withLinkedWorktree`, but the linked worktree checks out a real `branch`
  * (not detached HEAD) created with `--no-track`, and `mainRepo` carries a bare `origin` remote
- * to push it to — built for the worktree-removal guard (#532), which needs to distinguish a
+ * to push it to — for tests that need to distinguish a
  * worktree whose branch has been pushed from one that has not. `fn` receives
  * `(mainRepo, worktree, push)`, where `push()` pushes the worktree's current HEAD to `origin` via
  * an explicit refspec (never `-u`) — mirroring this campaign's own `--no-track` worktree

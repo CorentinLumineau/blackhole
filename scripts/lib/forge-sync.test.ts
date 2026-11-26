@@ -186,10 +186,12 @@ describe('syncQueue — what a PR may claim', () => {
 });
 
 describe('syncQueue — user_queue_order', () => {
-  test('ingested issues are appended once, existing order kept', () => {
+  test('ingest never writes user_queue_order: owner pins pass through untouched', () => {
     const queue = { user_queue_order: [3, 1], issues: { '1': { title: 'a', phase: 'handle', status: 'ready' }, '3': { title: 'c', phase: 'handle', status: 'ready' } } };
-    expect(sync({ queue, issues: [issue(1), issue(2), issue(3), issue(4)] }).queue.user_queue_order).toEqual([3, 1, 2, 4]);
-    expect(sync({ issues: [issue(5)] }).queue.user_queue_order).toEqual([5]);
+    const r = sync({ queue, issues: [issue(1), issue(2), issue(3), issue(4)] });
+    expect(r.queue.user_queue_order).toEqual([3, 1]);
+    expect(r.added).toEqual([2, 4]);
+    expect(sync({ issues: [issue(5)] }).queue.user_queue_order).toEqual([]);
   });
 });
 
@@ -406,5 +408,34 @@ describe('syncQueue — mutual peer hold tie-break', () => {
       claimants.push([LOW, HIGH].filter((s) => claimsOf(q[s]).includes(7)));
     }
     expect(claimants.slice(1)).toEqual([[LOW], [LOW], [LOW]]);
+  });
+});
+
+describe('syncQueue — pareto', () => {
+  const LINE48 = 'Pareto: gain=8 effort=5 priority=48';
+  test('ingest stores the parsed body line, and no key without one', () => {
+    const r = sync({ issues: [issue(1, { body: `Text\n${LINE48}` }), issue(2, { body: 'Pareto: gain=8 effort=5 priority=47' }), issue(3)] });
+    expect(r.queue.issues['1'].pareto).toEqual({ gain: 8, effort: 5, priority: 48 });
+    expect('pareto' in r.queue.issues['2']).toBe(false);
+    expect('pareto' in r.queue.issues['3']).toBe(false);
+  });
+  test('reconcile updates a changed line and drops a deleted or invalid one', () => {
+    const queue = sync({ issues: [issue(1, { body: LINE48 })] }).queue;
+    const changed = sync({ queue, issues: [issue(1, { body: 'Pareto: gain=10 effort=4 priority=70' })] });
+    expect(changed.queue.issues['1'].pareto).toEqual({ gain: 10, effort: 4, priority: 70 });
+    expect('pareto' in sync({ queue, issues: [issue(1, { body: 'no line' })] }).queue.issues['1']).toBe(false);
+    expect('pareto' in sync({ queue, issues: [issue(1, { body: 'Pareto: gain=1 effort=1 priority=5' })] }).queue.issues['1']).toBe(false);
+  });
+  test('reconcile keeps scored_at, rationale and basis while the line is unchanged, drops them when it changes', () => {
+    const queue = sync({ issues: [issue(1, { body: LINE48 })] }).queue;
+    (queue.issues['1'].pareto as Record<string, unknown>).scored_at = '2026-11-25T10:00:00.000Z';
+    (queue.issues['1'].pareto as Record<string, unknown>).rationale = 'why';
+    (queue.issues['1'].pareto as Record<string, unknown>).basis = { deps: { '2': 'open' }, pr: 7 };
+    expect(sync({ queue, issues: [issue(1, { body: LINE48 })] }).queue.issues['1'].pareto).toEqual({ gain: 8, effort: 5, priority: 48, scored_at: '2026-11-25T10:00:00.000Z', rationale: 'why', basis: { deps: { '2': 'open' }, pr: 7 } });
+    expect(sync({ queue, issues: [issue(1, { body: 'Pareto: gain=10 effort=4 priority=70' })] }).queue.issues['1'].pareto).toEqual({ gain: 10, effort: 4, priority: 70 });
+  });
+  test('an entry the forge did not list keeps its pareto', () => {
+    const queue = sync({ issues: [issue(1, { body: LINE48 })] }).queue;
+    expect(sync({ queue, issues: [] }).queue.issues['1'].pareto).toEqual({ gain: 8, effort: 5, priority: 48 });
   });
 });

@@ -14,7 +14,9 @@ See [`hook-schemas.md`](hook-schemas.md) for the Cursor SubagentStop validate/re
 install specs and the PreToolUse `.blackhole/hook-events/` schema (split out, issue #473).
 
 See [`implementer-schemas.md`](implementer-schemas.md) for the `implementer` worker's JSON
-return contract (split out, issue #802).
+return contract (split out, issue #802), and [`reviewer-schemas.md`](reviewer-schemas.md) for the
+`reviewer` worker's (`## Reviewer`, `recheck`, `verification`, `verification_legs` and the shared
+Finding shape).
 
 ## Planner (`planner`)
 
@@ -74,7 +76,7 @@ When `status: blocked`, `failing_checks` lists failed items:
   audit) per `planner.md`'s Design Track template — content only, no JSON field change.
   **ADR-010 D4 amendment**: when `autonomy.design_autonomy` is `true`, this
   check is replaced by `scripts/design-aggregate.ts`'s deterministic verdict — see
-  `planner.md` §4.8 and the `design-aggregate` schema below. `design_pending_approval` remains
+  `planner-tracks/04-design-track.md` §4.8 and the `design-aggregate` schema below. `design_pending_approval` remains
   the unconditional outcome whenever that sub-flag is off.
 - `brainstorm_confidence_below_threshold` — brainstorm track composite confidence
   (`confidence-gates.md`) fell below `autonomy.confidence_threshold`; `blocking_question` names
@@ -193,7 +195,7 @@ all-clear that authorizes the orchestrator to stamp `queue.json`'s `rulings_chec
 
 ## Design Track Critic (blind sub-invocation)
 
-Returned by the Design Track's two critique-only sub-invocations described in `planner.md` §4.3
+Returned by the Design Track's two critique-only sub-invocations described in `planner-tracks/04-design-track.md` §4.3
 (Adversarial Evaluation) — **not** a new agent identity: still `subagent_type: planner`, no
 `disallowedTools`/matcher change to the SubagentStop hook. Extracted from the sub-invocation's
 final plain-text response using the same fenced-block-first / brace-balanced-fallback order
@@ -223,7 +225,7 @@ documented in `hook-schemas.md` (SubagentStop hook § Extraction order, `hook-sc
 |-------|--------|----------|
 | `per_option_scores` | `{ [option]: { [column]: number } }` — one entry per option in the primary's provisional trade-off matrix (stripped of the primary's Chosen field before spawn), scored 1-5 against `design-rubric.md`'s fixed columns/weights for this decision's type | yes |
 | `findings` | `{ option, tag, severity, note }[]` | yes (empty array = no findings) |
-| `adr_citations` | `{ adr, option, amendment_acknowledged }[]` — one entry per ADR a `findings[].note` cites as evidence (`planner.md` §4.3's ADR citation check, issue #775); critics score independently and cannot rely on the primary planner having done this check | no (omit when no finding cites an ADR) |
+| `adr_citations` | `{ adr, option, amendment_acknowledged }[]` — one entry per ADR a `findings[].note` cites as evidence (`planner-tracks/04-design-track.md` §4.3's ADR citation check, issue #775); critics score independently and cannot rely on the primary planner having done this check | no (omit when no finding cites an ADR) |
 
 ### Finding shape (Design Track Critic)
 
@@ -239,122 +241,6 @@ alongside the primary's own weighted matrix — never as free-text critique. A `
 `CRITICAL` finding tagged on the winning option blocks the verdict; a `domain-inherent` +
 `CRITICAL` finding on the winner does not (see the `design-aggregate` schema's reasons vocabulary
 below).
-
-## Reviewer (`reviewer`)
-
-```json
-{
-  "status": "complete",
-  "findings": [
-    {
-      "vcode": "V-KISS-03",
-      "severity": "BLOCK",
-      "file": "src/db/client.ts",
-      "line": 42,
-      "summary": "Empty catch block in query wrapper",
-      "verification_mode": "executed"
-    }
-  ],
-  "recheck": [
-    { "finding_id": "F-00042", "verdict": "fixed", "evidence": "L.128 now validates input before query" }
-  ],
-  "verification": [
-    { "finding_id": "V1", "verdict": "refuted", "evidence": "input is validated at L.40 — exploit path not reproducible" }
-  ],
-  "verification_legs": [
-    { "direction": "Authorization bypass via role param tampering", "mode": "reasoned", "evidence": "Read role-check middleware; no probe run — with-test-lock was contended" }
-  ]
-}
-```
-
-| Field | Values | Required |
-|-------|--------|----------|
-| `status` | `complete` \| `error` | yes |
-| `findings` | finding[] | yes (empty array = no issues found) |
-| `error` | string | when `status: error` |
-| `recheck` | `{finding_id, verdict, evidence}[]` | required only when the reviewer was dispatched in recheck mode (`review-core.md` § Recheck mode); absent/omitted for a normal full-audit review |
-| `verification` | `{finding_id, verdict, evidence}[]` | required only when the reviewer was dispatched in independent verification mode (a `finding_id` is assigned for every non-pre-existing BLOCK) (`review-core.md` § Independent security verification, `reviewer.md` § Independent Security Verification Mode); absent/omitted for every other dispatch |
-| `verification_legs` | `{direction, mode, evidence}[]` | optional — ADR-036 (issue #815); a clean/negative investigation leg that produced no `Finding` object |
-
-The reviewer return declares no PR-number field — the PR under review is the dispatch's own
-input, not something the reviewer reports back. Where a worker contract does carry one, the
-canonical top-level spelling is `pr_number`, defined once in
-[`implementer-schemas.md`](implementer-schemas.md) § `pr_number` and cited here rather than
-restated.
-
-### `recheck` (optional — recheck-mode fast path, issue #214)
-
-Carries one entry per prior finding named in the recheck-mode prompt, verifying whether the
-fix commits resolved it:
-
-- `finding_id` — the existing ledger `F-NNNNN` id (`findings-ledger.md`) of the prior finding
-  being rechecked, not a new id scheme.
-- `verdict` — `fixed` \| `not_fixed`. `not_fixed` is treated identically to a `BLOCK` finding
-  for that same `finding_id` — the reviewer must also emit a corresponding `findings` entry
-  when `verdict: not_fixed`, so the aggregate script and LGTM gate need no special-casing for
-  `recheck`.
-- `evidence` — a short concrete pointer (e.g. `file:line` + what changed) showing why the
-  finding is judged fixed or not — not a restatement of the original finding summary.
-
-`--prior-file` rows passed to `review-aggregate.ts` must carry the ledger `id` field (issue
-#485) for a `recheck[]` `verdict: fixed` entry to resolve against them; a missing or mismatched
-`id` surfaces in `unresolved_recheck` above, not silently.
-
-### `verification` (optional — independent security verification mode, issue #439)
-
-Carries one entry per stamped `V-SEC-*` finding the reviewer was dispatched to independently
-judge (`review-core.md` § Independent security verification, `reviewer.md` § Independent Security Verification Mode) — a sibling
-shape to `recheck` above, distinct meaning: `recheck` verifies whether a fix commit resolved a
-*prior, ledgered* finding; `verification` verifies whether a *fresh, same-pass* finding
-independently holds up.
-
-- `finding_id` — the temporary, review-pass-scoped id (e.g. `V1`, `V2`, ...) the orchestrator
-  stamped onto the finding before including it in this dispatch's prompt — not a ledger
-  `F-NNNNN` id (none exists yet at this point in the pipeline; see `review-core.md` §
-  Independent security verification step 3).
-- `verdict` — `confirmed` \| `refuted`. `refuted` downgrades the matching `BLOCK` finding to
-  `WARN` before `applyConfidenceGate`/`dedupeFindings` run (`scripts/review-aggregate.ts`'s
-  exported `applyVerificationDowngrades`) — it never excludes the finding outright, unlike
-  `recheck`'s `fixed` verdict; a `confirmed` verdict, or a `finding_id` with no match among the
-  primary's stamped findings, is a no-op.
-- `evidence` — a concrete pointer showing what was checked and why the exploit path did or did
-  not hold — not a restatement of the original finding's summary.
-
-Passed to `review-aggregate.ts` via `--verification-file` (see § Review aggregate below) as a
-plain JSON array — distinct from `--prior-file`'s ledger-row shape.
-
-### `verification_legs` (optional — executed vs. reasoned disclosure, ADR-036 / issue #815)
-
-A JSON home for a **clean/negative investigation leg** (checked something, found no `Finding`) — not named `verification`, already used twice (the array above, `hunter`'s `CONFIRMED`/`STALE` field). Fields: `direction`, `mode` (`executed` \| `reasoned`), `evidence` (for `reasoned`, why execution was unavailable, e.g. `with-test-lock` contention). Never grounds to bypass `with-test-lock`. See `reviewer.md` § Executed vs. Reasoned Verification Disclosure / `review-core.md` § Security-mode review (`V-SEC-12`).
-
-### Rulings ledger (read-input)
-
-`reviewer.md` § Owner-Ruling Violation Audit "Owner-Ruling Violation Audit" reads `documentation/reference/
-product-principles.md` (the owner-rulings ledger) when present, gated by
-`docs_governance.companion_files`. A diff contradicting an `active`-status ruling's
-`Interpretation` field surfaces as a normal `findings[]` entry with `vcode: "V-RULE-01"`,
-`severity: "BLOCK"` — no dedicated JSON field beyond the shared Finding shape below.
-
-### Finding shape (shared)
-
-```json
-{
-  "vcode": "V-DRY-01",
-  "severity": "BLOCK",
-  "file": "lib/foo.ts",
-  "line": 42,
-  "summary": "Description",
-  "gain": 7,
-  "effort": 2,
-  "verification_mode": "executed"
-}
-```
-
-`gain` and `effort` required only for `V-PARETO-02` findings.
-
-`verification_mode` (optional — `executed` \| `reasoned`, ADR-036 / issue #815): execution vs. reasoning-only basis; absence means no claim made.
-
-`cited_value` and `declared_set_ref` (optional strings, ADR-134): the citation on a `V-UX-09` or `V-UX-10` finding. `cited_value` is the literal as written on `file:line`. `declared_set_ref` is `<set file>#<axis>` and is required for `V-UX-09`. `review-aggregate.ts` re-checks the citation before such a finding may stay `BLOCK`.
 
 ## Router (`router`)
 
@@ -595,9 +481,11 @@ Orchestrator invokes after `reviewer` completes. Not a worker agent — determin
 
 Each `findings[]` entry additionally carries `issue_ref: number` and `pr_ref: number | null`
 stamped by the script (issue #754) — never present on the raw `reviewer` input's Finding shape
-above, only on this aggregator's stamped output.
+(`reviewer-schemas.md` § Finding shape (shared)), only on this aggregator's stamped output.
 
-CLI: `bun run scripts/review-aggregate.ts --reviewer-file <path> --issue-ref <N> [--pr-ref <P>] [--prior-file <ledger-rows.json>] [--verification-file <verification-entries.json>] [--review-iteration <N>] [--base-ref <PR base branch>] [--repo-dir <PR worktree>] [--head <PR head ref>]`
+CLI: `bun run scripts/review-aggregate.ts --reviewer-file <path> --issue-ref <N> [--pr-ref <P>] [--prior-file <ledger-rows.json>] [--verification-file <verification-entries.json>] [--review-iteration <N>] [--base-ref <PR base branch>] [--repo-dir <PR worktree>] [--head <PR head ref>] --audit-context-file <audit-context.json> [--direct-review]`
+
+`--audit-context-file` (built by `scripts/audit-context.ts`) is required and the CLI exits non-zero without it (V-AUDIT-01); `--direct-review` (an orchestrator review that spawned no reviewer) is accepted only with that context and only for a docs-only diff on which no other module trigger holds; otherwise the CLI exits non-zero.
 
 `--base-ref` (ADR-134) enables the slop citation check. Without it, or when it does not resolve, every `V-UX-09`/`V-UX-10` `BLOCK` downgrades with an `[unverified slop citation: no-base-ref]` or `ref-unresolved` caveat.
 
@@ -609,7 +497,7 @@ change to `AggregateOutput`'s shape either way.
 ## Design aggregate (`scripts/design-aggregate.ts`)
 
 Orchestrator/planner invokes when `autonomy.design_autonomy` is `true`
-(`planner.md` §4.8, ADR-010 D4). Not a worker agent — deterministic script output the planner
+(`planner-tracks/04-design-track.md` §4.8, ADR-010 D4). Not a worker agent — deterministic script output the planner
 reads but never overrides:
 
 ```json

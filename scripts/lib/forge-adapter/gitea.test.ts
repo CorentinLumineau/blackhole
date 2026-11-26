@@ -257,7 +257,12 @@ describe('GiteaForgeAdapter', () => {
     const runTeaTextSpy = spyOn(teaCli, 'runTeaText').mockReturnValue('');
     const adapter = new GiteaForgeAdapter('host/owner/repo');
     await adapter.labelAdd({ type: 'pr', number: 12 }, ['bug', 'urgent']);
-    expect(runTeaTextSpy).toHaveBeenCalledWith([
+    const argvs = runTeaTextSpy.mock.calls.map((c) => c[0]);
+    const create = (name: string) => ['labels', 'create', '--repo', 'host/owner/repo', '--name', name, '--color', '#1d76db'];
+    // Every label is created before the edit that adds it, so a first-use bucket label does not fail the edit.
+    expect(argvs.slice(0, 2)).toEqual([create('bug'), create('urgent')]);
+    expect(argvs).toHaveLength(3);
+    expect(runTeaTextSpy).toHaveBeenLastCalledWith([
       'pull',
       'edit',
       '12',
@@ -267,6 +272,20 @@ describe('GiteaForgeAdapter', () => {
       'bug,urgent',
     ]);
     runTeaTextSpy.mockRestore();
+  });
+
+  test('labelAdd tolerates an existing label but surfaces any other create failure', async () => {
+    const adapter = new GiteaForgeAdapter('host/owner/repo');
+    let failure = 'label already exists';
+    const spy = spyOn(teaCli, 'runTeaText').mockImplementation(((argv: string[]) => {
+      if (argv[0] === 'labels') throw new Error(failure);
+      return '';
+    }) as never);
+    await adapter.labelAdd({ type: 'issue', number: 3 }, ['pareto:P1']);
+    expect(spy).toHaveBeenLastCalledWith(['issue', 'edit', '3', '--repo', 'host/owner/repo', '--add-labels', 'pareto:P1']);
+    failure = 'HTTP 500';
+    await expect(adapter.labelAdd({ type: 'issue', number: 3 }, ['pareto:P1'])).rejects.toThrow('HTTP 500');
+    spy.mockRestore();
   });
 
   test('labelRemove pins the exact tea argv for an issue', async () => {

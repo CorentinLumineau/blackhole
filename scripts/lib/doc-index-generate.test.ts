@@ -116,13 +116,61 @@ describe('buildDocIndexRows', () => {
     });
   });
 
-  test('a doc missing a summary field renders an empty summary cell rather than throwing', () => {
+  test('a doc missing a summary field falls back to its first H1 (#1403)', () => {
     withFixtureDir((dir) => {
       write(dir, 'audits/bare.md', doc({ type: 'audit', status: 'current', review_trigger: JSON.stringify('on release') }));
       const rows = buildDocIndexRows(dir);
       expect(rows).toEqual([
-        { path: 'audits/bare.md', summary: '', type: 'audit', status: 'current', reviewTrigger: 'on release' },
+        { path: 'audits/bare.md', summary: 'Fixture', type: 'audit', status: 'current', reviewTrigger: 'on release' },
       ]);
+    });
+  });
+
+  test('an empty summary value falls back to the first H1 (#1403)', () => {
+    withFixtureDir((dir) => {
+      write(dir, 'a/quoted.md', doc({ type: 'audit', summary: '""', status: 'current', review_trigger: JSON.stringify('on release') }));
+      write(dir, 'a/bare.md', doc({ type: 'audit', summary: '', status: 'current', review_trigger: JSON.stringify('on release') }));
+      expect(buildDocIndexRows(dir).map((r) => r.summary)).toEqual(['Fixture', 'Fixture']);
+    });
+  });
+
+  test('a non-empty summary beats the H1 (#1403)', () => {
+    withFixtureDir((dir) => {
+      write(dir, 'a/x.md', doc({ type: 'audit', summary: JSON.stringify('Authored line'), status: 'current', review_trigger: JSON.stringify('on release') }));
+      expect(buildDocIndexRows(dir)[0]!.summary).toBe('Authored line');
+    });
+  });
+
+  test('no summary and no H1 yields an empty summary (#1403)', () => {
+    withFixtureDir((dir) => {
+      write(dir, 'a/x.md', '---\ntype: audit\nstatus: current\nreview_trigger: "on release"\n---\n\nNo heading here.\n');
+      expect(buildDocIndexRows(dir)[0]!.summary).toBe('');
+    });
+  });
+
+  test('an H1 with a pipe and extra spaces is sanitised for the table cell (#1403)', () => {
+    withFixtureDir((dir) => {
+      write(dir, 'a/x.md', '---\ntype: audit\nstatus: current\nreview_trigger: "on release"\n---\n\n# A | B   title\n');
+      expect(buildDocIndexRows(dir)[0]!.summary).toBe('A / B title');
+    });
+  });
+
+  test('an H1 keeps a literal trailing # but drops a closing # sequence', () => {
+    withFixtureDir((dir) => {
+      const fm = '---\ntype: audit\nstatus: current\nreview_trigger: "on release"\n---\n\n';
+      write(dir, 'a/csharp.md', `${fm}# C#\n`);
+      write(dir, 'a/closed.md', `${fm}# Title ##\n`);
+      expect(buildDocIndexRows(dir).map((r) => r.summary)).toEqual(['Title', 'C#']);
+    });
+  });
+
+  test('a regenerated table with an H1-fallback row round-trips with no stale bucket (#1403)', () => {
+    withFixtureDir((dir) => {
+      write(dir, 'a/x.md', '---\ntype: audit\nstatus: current\nreview_trigger: "on release"\n---\n\n# A | B title\n');
+      const generated = buildDocIndexRows(dir);
+      const committed = parseIndexTableRows(renderFullIndexFile(dir));
+      expect(diffDocIndexRows(committed, generated).stale).toEqual([]);
+      expect(committed[0]!.summary).toBe('A / B title');
     });
   });
 

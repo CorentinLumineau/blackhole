@@ -35,7 +35,7 @@ Every doc under `documentation/` carries this frontmatter:
 ```yaml
 ---
 type: brainstorm | research | adr | analysis | plan | reference | implementation | review | runbook
-summary: "One-line summary — the same text as this doc's documentation/INDEX.md row"
+summary: "One-line summary — the same text as this doc's documentation/INDEX.md row"   # optional — falls back to the first H1
 status: current | deprecated | archived
 supersedes: <path>          # optional — only when replacing an earlier doc
 review_trigger: "on ADR acceptance" | "on release" | "quarterly" | "on file change" | "on rule update"
@@ -48,17 +48,16 @@ related: [<path>, ...]      # optional
 | Field | Required | Notes |
 |-------|----------|-------|
 | `type` | Yes | Drives folder placement and search heuristics |
-| `summary` | Yes | One-line summary, JSON-quoted (same convention as `review_trigger` below) — ADR-031 Phase 1 (issue #811): the doc's own copy of its `documentation/INDEX.md` row summary, source-derived for `scripts/generate-doc-index.ts` |
+| `summary` | No | One-line summary, JSON-quoted (same convention as `review_trigger` below) — ADR-031 Phase 1 (issue #811): the doc's own copy of its `documentation/INDEX.md` row summary, source-derived for `scripts/generate-doc-index.ts`; when absent or empty the row falls back to the doc's first H1 (`\|` replaced with `/`) |
 | `status` | Yes | `current` = live; `deprecated` = superseded but kept for traceability; `archived` = historical only |
 | `supersedes` | Conditional | Required when replacing an existing doc's content with a different approach |
 | `review_trigger` | Yes | What event obliges a re-read; agents use this when touching related code |
 | `created` / `last_updated` | Yes | ISO dates; `last_updated` mirrors meaningful content edits, not whitespace |
 | `related` | No | Cross-references for graph navigation |
 
-All six lifecycle keys (`type`, `summary`, `status`, `review_trigger`, `created`,
-`last_updated`) are required — any absence is `V-DOC-GOV-02`, reported per doc with the
-missing key names (`scripts/checks/doc-health.check.ts`). `supersedes` and `related` remain
-optional.
+Five lifecycle keys (`type`, `status`, `review_trigger`, `created`, `last_updated`) are
+required — any absence is `V-DOC-GOV-02`, reported per doc with the missing key names
+(`scripts/checks/doc-health.check.ts`). `summary`, `supersedes` and `related` are optional.
 
 An instantiated companion-file template — currently only `documentation/reference/journeys.md`
 (`templates/companion-files/journeys.md.template`) — may carry `status: template` instead of

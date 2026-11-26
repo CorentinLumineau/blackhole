@@ -5,6 +5,7 @@ import * as path from 'path';
 import type { RateLimits, RateWindow } from './lib/rate-limit-cache.ts';
 import type { Host } from './lib/run-context.ts';
 import { resolveCatchup, workersAtFloor, type CatchupConfig } from './lib/catchup.ts';
+import { capWorkersByCi, resolveCiCapacityInput } from './lib/ci-capacity.ts';
 import { resolveUsageBudget, workersAllowed, type UsageVerdict } from './lib/usage-budget.ts';
 import { UsageFileError } from './lib/usage-normalize.ts';
 import { resolveHost, restrictWindows, usageSourceFor, type UsageSource } from './lib/usage-source.ts';
@@ -28,8 +29,13 @@ import { usageHistoryPathFor } from './lib/usage-history.ts';
 // The output line then carries `floor_pct`. A 0 floor (nothing owed yet this week) is a valid
 // floor, judged like any other. `--usage-file <path>` hands the gate a reading saved from a host's
 // usage tool, read first in the usage-source chain; under `--floor` an unreadable file is `SKIP`.
+// `--ci-capacity '{"idle_runners":n,"queued_jobs":n[,"busy_runners":n][,"queue_allowance":n]}'` (or
+// `--ci-capacity-file`) is an optional reading of the consumer's CI runners: it lowers `workers` by the
+// queue backlog beyond idle runners and the allowance (default 1), and with every runner busy caps them at
+// idle runners plus the allowance, never below one, never above the verdict's own count. It fails open:
+// no flag, a flag without a value, both flags, an unreadable file or a malformed reading warns and changes nothing.
 const USAGE =
-  "usage: usage-budget.ts --parallel-max <n> [--usage '<json>' | --usage-file <path> | --cache <path>] [--host claude|cursor] [--config <path>] [--now <epoch s>] [--floor <pct>]";
+  "usage: usage-budget.ts --parallel-max <n> [--usage '<json>' | --usage-file <path> | --cache <path>] [--host claude|cursor] [--config <path>] [--now <epoch s>] [--floor <pct>] [--ci-capacity '<json>' | --ci-capacity-file <path>]";
 const fail = (message: string): never => {
   console.error(`usage-budget: ${message}\n${USAGE}`);
   process.exit(2);
@@ -65,7 +71,7 @@ export const parseUsage = (raw: string): RateLimits => {
 
 const main = (): void => {
   const flags = parseFlags(process.argv.slice(2));
-  const unknown = unknownFlagKeys(flags, ['parallel-max', 'usage', 'usage-file', 'cache', 'host', 'config', 'now', 'floor']);
+  const unknown = unknownFlagKeys(flags, ['parallel-max', 'usage', 'usage-file', 'cache', 'host', 'config', 'now', 'floor', 'ci-capacity', 'ci-capacity-file']);
   if (unknown.length) fail(`unknown flag(s): ${unknown.map((k) => `--${k}`).join(', ')}`);
   const intFlag = (name: string): number | null => {
     const value = Number(flags[name]);
@@ -89,6 +95,9 @@ const main = (): void => {
   const configPath = typeof flags.config === 'string' ? flags.config : '.blackhole/config.json';
   if (flags.host !== undefined && flags.host !== 'claude' && flags.host !== 'cursor') fail('--host must be claude or cursor');
   const host: Host = (flags.host as Host | undefined) ?? resolveHost(path.dirname(configPath), process.env);
+  const ciInput = resolveCiCapacityInput(flags['ci-capacity'], flags['ci-capacity-file'], (file) => fs.readFileSync(file, 'utf-8'));
+  if (ciInput.warning) console.error(`usage-budget: ${ciInput.warning}`);
+  const ciCapacity = ciInput.capacity;
   let budget;
   let preset: CatchupConfig | null = null;
   let source: UsageSource;
@@ -151,6 +160,12 @@ const main = (): void => {
     judged = limits;
     verdict = workersAllowed(limits, now as number, budget, parallelMax as number);
     if (reason) verdict.reasons.unshift(reason);
+  }
+  const ci = capWorkersByCi(verdict.workers, ciCapacity);
+  if (ci.applied && ci.reason) {
+    verdict.workers = ci.workers;
+    verdict.reasons.push(ci.reason);
+    console.error(`usage-budget: ${ci.reason}`);
   }
   if (verdict.verdict === 'unavailable') console.error(`usage-budget: ${verdict.reasons[0]}`);
   if (verdict.weekly_fit !== null) {

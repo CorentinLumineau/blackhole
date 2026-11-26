@@ -43,14 +43,14 @@ stands in for `config.json`'s `repo`). Exit `3` when `--stated` names another re
 prints `{repo, campaign_dir, source, stated, mismatch}` plus, on a mismatch, the Continue here /
 Stop `card`. The summary heading names the same target.
 
-Catchup form (`--mode catchup`, `launch-gate.md` § Catchup form): the same 13 rows, with the
+Catchup form (`--mode catchup`, `launch-gate.md` § Catchup form): the same 14 rows, with the
 catchup's own **Pacing** row (the floor reading) in the run's Pacing slot. It adds `--usage-file <path>` (the usage reading as a file, the same
 hand-off `usage.ts --usage` and `pace-floor.ts --usage` take as a path), and the invocation-only
 overrides `--floor <pct>`, `--no-spawn-at <pct>`, `--stop-workers-at <pct>` and `--lane <name>`;
 inline `--usage` is refused with it (exit `2`), and the catchup flags are refused without it.
 `--json` adds a `pacing` object (the reading, the effective floor and the effective preset).
 
-Run form: 13 rows in fixed order (Scope, Order, Merge, Pacing, Budget, Status page, Kaizen and staging,
+Run form: 14 rows in fixed order (Scope, Order, Roadmap, Merge, Pacing, Budget, Status page, Kaizen and staging,
 Autonomy, Resource policy, Wave scheduling, Peers, Decisions, Other config),
 each with a one-line consequence. The status page reads the same builder, so the two never
 disagree. The Peers row reads `scripts/peer-campaigns.ts detect` (ADR-057) and states its reach:
@@ -60,6 +60,9 @@ disagree. The Peers row reads `scripts/peer-campaigns.ts detect` (ADR-057) and s
 and `unknown (N unreadable: <file names>)` when records cannot be read; either makes the row the gate's stop / join / take-over question (`launch-gate.md` §
 Questions). `--summary` accepts only `--usage`, `--now`, `--json`, `--campaign-dir` and `--no-gh`,
 and cannot be combined with `--html`, `--out`, `--data` or `config-summary`.
+The Roadmap row lists up to 5 ready issues as `#N P<priority>` (`unscored` when the queue holds no score), in
+`scripts/pareto-order.ts` order, then `N re-scored this run` (scores stamped at or after the queue's
+`refreshed_at`; 0 when the queue has none) and `N more ready`.
 
 - `--usage '<json>'` is the harness's usage report (its `get_usage` tool; a malformed value exits
   `2`). Without it the Budget row reads the host's usage source (`scripts/lib/usage-source.ts`,
@@ -133,6 +136,7 @@ definition of the shape; bump `schema_version` on a breaking change):
 | `budget` | The usage-budget panel (`scripts/lib/campaign-status/budget.ts`): `probed`, `reason` (why not probed, else `null`), `age_seconds`, `five_hour_pct` and `five_hour_resets_at` (`null` when the plan has no current five_hour window), `weekly_pct`, `resets_at` (the weekly reset), `workers_allowed`, `verdict` and `verdict_reasons` (`workersAllowed()`, or `unavailable` with `parallel_max` when `usage_budget` is off or invalid), and `forecast` (`{pct_per_hour, reaches: [{pct, at}]}`, one entry per distinct weekly threshold, `at` `null` when not reached before the reset; `null` without a weekly window), `source` (`rate-limit-cache`, or `null` when not probed) and `windows` (the windows the reading shows, `five_hour` only when the plan has one). Times are ISO 8601. `target_at_reset` is `usage_budget.weekly.target_at_reset` (`null` when unset or invalid), shown as a **Weekly target** row. With no reading, `probed: false` and every number `null`; the page says `usage not probed`. Additive |
 | `run` | The Run panel (`scripts/lib/campaign-status/run-state.ts`): `route` (`run-context.json`'s `host`, `pattern`, `state_store`, `question_channel`, `forge_channel`, `missing`, `refreshed_at`; `null` when the file is absent or has no route), `decisions_mode` (`decisionsMode()`: `park` unless the config opts into `ask`), `retired_sleep_mode` (a retired `sleep_mode` block is still in `config.json`, ignored), `parked` (decisions in `pending-decisions.json`, `null` with `parked_error` when the file is unreadable) and `coordination` (`usage_budget.coordination`, `null` with `coordination_invalid` when `usage_budget` is invalid). Its rows are `RUN_ROW_KEYS`: Run route, Decisions (`park · 3 waiting — run /blackhole decide`, then `retired sleep_mode ignored` while that block remains), Coordination, Doc carry (`doc_carry`: artifacts promised vs staged vs carried, `null` when docs governance is off, `doc_carry_error` when a manifest is unreadable). Additive |
 | `pending_decisions` | The parked owner decisions (`id`, `question`, `recommended` option label, `waiting_items`, `gate`, `created_at`), most-blocking first as the decide round asks them (`wakeBatch`); empty when none is parked or the file is unreadable. The **Decisions waiting for you** panel shows their count and `run /blackhole decide`. Additive |
+| `worker_context` | The runtime worker-context report from `.blackhole/worker-context.json` (`scripts/worker-context-report.ts --record`), or `null` when none is recorded: `recorded_at`, `workers`, `unattributed` (workers with no issue number in the file name, the `.meta.json` `name` or its `description`), `median_first_turn_tokens`, `roles` (`spawns` and `median_first_turn_tokens` per role), `merged_prs`, `spawns_per_merged_pr` and `respawns` (`total`, `warm`, `cold`: a same-role respawn on an issue within the 5-minute cache TTL of the previous worker's last turn is warm). The `overview` dataset carries it as `worker_median_first_turn_tokens`, `worker_spawns_per_merged_pr`, `worker_respawns`, `worker_respawns_warm`, `worker_respawns_cold` and `worker_context_recorded_at`, and none of them when nothing is recorded. Additive |
 | `host` | `pace` (the pace line or `null`) and `notes` (plugin-drift lines) |
 | `scope_record` | `recorded` and the `entries` of `config.json` `campaign_scope` (`kind`, `text`, `set_at`, optional `reason`, `refs`, `filter`); malformed entries are dropped. Additive |
 | `decisions` | `owner-decisions.json`, newest first (`date`, `text`, optional `refs`). Additive |

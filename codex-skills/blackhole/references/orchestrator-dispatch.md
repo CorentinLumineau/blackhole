@@ -82,7 +82,8 @@ On `planner` returning `status: ready, track: brainstorm`:
    `codex-skills/blackhole/references/phase-loop.md` § Continuous Discovery of
    Improvements path — one Priority computation and one `gh issue create` per child clearing
    the `>= 30` gate; children below the gate are logged `archived` in the ledger, never filed
-   (identical rule, not a new one).
+   (identical rule, not a new one). Each filed child carries the `Pareto:` line and `pareto:P*`
+   label from `scripts/pareto-file.ts` (`forge-sync.md` § Pareto line and label).
 5. Close the original brainstorm issue: `queue.json` status transition `* → closed`
    (`queue-dag.md` § Status transitions, existing enum, no new status value) with `notes:
    "satisfied-by-children:<n1>,<n2>,..."` (extends the existing free-text `notes` convention)
@@ -265,7 +266,7 @@ gated-verdict dispatch contract; it does not restate the confidence-gate/split/p
 precedence chain above it.
 
 When the returned `planner` worker JSON carries `track: "design"` and `status: "ready"` — only
-possible when `planner.md` §4.8's gate produced it via `scripts/design-aggregate.ts`'s verdict
+possible when `planner-tracks/04-design-track.md` §4.8's gate produced it via `scripts/design-aggregate.ts`'s verdict
 — the orchestrator treats this exactly like any other `status: "ready"` plan and proceeds
 toward implement/PR dispatch without an `AskQuestion` gate (`phase-plan.md` § Plan approval
 gate, autonomy-gate row).
@@ -299,7 +300,7 @@ parsed approval. The orchestrator never infers this directive from design-note c
 is a pass-through of the human verdict, following the same explicit-directive-only
 convention ADR-004 established for `track: design` / `track: brainstorm`.
 
-The planner's third `## Gate` branch (`planner.md` §4.8) promotes the on-disk design
+The planner's third `## Gate` branch (`planner-tracks/04-design-track.md` §4.8) promotes the on-disk design
 artifact verbatim on this directive; this section owns only the spawn-side dispatch
 contract, not the promotion logic itself.
 
