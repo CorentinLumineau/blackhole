@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import * as fs from 'fs';
 import * as path from 'path';
-import { loadManifest } from './lib/carry-staged-artifacts.ts';
+import { loadManifest, resolveDocsGovernanceActive } from './lib/carry-staged-artifacts.ts';
 import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
 import { readJsonFile } from './lib/fs.ts';
 import { checkRouteArtifacts, dispatchGaps, latestRoute, promisedRoutes } from './lib/route-artifacts.ts';
@@ -40,8 +40,7 @@ const readIfPresent = (name: string): any => {
 
 try {
   // Gate per `config-template.md` § `docs_governance`: an absent block is inert.
-  const docs = readIfPresent('config.json')?.docs_governance;
-  if (docs?.enabled !== true || docs?.write_governance === false) {
+  if (!resolveDocsGovernanceActive(path.join(campaignDir as string, 'config.json'))) {
     console.log('route-artifacts: skipped (docs governance is off)');
     process.exit(0);
   }
