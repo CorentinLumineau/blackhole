@@ -1,3 +1,4 @@
+import { isGeneratedBuildPath } from './build/paths.ts';
 import { ROOT_DOC_INDEX_PATH } from './doc-index-generate.ts';
 import type { GitResult, OpenPrSnapshot, SnapshotPr } from './open-pr-snapshot.ts';
 
@@ -22,9 +23,18 @@ export const REGENERATED_PATHS: ReadonlySet<string> = new Set([ROOT_DOC_INDEX_PA
  */
 export const APPEND_ONLY_PATHS: ReadonlySet<string> = new Set(['documentation/decisions/INDEX.md']);
 
-/** `files` minus the exact members of `regenerated`; the one filter every overlap site applies. */
-export const withoutRegenerated = (files: readonly string[], regenerated: ReadonlySet<string> = REGENERATED_PATHS): string[] =>
-  files.filter((f) => !regenerated.has(f));
+/**
+ * `files` minus the exact members of `regenerated` and, when `buildOutput` holds, every path in a
+ * committed build-output tree (ADR-055 amendment: those are rebuilt from `src/`, so a conflict
+ * confined to them is resolved by `bun run build`, never by ordering the PRs); the one filter every
+ * overlap site applies. `buildOutput` is true only in the repo that owns the build (`ownsBuildOutput`);
+ * it defaults to false, so a consumer repo's hand-written trees stay overlaps.
+ */
+export const withoutRegenerated = (
+  files: readonly string[],
+  regenerated: ReadonlySet<string> = REGENERATED_PATHS,
+  buildOutput = false,
+): string[] => files.filter((f) => !regenerated.has(f) && !(buildOutput && isGeneratedBuildPath(f)));
 
 export type ConflictVerdict = 'conflict' | 'clean' | 'unknown';
 
@@ -102,7 +112,7 @@ export const chainTip = (
  * an old git without `--write-tree` fails another way. Neither of those is ever read as clean.
  * A conflict is clean only when its conflicted-path list (the lines after the tree id, up to the
  * first blank line) is non-empty and every path is in `regenerated`, or in `appendOnly` with both
- * sides only adding lines to it; an empty list stays a conflict.
+ * sides only adding lines to it; an empty list stays a conflict. `buildOutput` as in `withoutRegenerated`.
  */
 export const mergeTreeVerdict = (
   git: (args: string[]) => GitResult,
@@ -110,6 +120,7 @@ export const mergeTreeVerdict = (
   b: string,
   regenerated: ReadonlySet<string> = REGENERATED_PATHS,
   appendOnly: ReadonlySet<string> = APPEND_ONLY_PATHS,
+  buildOutput = false,
 ): ConflictVerdict => {
   const r = git(['merge-tree', '--write-tree', '--no-messages', '--name-only', a, b]);
   if (r.code === 0) return 'clean';
@@ -118,7 +129,7 @@ export const mergeTreeVerdict = (
   const blank = lines.indexOf('', 1);
   const conflicted = lines.slice(1, blank === -1 ? lines.length : blank);
   if (conflicted.length === 0) return 'conflict';
-  const rest = withoutRegenerated(conflicted, regenerated);
+  const rest = withoutRegenerated(conflicted, regenerated, buildOutput);
   return rest.every((f) => appendOnly.has(f) && onlyAddsLines(git, a, b, f)) ? 'clean' : 'conflict';
 };
 
@@ -167,12 +178,13 @@ export const verifiedPrMergeTree = (
   refPrefix: string,
   me: { number: number; headSha: string },
   other: { number: number; headSha: string },
+  buildOutput = false,
 ): ConflictVerdict => {
   for (const pr of [me, other]) {
     const r = git(['rev-parse', '--verify', '--quiet', `${refPrefix}${pr.number}^{commit}`]);
     if (r.code !== 0 || r.stdout.trim() !== pr.headSha) return 'unknown';
   }
-  return mergeTreeVerdict(git, `${refPrefix}${me.number}`, `${refPrefix}${other.number}`);
+  return mergeTreeVerdict(git, `${refPrefix}${me.number}`, `${refPrefix}${other.number}`, REGENERATED_PATHS, APPEND_ONLY_PATHS, buildOutput);
 };
 
 export type StackEdgeFields = { pr?: number | null; stacked_on?: number | null; stacked_on_pr?: number | null };
@@ -194,6 +206,8 @@ export type PickParentOptions = {
   /** Decides whether two PRs with a shared file would conflict. Called only for file-overlapping pairs. */
   conflicts: (me: SnapshotPr, other: SnapshotPr) => ConflictVerdict;
   maxDepth?: number;
+  /** True in the repo that owns the build (`ownsBuildOutput`): build-output trees are then no overlap. */
+  buildOutput?: boolean;
 };
 
 export type PickParentResult =
@@ -242,7 +256,7 @@ export const pickParent = (meNumber: number, snapshot: OpenPrSnapshot, opts: Pic
       unreadable = true;
       continue;
     }
-    if (!shares(withoutRegenerated(me.files), withoutRegenerated(other.files))) continue;
+    if (!shares(withoutRegenerated(me.files, REGENERATED_PATHS, opts.buildOutput), withoutRegenerated(other.files, REGENERATED_PATHS, opts.buildOutput))) continue;
     const verdict = opts.conflicts(me, other);
     if (verdict === 'conflict') overlapping.push(other);
     else if (verdict === 'unknown') undecided = true;

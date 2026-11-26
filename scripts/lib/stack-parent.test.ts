@@ -60,6 +60,16 @@ describe('pickStackParent', () => {
     };
     expect(pickStackParent(q, 12)?.parent).toBe(11);
   });
+  test('build-output touch_paths stack only in the repo that owns the build', () => {
+    const q = {
+      '10': { status: 'in-flight', pr: 100, touch_paths: ['skills/blackhole/**', 'src/a.ts'] },
+      '11': { status: 'ready', touch_paths: ['skills/blackhole/x.md'] },
+    };
+    expect(pickStackParent(q, 11)?.parent).toBe(10);
+    expect(pickStackParent(q, 11, { buildOutput: true })).toBeNull();
+    expect(pickStackParent(q, 11, { parentFiles: { '10': ['skills/blackhole/x.md'] }, buildOutput: true })).toBeNull();
+    expect(pickStackParent(q, 11, { parentFiles: { '10': ['skills/blackhole/x.md'] } })?.parent).toBe(10);
+  });
   test('default touch_paths never stack', () => {
     const d = ['src/**', 'scripts/**'];
     const q = {

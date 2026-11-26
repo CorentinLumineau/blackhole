@@ -2,11 +2,13 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { makeTempDir } from './fs.ts';
+import { CLAUDE_NATIVE_GENERATED_DIRS, isGeneratedBuildPath, ownsBuildOutput } from './build/paths.ts';
 import type { OpenPrSnapshot, SnapshotPr } from './open-pr-snapshot.ts';
 import {
   chainDepth,
   chainTip,
   mergeTreeVerdict,
+  withoutRegenerated,
   onlyAddsLines,
   pureAdditionFiles,
   pickParent,
@@ -343,6 +345,41 @@ describe('mergeTreeVerdict (real git)', () => {
     expect(viaGit).toEqual({ kind: 'none' });
   });
 
+  // Both sides edit the same line of a build-output file and of `second`; no other path conflicts.
+  const buildOutputFixture = (second: string): string => {
+    const repo = makeTempDir('merge-tree-build-output');
+    dirs.push(repo);
+    git(repo, 'init', '-q', '-b', 'main');
+    for (const f of ['plugins/blackhole-claude/ref.md', second]) {
+      fs.mkdirSync(path.dirname(path.join(repo, f)), { recursive: true });
+      fs.writeFileSync(path.join(repo, f), 'one\ntwo\nthree\n');
+    }
+    git(repo, 'add', '.');
+    git(repo, 'commit', '-q', '-m', 'base');
+    for (const side of ['p1', 'p2']) {
+      git(repo, 'checkout', '-q', '-b', side, 'main');
+      for (const f of ['plugins/blackhole-claude/ref.md', second]) fs.writeFileSync(path.join(repo, f), `one\n${side}\nthree\n`);
+      git(repo, 'commit', '-q', '-am', side);
+    }
+    return repo;
+  };
+
+  test('build-output-only conflict is clean; the same conflict in a source file still conflicts', () => {
+    const generatedOnly = runner(buildOutputFixture('.claude/skills/blackhole/SKILL.md'));
+    expect(generatedOnly(['merge-tree', '--write-tree', '--no-messages', 'p1', 'p2']).code).toBe(1);
+    expect(mergeTreeVerdict(generatedOnly, 'p1', 'p2', undefined, undefined, true)).toBe('clean');
+    const withSource = runner(buildOutputFixture('src/references/x.md'));
+    expect(mergeTreeVerdict(withSource, 'p1', 'p2', undefined, undefined, true)).toBe('conflict');
+    const maintainerState = runner(buildOutputFixture('.claude/settings.json'));
+    expect(mergeTreeVerdict(maintainerState, 'p1', 'p2', undefined, undefined, true)).toBe('conflict');
+  });
+
+  test('in a consumer repo the same build-output-shaped conflict stays a conflict', () => {
+    const generatedOnly = runner(buildOutputFixture('.claude/skills/blackhole/SKILL.md'));
+    expect(mergeTreeVerdict(generatedOnly, 'p1', 'p2')).toBe('conflict');
+    expect(mergeTreeVerdict(generatedOnly, 'p1', 'p2', undefined, undefined, false)).toBe('conflict');
+  });
+
   // Two PRs each touch documentation/decisions/INDEX.md in the same gap (a row after the last one).
   // `edit` rewrites the existing row 'ADR-001' instead of only adding one.
   const adrIndexFixture = (p2Edits: boolean): string => {
@@ -565,5 +602,82 @@ describe('pureAdditionFiles (stub git)', () => {
 
   test('a file outside the append-only set is never returned', () => {
     expect(pureAdditionFiles(stub('2\t0\tsrc/a.ts\n'), 'origin/main', 'pr', ['src/a.ts'])).toEqual([]);
+  });
+});
+
+describe('isGeneratedBuildPath', () => {
+  test('matches every committed build-output tree and nothing else', () => {
+    const generated = [
+      'plugins/blackhole-claude/skills/blackhole/references/merge-gate.md',
+      'plugins/blackhole/rules/x.md',
+      '.cursor/rules/x.mdc',
+      'skills/blackhole/SKILL.md',
+      'references/x.md',
+      'agents/x.md',
+      'rules/x.mdc',
+      'codex-skills/x/SKILL.md',
+      'codex-agents/x.toml',
+      '.codex-plugin/plugin.json',
+      '.agents/build/rules/x.md',
+      '.gemini-plugin/x.json',
+      '.claude-plugin/marketplace.json',
+      'codex-marketplace.json',
+      'SKILL.md',
+    ];
+    for (const f of generated) expect(isGeneratedBuildPath(f)).toBe(true);
+    for (const d of CLAUDE_NATIVE_GENERATED_DIRS) expect(isGeneratedBuildPath(`${d}/x.md`)).toBe(true);
+    const source = [
+      'src/references/x.md',
+      'src/agents/x.md',
+      'scripts/lib/build/paths.ts',
+      'templates/hooks/x.js',
+      'documentation/decisions/INDEX.md',
+      '.claude/settings.json',
+      '.claude/progress.md',
+      '.claude/CLAUDE.md',
+      '.claude/initiatives/_registry.json',
+      '.claude/skills/prj-create-release/SKILL.md',
+      '.agents/handoff/x.md',
+      'plugins-notes.md',
+    ];
+    for (const f of source) expect(isGeneratedBuildPath(f)).toBe(false);
+  });
+
+  test('withoutRegenerated drops build-output paths only for the repo that owns the build', () => {
+    const files = ['plugins/blackhole-claude/a.md', 'skills/x/SKILL.md', 'src/a.md', 'documentation/INDEX.md'];
+    expect(withoutRegenerated(files, undefined, true)).toEqual(['src/a.md']);
+    expect(withoutRegenerated(files)).toEqual(['plugins/blackhole-claude/a.md', 'skills/x/SKILL.md', 'src/a.md']);
+  });
+
+  test('pickParent: two PRs sharing only build-output files overlap in a consumer repo, not in the build repo', () => {
+    const snap = snapshot(spr(7, ['skills/x/SKILL.md']), spr(9, ['skills/x/SKILL.md']));
+    expect(pickParent(9, snap, { conflicts: always('conflict') })).toMatchObject({ kind: 'stack', parent: 7 });
+    expect(pickParent(9, snap, { conflicts: always('conflict'), buildOutput: true })).toEqual({ kind: 'none' });
+  });
+});
+
+describe('ownsBuildOutput', () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
+  });
+  const repoWith = (files: string[]): string => {
+    const repo = makeTempDir('owns-build-output');
+    dirs.push(repo);
+    for (const f of files) {
+      fs.mkdirSync(path.dirname(path.join(repo, f)), { recursive: true });
+      fs.writeFileSync(path.join(repo, f), '');
+    }
+    return repo;
+  };
+
+  test('true only when the repo carries both the build entry and its path registry', () => {
+    expect(ownsBuildOutput(repoWith(['scripts/build.ts', 'scripts/lib/build/paths.ts']))).toBe(true);
+    expect(ownsBuildOutput(repoWith(['scripts/build.ts']))).toBe(false);
+    expect(ownsBuildOutput(repoWith(['skills/a/SKILL.md', 'agents/b.md', '.cursor/rules/c.mdc']))).toBe(false);
+  });
+
+  test('is true for this repository', () => {
+    expect(ownsBuildOutput(path.resolve(import.meta.dirname, '../..'))).toBe(true);
   });
 });

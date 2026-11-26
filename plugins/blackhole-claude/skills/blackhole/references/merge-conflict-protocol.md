@@ -30,7 +30,7 @@ A conflict hunk is **mechanical** iff it matches one of:
 
 1. **Generated build-output tree.** The conflicting path is one the project's own committed
    build/codegen step regenerates deterministically from source (this repo:
-   `scripts/lib/build/targets.ts`'s SSOT list — `.cursor/`, `.claude/`, `skills/`, `codex-*`,
+   `scripts/lib/build/paths.ts`'s `COMMITTED_TARGET_TREES`, the list `isGeneratedBuildPath` also feeds the V-STACK-02 filter — `.cursor/`, `.claude/`, `skills/`, `codex-*`,
    `.agents/build/`, `plugins/`). Resolution is **self-verifying**: discard both sides' conflict
    markers, run the project's build command, and require it to exit `0` and be idempotent
    (running it a second time produces a byte-identical tree) before trusting the regenerated

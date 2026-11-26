@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import path from 'node:path';
 import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
+import { ownsBuildOutput } from './lib/build/paths.ts';
 import { createForgeAdapter } from './lib/forge-adapter/index.ts';
 import type { ForgeType } from './lib/forge-adapter/types.ts';
 import { readJsonFile } from './lib/fs.ts';
@@ -17,9 +18,9 @@ export type GateResult = { exit: 0 | 1 | 3; message: string; parentBranch?: stri
 type Conflicts = (me: { number: number; headSha: string }, other: { number: number; headSha: string }) => ConflictVerdict;
 
 /** Only older open PRs count: a younger overlapping PR is the one that must stack on this one. */
-export const evaluateStackGate = (pr: number, snapshot: OpenPrSnapshot, conflicts: Conflicts): GateResult => {
+export const evaluateStackGate = (pr: number, snapshot: OpenPrSnapshot, conflicts: Conflicts, buildOutput = false): GateResult => {
   if (snapshot.status !== 'ok') return { exit: 3, message: `stack-check: could not read the open PRs: ${snapshot.reason}` };
-  const result = pickParent(pr, olderOnly(pr, snapshot), { conflicts: (a, b) => conflicts(a, b) });
+  const result = pickParent(pr, olderOnly(pr, snapshot), { conflicts: (a, b) => conflicts(a, b), buildOutput });
   switch (result.kind) {
     case 'none':
       return { exit: 0, message: `stack-check: ok — PR #${pr} overlaps no open PR outside its own stack` };
@@ -76,6 +77,8 @@ const main = async (): Promise<number> => {
   const pr = typeof flags.pr === 'string' ? Number(flags.pr) : NaN;
   if (!Number.isInteger(pr) || pr < 1) usage();
 
+  const repoRoot = path.resolve(typeof flags['repo-root'] === 'string' ? flags['repo-root'] : process.cwd());
+  const buildOutput = ownsBuildOutput(repoRoot);
   let snapshot: OpenPrSnapshot | null;
   let conflicts: Conflicts;
   if (typeof flags['open-prs'] === 'string') {
@@ -83,7 +86,6 @@ const main = async (): Promise<number> => {
     conflicts = () => 'conflict';
   } else {
     if (typeof flags['repo-slug'] !== 'string') usage();
-    const repoRoot = path.resolve(typeof flags['repo-root'] === 'string' ? flags['repo-root'] : process.cwd());
     const forgeFlag = typeof flags.forge === 'string' ? flags.forge : 'github';
     if (!FORGES.includes(forgeFlag)) usage();
     const forge = forgeFlag as ForgeType;
@@ -97,11 +99,14 @@ const main = async (): Promise<number> => {
         },
         `${PR_REF_PREFIX}${me.number}`,
         `${PR_REF_PREFIX}${other.number}`,
+        undefined,
+        undefined,
+        buildOutput,
       );
   }
 
   const result = snapshot
-    ? evaluateStackGate(pr, snapshot, conflicts)
+    ? evaluateStackGate(pr, snapshot, conflicts, buildOutput)
     : ({ exit: 3, message: `stack-check: ${flags['open-prs']} is not a readable open-PR snapshot` } as GateResult);
   (result.exit === 0 ? console.log : console.error)(result.message);
   if (result.exit === 1 && flags.fix === true) {
