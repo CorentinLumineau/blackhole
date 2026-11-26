@@ -11,6 +11,7 @@ import {
   prepareCadenceRelease,
   releaseCommitPaths,
   tryAiNotesFromSpawn,
+  verifyFreshness,
   type CliArgs,
   type ReleaseCadenceDeps,
 } from './release-cadence.ts';
@@ -22,6 +23,7 @@ const WORKFLOW = path.join(REPO, '.github', 'workflows', 'release-cadence.yml');
 const RELEASE_WORKFLOW = path.join(REPO, '.github', 'workflows', 'release.yml');
 const LIB_SRC = path.join(import.meta.dirname, 'lib', 'release-cadence.ts');
 const CLI_SRC = path.join(import.meta.dirname, 'release-cadence.ts');
+const VERIFY_WORKFLOW = path.join(REPO, '.github', 'workflows', 'verify.yml');
 
 class ProcessExitError extends Error {
   constructor(readonly code: number | undefined) {
@@ -517,6 +519,135 @@ describe('release-cadence.yml', () => {
     expect(yaml).toContain('Skip a run that main has outrun');
     expect(yaml).toContain('id: fresh');
     expect(yaml).toContain('actions: read');
+  });
+});
+
+describe('verifyFreshness (ADR-063 M2)', () => {
+  const run = (conclusion: string | null, headSha: string, status = 'completed') => ({ status, conclusion, headSha });
+  const always = () => true;
+  const never = () => false;
+  const quiet = () => undefined;
+
+  test('newest completed run green and an ancestor of the tip is fresh', () => {
+    expect(verifyFreshness(() => [run('success', 'aaa')], always, quiet)).toBe(true);
+  });
+
+  test('a red newest run is not fresh even when an older run is green', () => {
+    expect(verifyFreshness(() => [run('failure', 'bbb'), run('success', 'aaa')], always, quiet)).toBe(false);
+  });
+
+  test('cancelled, skipped and in-progress runs are passed over to the next completed run', () => {
+    const runs = [run('cancelled', 'ddd'), run('skipped', 'ccc'), run(null, 'bbb', 'in_progress'), run('success', 'aaa')];
+    const seen: string[] = [];
+    const fresh = verifyFreshness(
+      () => runs,
+      (sha) => {
+        seen.push(sha);
+        return true;
+      },
+      quiet,
+    );
+    expect(fresh).toBe(true);
+    expect(seen).toEqual(['aaa']);
+  });
+
+  test('an empty listing is not fresh and logs why', () => {
+    const lines: string[] = [];
+    expect(verifyFreshness(() => [], always, (m) => lines.push(m))).toBe(false);
+    expect(lines.join('\n')).toContain('no completed verify run');
+  });
+
+  test('a green run that is not an ancestor of the tip is not fresh', () => {
+    expect(verifyFreshness(() => [run('success', 'aaa')], never, quiet)).toBe(false);
+  });
+
+  test('a listing that throws fails closed', () => {
+    const lines: string[] = [];
+    const fresh = verifyFreshness(
+      () => {
+        throw new Error('gh: HTTP 502');
+      },
+      always,
+      (m) => lines.push(m),
+    );
+    expect(fresh).toBe(false);
+    expect(lines.join('\n')).toContain('HTTP 502');
+  });
+
+  test('an ancestry check that throws fails closed', () => {
+    const fresh = verifyFreshness(
+      () => [run('success', 'aaa')],
+      () => {
+        throw new Error('bad object');
+      },
+      quiet,
+    );
+    expect(fresh).toBe(false);
+  });
+
+  test('the old exact-SHA helpers are gone', () => {
+    const cli = fs.readFileSync(CLI_SRC, 'utf-8');
+    const lib = fs.readFileSync(LIB_SRC, 'utf-8');
+    expect(cli + lib).not.toMatch(new RegExp(['verifyWorkflow', 'Succeeded'].join('')));
+  });
+});
+
+describe('release-cadence.yml workflow_run trigger (ADR-063 M1)', () => {
+  const yaml = fs.readFileSync(WORKFLOW, 'utf-8');
+  const lines = yaml.split('\n');
+  const jobBlock = (name: string): string => {
+    const start = yaml.indexOf(`\n  ${name}:\n`);
+    const rest = yaml.slice(start + 1);
+    const next = rest.slice(1).search(/\n  [a-z-]+:\n/);
+    return next < 0 ? rest : rest.slice(0, next + 1);
+  };
+
+  test('triggers on completed Verify runs on main, keeping cron and dispatch', () => {
+    expect(yaml).toMatch(/^\s*workflow_run:$/m);
+    expect(yaml).toMatch(/^\s*workflows: \[Verify\]$/m);
+    expect(yaml).toMatch(/^\s*types: \[completed\]$/m);
+    expect(yaml).toMatch(/^\s*branches: \[main\]$/m);
+    expect(yaml).toContain('cron: "17 */2 * * *"');
+    expect(yaml).toContain('workflow_dispatch:');
+  });
+
+  test('cut job only runs on main and, for workflow_run, a green same-repo push run on main', () => {
+    const cut = jobBlock('cut');
+    const cond = cut.split('\n    name:')[0] ?? '';
+    expect(cond).toContain("vars.RELEASE_CADENCE_ENABLED != 'false'");
+    expect(cond).toContain("github.ref == 'refs/heads/main'");
+    expect(cond).toContain("github.event_name != 'workflow_run'");
+    expect(cond).toContain("github.event.workflow_run.conclusion == 'success'");
+    expect(cond).toContain("github.event.workflow_run.event == 'push'");
+    expect(cond).toContain("github.event.workflow_run.head_branch == 'main'");
+    expect(cond).toContain('github.event.workflow_run.head_repository.full_name == github.repository');
+  });
+
+  test('disabled-notice does not warn on every Verify completion', () => {
+    const notice = jobBlock('disabled-notice').split('\n    name:')[0] ?? '';
+    expect(notice).toContain("vars.RELEASE_CADENCE_ENABLED == 'false'");
+    expect(notice).toContain("github.event_name != 'workflow_run'");
+  });
+
+  test('event payload never reaches a shell or an action input, and no checkout sets ref', () => {
+    const mentions = lines.filter((l) => l.includes('github.event.workflow_run'));
+    expect(mentions.length).toBeGreaterThan(0);
+    let inIf = false;
+    for (const l of lines) {
+      const t = l.trim();
+      if (/^if:/.test(t)) inIf = true;
+      else if (/^[A-Za-z_-]+:/.test(t) && !t.startsWith('||') && !t.startsWith('&&')) inIf = false;
+      if (!l.includes('github.event.workflow_run')) continue;
+      expect(t.startsWith('#') || /^if:/.test(t) || inIf || /^[(&|]/.test(t)).toBe(true);
+    }
+    expect(yaml).not.toMatch(/^\s*(?:- )?ref:/m);
+  });
+
+  test('workflows: [Verify] equals the name of verify.yml', () => {
+    const verifyName = /^name:\s*(.+?)\s*$/m.exec(fs.readFileSync(VERIFY_WORKFLOW, 'utf-8'))?.[1];
+    const watched = /^\s*workflows: \[(.+)\]$/m.exec(yaml)?.[1];
+    expect(verifyName).toBe('Verify');
+    expect(watched).toBe(verifyName);
   });
 });
 

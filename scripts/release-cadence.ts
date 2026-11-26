@@ -4,6 +4,8 @@ import * as path from 'path';
 import { execSync, spawnSync } from 'child_process';
 import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
 import { readJsonFile } from './lib/fs.ts';
+import { evaluateFreshness, type VerifyRun } from './lib/release-policy.ts';
+import { isAncestor } from './lib/stack-merge.ts';
 import {
   AI_NOTES_TIMEOUT_MS,
   CADENCE_THRESHOLD,
@@ -25,7 +27,6 @@ import {
   shouldRecheckAfterLock,
   parseGhPullPages,
   validateAiNotes,
-  verifyWorkflowSucceeded,
   type AiNotesAttempt,
   type ClaudeSpawnResult,
   type MergedPr,
@@ -181,18 +182,45 @@ function defaultRemoteTagExists(git: (cmd: string) => string, tag: string): bool
   }
 }
 
-function defaultVerifySucceeded(sha: string, git: (cmd: string) => string, env: NodeJS.ProcessEnv): boolean {
-  const repo = repoSlug(env, git);
+/**
+ * ADR-063 M2: the newest completed, non-cancelled, non-skipped Verify run on `main` is green and an
+ * ancestor of the tip. Any listing or ancestry failure fails closed (no cut).
+ */
+export function verifyFreshness(
+  listRuns: () => VerifyRun[],
+  reachesTip: (runSha: string) => boolean,
+  log: (msg: string) => void,
+): boolean {
   try {
-    const raw = execSync(
-      `gh api "repos/${repo}/actions/workflows/verify.yml/runs?head_sha=${sha}&status=completed&per_page=20"`,
-      { cwd: root, encoding: 'utf-8' },
-    );
-    const parsed = JSON.parse(raw) as { workflow_runs?: Array<{ conclusion?: string | null }> };
-    return verifyWorkflowSucceeded(parsed.workflow_runs ?? []);
-  } catch {
+    const freshness = evaluateFreshness(listRuns(), reachesTip);
+    if (!freshness.ok) log(`Verify freshness not met: ${freshness.reason}`);
+    return freshness.ok;
+  } catch (err) {
+    log(`Verify freshness could not be determined: ${err instanceof Error ? err.message : String(err)}`);
     return false;
   }
+}
+
+type GhVerifyRun = { status?: string; conclusion?: string | null; head_sha?: string };
+
+function defaultVerifyFresh(sha: string, git: (cmd: string) => string, env: NodeJS.ProcessEnv): boolean {
+  return verifyFreshness(
+    () => {
+      const repo = repoSlug(env, git);
+      const raw = execSync(
+        `gh api "repos/${repo}/actions/workflows/verify.yml/runs?branch=main&event=push&status=completed&per_page=30"`,
+        { cwd: root, encoding: 'utf-8' },
+      );
+      const parsed = JSON.parse(raw) as { workflow_runs?: GhVerifyRun[] };
+      return (parsed.workflow_runs ?? []).map((r) => ({
+        status: r.status ?? '',
+        conclusion: r.conclusion ?? null,
+        headSha: r.head_sha ?? '',
+      }));
+    },
+    (runSha) => isAncestor(root, runSha, sha),
+    (msg) => console.log(msg),
+  );
 }
 
 function defaultSpawnClaude(args: string[], input: string, env: NodeJS.ProcessEnv, cwd: string): ClaudeSpawnResult {
@@ -293,7 +321,7 @@ export function createDefaultReleaseCadenceDeps(repoRoot = root): ReleaseCadence
     tagDateIso: (tag) => defaultTagDateIso(git, tag),
     tagExists: (tag) => defaultTagExists(git, tag),
     remoteTagExists: (tag) => defaultRemoteTagExists(git, tag),
-    verifySucceeded: (sha) => defaultVerifySucceeded(sha, git, process.env),
+    verifySucceeded: (sha) => defaultVerifyFresh(sha, git, process.env),
     headSha: () => git('git rev-parse HEAD'),
     readPkgVersion: () => {
       const pkg = readJsonFile(path.join(repoRoot, 'package.json'), 'package.json') as { version: string };
@@ -488,7 +516,7 @@ export async function cutRelease(args: CliArgs, deps: ReleaseCadenceDeps): Promi
 
   const sha = deps.headSha();
   if (!deps.verifySucceeded(sha)) {
-    deps.log(`Verify has not succeeded on ${sha} — skipping cadence cut.`);
+    deps.log(`Verify freshness not satisfied for ${sha} — skipping cadence cut.`);
     return;
   }
 

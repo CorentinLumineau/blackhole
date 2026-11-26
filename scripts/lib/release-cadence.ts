@@ -364,10 +364,6 @@ export function redactSecret(text: string, secret: string | undefined): string {
   return text.split(secret).join('[redacted]');
 }
 
-export function verifyWorkflowSucceeded(runs: ReadonlyArray<{ conclusion?: string | null }>): boolean {
-  return runs.some((run) => run.conclusion === 'success');
-}
-
 export const TRACKING_ISSUE_TITLE = 'release-cadence cut is failing on main';
 
 type GhPullRow = {
