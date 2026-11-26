@@ -90,6 +90,16 @@ is what makes a worker's Claude Code subagent transcript deterministically locat
 time (`agent-a<name>-*.jsonl`, `recovery-protocol.md` §10) — an undiscoverable transcript is an
 undiscoverable return.
 
+**Name shape**: `<role>-<issue-number>`, optionally followed by `-<suffix>` segments such as
+`-recheck1` or `-t159` (`implementer-5333`, `reviewer-5333-recheck1`). `scripts/worker-context-report.ts`
+reads the issue from the **first** `-<digits>` segment of the spawn name in `.meta.json` (`NAME_ISSUE`) and
+from a name-bearing transcript file's `<role>-<issue>[-<suffix>]` form (`ROLE_ISSUE`), so the issue
+number comes first and nothing before it may match `-<digits>`: never put a PR number or round
+counter ahead of it, and write a PR reference as a word with no hyphen before the digits
+(`reviewer-pr1502` carries no issue; `review-1502` would read PR 1502 as the issue). The role
+segment is the part before the first `-`, so it contains no hyphen. The same string MUST be passed as the `label`
+of the matching `agent()` call in a `Workflow` fan-out; without it those runs are unattributed.
+
 ### Fix-round continuation (SendMessage)
 
 A fix round (`phase: implement` re-entered with `review_iteration >= 1`, from a review `changes_requested` or a `V-CI-01` row) re-enters the same issue with a worker that already holds its plan, worktree and diff in context. Continue it with `SendMessage` addressed by its spawn name `implementer-<issue>` (§ Deterministic spawn name) instead of spawning a fresh one, **only when every condition holds**:

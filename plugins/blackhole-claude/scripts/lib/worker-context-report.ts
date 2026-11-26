@@ -33,7 +33,7 @@ export type WorkerContextReport = {
 
 // A subagent transcript is `agent-a<name>-<16 hex>.jsonl` when the spawn was named, else `agent-a<17 hex>.jsonl`.
 const NAMED = /^agent-a(.+)-[0-9a-f]{16}\.jsonl$/;
-const ROLE_ISSUE = /^(.+)-(\d+)$/;
+const ROLE_ISSUE = /^([^-]+)-(\d+)(?:-.*)?$/;
 // The harness records a spawn's `name` and `description` in `.meta.json` even though it names the file by hash.
 const NAME_ISSUE = /-(\d+)(?![0-9])/;
 const DESCRIPTION_ISSUE = /\bissue\s+#?(\d+)/i;
