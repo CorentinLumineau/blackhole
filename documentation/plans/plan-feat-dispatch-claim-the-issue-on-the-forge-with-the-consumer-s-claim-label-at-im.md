@@ -36,8 +36,8 @@ At implementer dispatch, the orchestrator adds each configured `claim_labels` en
 - **AC**: `bun test scripts/claim-labels.test.ts` passes cases (a) to (e) above (a dispatch writes the label; no `claim_labels` changes nothing).
 - **AC**: `bun test scripts/lane-claim-docs.test.ts` passes and asserts `scripts/claim-labels.ts` appears in `## Contract claim labels`.
 - **AC**: `grep -c "claim-labels.ts" src/references/orchestrator-dispatch.md` is at least 1 (scope: that file; no exemptions).
-- **AC**: `scripts/release-claims.ts` and `scripts/claim.ts` are unchanged (`git diff --stat` shows neither).
+- **AC**: `scripts/claim.ts` is unchanged (`git diff --stat` shows it absent); `scripts/release-claims.ts` only moves onto the shared `scripts/lib/claim-cli.ts` preamble with identical behaviour (`scripts/release-claims.test.ts` still passes).
 
 ## Risks
-- Label absent on the consumer repo: `labelAdd` errors; fail-open warning, merge still needs a manual label. Not auto-created (YAGNI; owner decides label names).
+- Label absent on the consumer repo: GitHub and GitLab create a missing label through the forge API, and Gitea creates it first via `ensureLabel`. The real failure modes are auth or permission errors, which fail open with a warning; merge then still needs a manual label.
 - Re-claim after release on a fix-round respawn: intended; release only fires on stop or merge.
