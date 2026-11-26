@@ -554,6 +554,18 @@ const readAssignedWorktreeRoot = (cwd = process.cwd()) => {
   return readCwdDerivedAssignedRoot(cwd);
 };
 
+/** The realpath of the linked (non-main) worktree `cwd` sits in, or null when `cwd` is outside a
+ * worktree or is the main clone itself. Shared by `readCwdDerivedAssignedRoot` and the Bash write
+ * guard's deferral fallback, so both agree on what counts as a linked worktree. */
+const readLinkedWorktreeRoot = (cwd) => {
+  const cwdWorktree = worktreeRoot(cwd);
+  if (!cwdWorktree) return null;
+  const realCwdWorktree = resolveExistingAncestor(cwdWorktree);
+  const mainClone = mainCloneRoot(cwd);
+  if (!mainClone || resolveExistingAncestor(mainClone) === realCwdWorktree) return null;
+  return realCwdWorktree;
+};
+
 /** cwd-derived containment tier (#907) — the channel `BLACKHOLE_ASSIGNED_WORKTREE` above actually
  * reaches under Pattern C (`orchestrator-dispatch.md`): a worker dispatched via the native
  * `Agent`/`Workflow` tool never receives an exported env var, confirmed by a zero-occurrence
@@ -579,15 +591,15 @@ const readAssignedWorktreeRoot = (cwd = process.cwd()) => {
  * per-session scratchpad — a directory that is NOT expected to nest the worktree at all, so no
  * single string can represent "the worktree" and "the disjoint scratchpad" simultaneously; when
  * a scratchpad candidate is present (validated or not) but does not nest the worktree, this tier
- * defers entirely (returns null) rather than silently dropping it — the caller's fallback to
- * `allWorktreeRoots(cwd)` already unions every scratchpad source correctly, including rejecting
- * an invalid one, so deferring to it is reuse, not re-derivation (`V-INT-02`). */
+ * defers entirely (returns null) rather than silently dropping it. The two callers then differ:
+ * `validate-file-changes.js` falls back to `allWorktreeRoots(cwd)`, which already unions every
+ * scratchpad source correctly, including rejecting an invalid one (reuse, not re-derivation,
+ * `V-INT-02`); the Bash write guard keeps the linked worktree (`readLinkedWorktreeRoot`) as its
+ * assigned root and admits the disjoint scratchpad through `trustedWriteRoots`. */
 const readCwdDerivedAssignedRoot = (cwd) => {
-  const cwdWorktree = worktreeRoot(cwd);
-  if (!cwdWorktree) return null;
-  const realCwdWorktree = resolveExistingAncestor(cwdWorktree);
+  const realCwdWorktree = readLinkedWorktreeRoot(cwd);
+  if (!realCwdWorktree) return null;
   const mainClone = mainCloneRoot(cwd);
-  if (!mainClone || resolveExistingAncestor(mainClone) === realCwdWorktree) return null;
 
   const configScratchpad = readScratchpadDir(mainClone);
   const envScratchpad = process.env.BLACKHOLE_SCRATCHPAD_DIR;
@@ -1033,6 +1045,7 @@ module.exports = {
   isAcceptableScratchpadDir,
   readScratchpadDir,
   readAssignedWorktreeRoot,
+  readLinkedWorktreeRoot,
   readHookInput,
   hasNoCampaignConfig,
   recordEvent,

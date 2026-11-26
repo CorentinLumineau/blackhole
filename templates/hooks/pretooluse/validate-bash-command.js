@@ -112,8 +112,8 @@ const main = () => {
 
   // Dynamic check (#804/ADR-029): extends #620's assigned-worktree write containment
   // (`validate-file-changes.js`, Write/Edit only) to Bash file-write commands — see
-  // bash-write-target-guard.js's module docstring. No-op when BLACKHOLE_ASSIGNED_WORKTREE is
-  // unset (byte-identical to today).
+  // bash-write-target-guard.js's module docstring. No-op when no assigned or linked worktree
+  // resolves (cwd is the main clone or outside git).
   const writeTarget = evaluateBashWriteTargets(command, cwd, input);
   if (handleTieredResult(writeTarget, { tool, command, allowedTiers: BLOCK_OR_WARN })) return;
 
