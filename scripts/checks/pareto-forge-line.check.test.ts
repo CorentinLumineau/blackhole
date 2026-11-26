@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { BUILD_REFERENCE_DIRS, REQUIRED_SITE_MARKERS, checkBuildFilingSites, findParetoLineViolations, runChecks } from './pareto-forge-line.check.ts';
 
-// Issue #1530 — pins the forge-line contract: line plus exactly the matching bucket label.
+// Pins the forge-line contract: line plus exactly the matching bucket label.
 
 const body = (line: string) => `## Problem\nx\n\n${line}\n`;
 
