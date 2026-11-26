@@ -1,12 +1,12 @@
 ---
 type: adr
 summary: "PreToolUse guards are kept only where Claude Code auto mode cannot cover them (harnesses without auto mode, campaign state); the worktree-removal guard is removed, the shared shell scanner survives as shell-invocation-scan.js, and #1495 stays a separate fix"
-status: accepted
+status: superseded
+superseded_by: ADR-065
 review_trigger: "on adding a PreToolUse guard, on a harness gaining or losing a native auto mode, or on a fix round for the Bash write-target guard or the main-clone git guard"
 created: 2026-11-24
-last_updated: 2026-11-24
+last_updated: 2026-11-26
 related:
-  - templates/hooks/pretooluse/README.md
   - src/references/hook-schemas.md
   - src/references/recovery-protocol.md
   - documentation/decisions/ADR-029-bash-write-target-worktree-containment.md
@@ -17,6 +17,8 @@ related:
 # ADR-061: Lean PreToolUse hooks on Claude Code auto mode
 
 ## Status
+
+Superseded by ADR-065 - 2026-11-26. The guards this ADR describes are removed; the original acceptance follows.
 
 Accepted — 2026-11-24, owner direction on issue #1496 (supersedes the closed PR #1494).
 
@@ -78,3 +80,7 @@ Bash write-target guard must keep the fallback #1495 asks for.
   pattern ids `worktree-remove-*` and `too-many-removal-targets` no longer exist.
 - The unpushed-work rule is prose in `blackhole-protocol.md` and `recovery-protocol.md`; the
   hook-enforced wording is removed from both.
+
+## Post-acceptance amendments
+
+- 2026-11-26 (issue #1644): superseded in full by ADR-065. No blocking PreToolUse guard ships in any harness build, so the guards and trust rules this ADR describes are deleted; auto mode is the gate.

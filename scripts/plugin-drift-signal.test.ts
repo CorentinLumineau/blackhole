@@ -5,11 +5,10 @@ import { rewriteScriptInvocations } from './lib/build/claude-plugin-runtime.ts';
 import { populateClaudeFixtureTree, withTempDir } from './lib/test-fixtures.ts';
 import { resolveRepoRoot } from './plugin-drift-signal.ts';
 
-// The Claude plugin bundle ships plugin-drift-signal.ts as a runtime script, and copies the hooks
-// tree to hooks/ rather than templates/hooks/pretooluse/. The script must run from that layout,
-// the way a consumer's orchestrator invokes it, not only from a repo checkout.
+// The Claude plugin bundle ships plugin-drift-signal.ts as a runtime script. The script must run
+// from that layout, the way a consumer's orchestrator invokes it, not only from a repo checkout.
 describe('plugin-drift-signal.ts from a built Claude plugin tree', () => {
-  test('runs from the installed layout, which ships hooks/ but no templates/hooks/', () => {
+  test('runs from the installed layout, which ships no templates/hooks/', () => {
     withTempDir('drift-bundle', (destRoot) => {
       populateClaudeFixtureTree(destRoot);
       expect(fs.existsSync(path.join(destRoot, 'templates', 'hooks'))).toBe(false);

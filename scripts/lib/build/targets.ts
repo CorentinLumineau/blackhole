@@ -41,8 +41,8 @@ import {
   buildClaudeMarketplace,
   buildAgentPluginsManifest,
 } from './manifests.ts';
-import { compileGeminiTree, compileCodexTree, copyHooksDir, copyCursorCloudConfig, writeGeminiManifest, copyShadcnSkill } from './trees.ts';
-import { mergeClaudeSettingsHooks } from './claude-native-settings.ts';
+import { compileGeminiTree, compileCodexTree, copySensitiveFilePatterns, copyCursorCloudConfig, writeGeminiManifest, copyShadcnSkill } from './trees.ts';
+import { stripBlackholeGuardHooks } from './claude-native-settings.ts';
 import { finalizeClaudePluginBundle } from './claude-plugin-runtime.ts';
 
 const version = projectIdentity.version;
@@ -143,10 +143,10 @@ export const compileClaudeNativeTarget = () => {
     '.claude/rules/blackhole-vcodes.md',
     'claude'
   );
-  // Issue #472: this repo's own campaign runs from .claude/, so the PreToolUse safety gate
-  // (#447/#470) must ship and wire here too, not just to the consumer-facing plugin bundles.
-  copyHooksDir(path.join(root, CLAUDE_NATIVE_ROOT));
-  mergeClaudeSettingsHooks(path.join(root, CLAUDE_NATIVE_ROOT));
+  // ADR-065: no guard hooks ship, only the staging gate's pattern data; drop the registrations
+  // earlier builds merged into settings.json.
+  copySensitiveFilePatterns(path.join(root, CLAUDE_NATIVE_ROOT));
+  stripBlackholeGuardHooks(path.join(root, CLAUDE_NATIVE_ROOT));
 };
 
 // 4b. Compile Target C2: Claude Code marketplace distribution bundle (plugins/blackhole-claude/)

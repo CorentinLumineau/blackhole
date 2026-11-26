@@ -1,7 +1,8 @@
 ---
 type: adr
 summary: "A PreToolUse caller with agent_type orchestrator or coordinator, or no agent_type and a cwd at the harness project dir outside any nested linked worktree, may write single files in the .blackhole/ of its own clone and of the main clones named in permissions.additionalDirectories from a linked-worktree cwd, through the existing state-dir allow-list; every worker agent_type, config.json, hook-events/ and settings files stay denied, and config.json edits and git restore of tracked state are out of scope"
-status: accepted
+status: superseded
+superseded_by: ADR-065
 review_trigger: "on a change to the campaign-state trust allow-list, trustedWriteRoots, the caller predicate in campaign-scope.js, or how Claude Code reports agent_type in a PreToolUse payload"
 created: 2026-11-26
 last_updated: 2026-11-26
@@ -9,13 +10,14 @@ related:
   - documentation/decisions/ADR-047-hook-containment-scoped-to-campaign-workers.md
   - documentation/decisions/ADR-045-cwd-derived-worker-write-containment.md
   - documentation/decisions/ADR-061-lean-pretooluse-hooks-on-auto-mode.md
-  - templates/hooks/pretooluse/README.md
   - src/references/hook-schemas.md
 ---
 
 # ADR-064: Orchestrator-scoped campaign state write trust
 
 ## Status
+
+Superseded by ADR-065 - 2026-11-26. The guards this ADR describes are removed; the original acceptance follows.
 
 Accepted - 2026-11-26, owner approval of the design on issue #1370.
 
@@ -78,3 +80,7 @@ worker also carries no `agent_type`, but runs in its assigned linked worktree, s
   `git restore -- .blackhole/<tracked file>` (`git-main-clone-guard.js`) stay denied.
 - Allowed state writes record nothing, as with the own-clone grant today; deny records remain the
   audit trail.
+
+## Post-acceptance amendments
+
+- 2026-11-26 (issue #1644): superseded in full by ADR-065. No blocking PreToolUse guard ships in any harness build, so the guards and trust rules this ADR describes are deleted; auto mode is the gate.

@@ -34,17 +34,15 @@ export const copyTemplatesDir = (destRoot: string) => {
   }
 };
 
-/** Copies templates/hooks/pretooluse/ (repo root, not src/) into destRoot's own hooks/ subtree —
- * the PreToolUse safety gate a consumer install needs before an unattended worker can run a
- * destructive command (#447). Same verbatim-copy shape as copyTemplatesDir above and for the same
- * reason: the payload is raw JSON/JS, which processFile's markdown pass would corrupt. Only
- * templates/hooks/pretooluse/ is copied — templates/hooks/'s other entries are Cursor
- * `.cursor/hooks.json` fragments, merged by hand into a consumer's own file, not shipped as a
- * plugin hooks tree. */
-export const copyHooksDir = (destRoot: string) => {
-  const src = path.join(templatesDir, 'hooks', 'pretooluse');
-  if (!fs.existsSync(src)) return;
-  fs.cpSync(src, path.join(destRoot, 'hooks'), { recursive: true });
+/** Copies the sensitive-filename pattern data (`templates/hooks/pretooluse/patterns/file-patterns.json`)
+ * to `<destRoot>/hooks/patterns/`, the first of the two paths the staging gate resolves (V-SEC-11,
+ * `gates/07-sensitive-filename-staging-gate.md`). It is data for a pre-`git add` check, not a hook:
+ * nothing registers or runs it (ADR-065). */
+export const copySensitiveFilePatterns = (destRoot: string) => {
+  const src = path.join(templatesDir, 'hooks', 'pretooluse', 'patterns', 'file-patterns.json');
+  const dest = path.join(destRoot, 'hooks', 'patterns', 'file-patterns.json');
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.copyFileSync(src, dest);
 };
 
 const SHADCN_RUNNERS = ['npx shadcn@latest', 'pnpm dlx shadcn@latest', 'bunx --bun shadcn@latest'];
@@ -118,7 +116,7 @@ export const compileGeminiTree = (
     target
   );
   copyTemplatesDir(destRoot);
-  copyHooksDir(destRoot);
+  copySensitiveFilePatterns(destRoot);
   copyShadcnSkill(destRoot);
 };
 

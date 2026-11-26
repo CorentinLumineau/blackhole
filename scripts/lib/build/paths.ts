@@ -33,7 +33,7 @@ export const CLAUDE_DISTRIBUTION_CITED_VCODES = `${CLAUDE_PLUGIN_ROOT_TOKEN}/rul
 
 /** Maintainer-only, repo-root native target (issue #472) — NOT a consumer install surface (see
  * DISTRIBUTION_ROOT/CLAUDE_DISTRIBUTION_ROOT above for those). This is where blackhole's own
- * dogfooding campaign runs from, so the PreToolUse safety gate must ship and wire here too. */
+ * dogfooding campaign runs from. */
 export const CLAUDE_NATIVE_ROOT = '.claude';
 
 // ADR-007 T2 (R5′): tracked ⇒ built-by-default. Any build output already tracked by git is

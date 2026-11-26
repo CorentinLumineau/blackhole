@@ -1,34 +1,22 @@
-import * as fs from 'fs';
 import * as path from 'path';
-import { root } from './build/paths.ts';
 import { readInstalledPluginRows, type InstalledPluginRow } from './plugin-drift.ts';
 
-// `extractCommandPath` and the candidate-row filter below live in the shipped CommonJS hooks
-// tree (`installed-plugin-rows.js`), shared with `sibling-plugin-guard.js`'s health leg so there is
-// one implementation, not two drifting regexes (V-INT-02). Only the scripts/lib -> hooks direction
-// is safe: a shipped hook cannot reach scripts/lib/. That tree sits at a different path per layout:
-// `templates/hooks/pretooluse/` in a repo checkout, `hooks/` in the Claude plugin bundle
-// (`copyHooksDir`, which ships no `templates/hooks/`). This module runs in both, because the
-// bundle ships `plugin-drift-signal.ts` as a runtime script, so resolve whichever exists.
-export const INSTALLED_PLUGIN_ROWS_CANDIDATES = [
-  path.join('templates', 'hooks', 'pretooluse', 'utils', 'installed-plugin-rows.js'),
-  path.join('hooks', 'utils', 'installed-plugin-rows.js'),
-];
+/** Rows that could apply to `repoRoot`: a `user`-scope row, or a `project`-scope row whose
+ * `projectPath` matches `repoRoot` exactly. Never adjudicates precedence between candidates. */
+const selectCandidateInstalledPluginRows = (rows: InstalledPluginRow[], repoRoot: string): InstalledPluginRow[] =>
+  Array.isArray(rows)
+    ? rows.filter((row) => row && (row.scope === 'user' || (row.scope === 'project' && row.projectPath === repoRoot)))
+    : [];
 
-export const resolveInstalledPluginRowsModule = (
-  base: string,
-  exists: (p: string) => boolean = fs.existsSync,
-): string => {
-  for (const rel of INSTALLED_PLUGIN_ROWS_CANDIDATES) {
-    const abs = path.join(base, rel);
-    if (exists(abs)) return abs;
-  }
-  throw new Error(`installed-plugin-rows.js not found under ${base} (tried ${INSTALLED_PLUGIN_ROWS_CANDIDATES.join(', ')})`);
+/** A plausible script path from a hook command string: a single-quoted path first, else the first
+ * bare `/`- or `~`-rooted token ending in a common script extension. Not a shell parser. */
+const extractCommandPath = (command: unknown): string | null => {
+  if (typeof command !== 'string') return null;
+  const quoted = command.match(/'([^']+\.(?:sh|js|ts|mjs))'/);
+  if (quoted) return quoted[1];
+  const bare = command.match(/(~?\/[^\s'"]+\.(?:sh|js|ts|mjs))/);
+  return bare ? bare[1] : null;
 };
-
-const { selectCandidateInstalledPluginRows, extractCommandPath } = require(
-  resolveInstalledPluginRowsModule(root),
-);
 
 // Issue #912 (ADR-044) — enumeration half of the widened plugin-drift signal. Claude Code
 // composes PreToolUse hooks from every enabled source and merges them deny-wins with no
