@@ -1,7 +1,7 @@
 import { expandVcodeTableKey } from './check-common.ts';
 import { markdownHeadings, sectionEnd } from './markdown-headings.ts';
 
-// On-demand stubs (issue #1387): an agent shell keeps one `###` stub per module whose body is Read
+// On-demand stubs: an agent shell keeps one `###` stub per module whose body is Read
 // only when its `Load when` line holds. These pure checks prove a stub still carries what makes it
 // load, because a stub that loses its trigger or Read path silently turns the module off. Shared by
 // the reviewer audit modules (V-AUDIT-01) and the planner track modules (V-AUDIT-02).
@@ -75,3 +75,14 @@ export const findPlannerTrackDrift = (plannerSrc: string, modules: StubModule[])
     });
   return [...findOnDemandStubDrift(plannerSrc, modules, PLANNER_STUB_SHAPE), ...directiveErrors];
 };
+
+// `planner.md` is a shell: its Design Track subsections 4.1-4.8 live in the Design module, so a
+// `planner.md` §4.x citation names a section that no longer exists in that file.
+const STALE_PLANNER_SECTION = /`?planner\.md`? ?§ ?(4\.\d+)/g;
+
+export const findStalePlannerSectionCitations = (texts: Record<string, string>): string[] =>
+  Object.entries(texts).flatMap(([file, text]) =>
+    [...text.matchAll(STALE_PLANNER_SECTION)].map(
+      (m) => `${file}: \`planner.md\` §${m[1]} no longer resolves, cite \`planner-tracks/04-design-track.md\` §${m[1]}`,
+    ),
+  );

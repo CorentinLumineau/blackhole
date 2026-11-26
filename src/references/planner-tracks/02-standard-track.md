@@ -69,7 +69,7 @@ track: standard
     consumption path (`V-DRY-01`: same data, new presentation). When not triggered, omit the
     section entirely, same discipline as Threat Model above.
 *   **Dependency Blast-Radius (`## Dependency Blast-Radius`, conditional)**: Trigger —
-    reuse Design Track subsection 6's grep-based consumer scan (`planner.md` §4.6,
+    reuse Design Track subsection 6's grep-based consumer scan (`planner-tracks/04-design-track.md` §4.6,
     "Refactoring Impact Analysis"): for every interface the plan's Touch-Paths change
     (function signature, JSON contract field, config key, file-path convention), grep the
     codebase for call-sites/consumers — same direct tool scan, same

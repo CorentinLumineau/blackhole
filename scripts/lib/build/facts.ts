@@ -217,7 +217,7 @@ export const DOC_HEALTH_THRESHOLDS: DocHealthThresholds = {
  * `DESIGN_TRACK_REQUIRED_HEADINGS`) and `scripts/checks/adr-shape.check.ts` (both shapes, for its
  * advisory heading-conformance scan over `documentation/decisions/ADR-*.md`). `classic` is
  * `src/references/adr-template.md`'s 5-heading narrative-decision skeleton; `designTrack` is
- * `planner.md` §4.8's 8-heading plan-track-gated design-note skeleton. Never restate either list
+ * `planner-tracks/04-design-track.md` §4.8's 8-heading plan-track-gated design-note skeleton. Never restate either list
  * as an inline literal at a consumption site.
  */
 export type AdrShapes = { classic: string[]; designTrack: string[] };

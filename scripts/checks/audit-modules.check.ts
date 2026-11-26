@@ -5,7 +5,7 @@ import { expandVcodeTableKey, parseVcodeTableRows, PLANNER_TRACK_MODULE_DIR } fr
 import { parseFrontmatterFields, parseMdFrontmatter } from '../lib/build/content.ts';
 import { PLANNER_TRACK_MODULE_COUNT, REVIEWER_AUDIT_MODULE_COUNT, REVIEWER_ONDEMAND_AUDIT_MODULE_COUNT } from '../lib/build/facts.ts';
 import { markdownHeadings } from '../lib/markdown-headings.ts';
-import { findOnDemandStubDrift, findPlannerTrackDrift, stubBody, stubMatchesSection, type StubModule } from '../lib/on-demand-stubs.ts';
+import { findOnDemandStubDrift, findPlannerTrackDrift, findStalePlannerSectionCitations, stubBody, stubMatchesSection, type StubModule } from '../lib/on-demand-stubs.ts';
 import { AUDIT_MODULE_TRIGGERS, AUDIT_TRIGGER_GLOBS } from '../lib/audit-module-triggers.ts';
 
 // ADR-034 — audit-modules.check.ts: V-AUDIT-01 keeps the reviewer's audit-module registry and
@@ -155,12 +155,15 @@ const checkAuditModules = (): CheckResult => {
   return errors.length ? { id: 'V-AUDIT-01', ok: false, detail: errors.join('; ') } : { id: 'V-AUDIT-01', ok: true };
 };
 
-// V-AUDIT-02 (slice 6 of #1387) — planner track modules, stub drift in `lib/on-demand-stubs.ts`.
+// V-AUDIT-02 — planner track modules, stub drift in `lib/on-demand-stubs.ts`.
 const checkPlannerTracks = (): CheckResult => {
   const modules = loadAuditModules(path.join(root, PLANNER_TRACK_MODULE_DIR));
   const errors = [
     ...findAuditModuleCountDrift(PLANNER_TRACK_MODULE_COUNT, modules.length, 'PLANNER_TRACK_MODULE_COUNT', PLANNER_TRACK_MODULE_DIR),
     ...findPlannerTrackDrift(fs.readFileSync(path.join(root, 'src/agents/planner.md'), 'utf-8'), modules),
+    ...findStalePlannerSectionCitations(
+      Object.fromEntries(['src/agents', 'src/references'].flatMap((d) => fs.readdirSync(path.join(root, d)).filter((f) => f.endsWith('.md')).map((f) => [`${d}/${f}`, read(`${d}/${f}`)]))),
+    ),
   ];
   return errors.length ? { id: 'V-AUDIT-02', ok: false, detail: errors.join('; ') } : { id: 'V-AUDIT-02', ok: true };
 };

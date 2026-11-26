@@ -17,7 +17,7 @@ import {
 } from './checks/audit-modules.check.ts';
 import { PLANNER_TRACK_MODULE_COUNT, REVIEWER_AUDIT_MODULE_COUNT, REVIEWER_ONDEMAND_AUDIT_MODULE_COUNT } from './lib/build/facts.ts';
 import { PLANNER_TRACK_MODULE_DIR } from './lib/check-common.ts';
-import { findOnDemandStubDrift, findPlannerTrackDrift } from './lib/on-demand-stubs.ts';
+import { findOnDemandStubDrift, findPlannerTrackDrift, findStalePlannerSectionCitations } from './lib/on-demand-stubs.ts';
 
 // ADR-034 / V-AUDIT-01. Every leg below is driven first with a registry that is deliberately
 // broken (red) and then with the corresponding healthy shape (green), so the check demonstrates
@@ -412,7 +412,7 @@ describe('findTriggerTableDrift', () => {
   });
 });
 
-// Slice 6 of #1387 — planner track modules. A directive-only track's stub is the one place the
+// Planner track modules. A directive-only track's stub is the one place the
 // planner learns which spawn directive loads the module, so it must name that exact directive.
 const track = (file: string, section: string, trackName: string) => ({ file, section, vcodes: [], track: trackName });
 const PLANNER_STUBS = [
@@ -446,5 +446,19 @@ describe('findPlannerTrackDrift (V-AUDIT-02)', () => {
   test('red — a module with no stub names planner.md in the error', () => {
     const errors = findPlannerTrackDrift(PLANNER_STUBS, [...PLANNER_MODULES, track('04-design-track.md', '4. Design Track', 'design')]);
     expect(errors).toEqual(['04-design-track.md: no stub heading for section "4. Design Track" in planner.md']);
+  });
+});
+
+describe('findStalePlannerSectionCitations (V-AUDIT-02)', () => {
+  test('red — a `planner.md` §4.x citation points at a section that now lives in the Design module', () => {
+    const errors = findStalePlannerSectionCitations({ 'a.md': 'see `planner.md` §4.8 for gating', 'b.md': 'per planner.md § 4.3 cites it' });
+    expect(errors).toEqual([
+      'a.md: `planner.md` §4.8 no longer resolves, cite `planner-tracks/04-design-track.md` §4.8',
+      'b.md: `planner.md` §4.3 no longer resolves, cite `planner-tracks/04-design-track.md` §4.3',
+    ]);
+  });
+
+  test('green — the module path citation and a planner.md step citation report nothing', () => {
+    expect(findStalePlannerSectionCitations({ 'a.md': '`planner-tracks/04-design-track.md` §4.8 and `planner.md` Step 4 Trigger B' })).toEqual([]);
   });
 });

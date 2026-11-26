@@ -125,16 +125,8 @@ The artifact consolidates 8 ordered subsections:
 
       **Cross-Cutting Heuristic (ADR-012 E3, Trigger A)**: apply this 3-question test to the
       ADR's Decision section, using the same staging mechanism as the ADR + INDEX row above (no
-      direct `ARCHITECTURE.md` write — no branch exists yet at Phase 2, ADR-021 D1):
-      1. **Breadth** — Does the constraint govern ≥2 independent subsystems/modules/agents, not
-         one file or one feature?
-      2. **Enforcement stakes** — Would violating it corrupt shared state, break a protocol
-         invariant, or trigger an existing BLOCK-severity V-code — not merely a
-         style/readability preference?
-      3. **Foreclosure** — Does it rule out an entire *category* of future implementation
-         approaches for that surface, rather than prescribing today's preferred implementation
-         detail?
-      Score ≥2/3 YES → stage the bullet `- {constraint, one sentence, imperative} (ADR-{NNN})` at
+      direct `ARCHITECTURE.md` write — no branch exists yet at Phase 2, ADR-021 D1). The three questions (Breadth, Enforcement stakes, Foreclosure) are worded once, in
+      `planner.md` Step 4 — reuse them as written. Score ≥2/3 YES → stage the bullet `- {constraint, one sentence, imperative} (ADR-{NNN})` at
       `.blackhole/staged/<issue>/architecture-active-constraint.md` (full-destination-path `.tmp` naming — `blackhole-state.md` § Staging, issue #911) and append a manifest entry
       (`target_path: "ARCHITECTURE.md"`, `target_kind: "append_row"` — `blackhole-state.md` §
       Staging) alongside the ADR/INDEX entries. The `(ADR-{NNN})` suffix is mandatory — the

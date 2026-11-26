@@ -46,9 +46,15 @@ has no `documentation/` target.
    plan resolves to, because it is the only path that reaches Active Constraints on a repo whose
    issues all route to Quick track. **Skip Track is the sole exception**, consistent with Step
    3's existing "no codebase analysis" carve-out for that track. For each finding in the note's
-   Architecture Coherence section, apply the same Cross-Cutting Heuristic as §4.8's Trigger A
-   (Breadth / Enforcement stakes / Foreclosure, score ≥2/3 to promote — see §4.8 for the full
-   3-question wording, not restated here). For each qualifying finding: check the **live**
+   Architecture Coherence section, apply the **Cross-Cutting Heuristic** (ADR-012 E3; the one
+   copy of its wording, which Design Track's Trigger A reuses): score the finding on three
+   questions, and promote it at ≥2/3 YES. (1) **Breadth** — does the constraint govern ≥2
+   independent subsystems/modules/agents, not one file or one feature? (2) **Enforcement
+   stakes** — would violating it corrupt shared state, break a protocol invariant, or trigger an
+   existing BLOCK-severity V-code, not merely a style/readability preference? (3)
+   **Foreclosure** — does it rule out an entire *category* of future implementation approaches
+   for that surface, rather than prescribing today's preferred implementation detail? For each
+   qualifying finding: check the **live**
    `ARCHITECTURE.md` for a near-duplicate — same citation already present, or ≥80% text overlap
    with an existing bullet (from a prior Trigger A or Trigger B write) — and skip if found;
    otherwise **stage** (never write directly — no branch exists yet at Phase 2, ADR-021 D1) the
@@ -58,7 +64,7 @@ has no `documentation/` target.
    "planner"`, `target_path: "ARCHITECTURE.md"`, `target_kind: "append_row"` —
    `blackhole-state.md` § Staging) to `.blackhole/staged/<issue>/manifest.json`, gated by
    `docs_governance.enabled`/`docs_governance.write_governance` (absent or `false` ⇒ skip
-   entirely, same kill switch as §4.8's design-route staging). The implementer's carry-step
+   entirely, same kill switch as `planner-tracks/04-design-track.md` § 4.8's design-route staging). The implementer's carry-step
    (`implementer.md` § Carry Staged Artifacts) commits the appended bullet inside the issue's own
    PR once the route reaches implement. The `(analyze: issue #N)` attribution suffix is
    mandatory.
