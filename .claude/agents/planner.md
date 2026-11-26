@@ -61,9 +61,9 @@ has no `documentation/` target.
    otherwise **stage** (never write directly — no branch exists yet at Phase 2, ADR-021 D1) the
    bullet `- {constraint} (analyze: issue #N)` at
    `.blackhole/staged/<issue>/architecture-active-constraint-{n}.md` via Bash heredoc + atomic
-   `mv` (full-destination-path `.tmp` naming — `blackhole-state.md` § Staging, issue #911), and append a manifest entry (`route: "analyze"`, `sub_mode: "analyze"`, `produced_by:
+   `mv` (full-destination-path `.tmp` naming — `blackhole-state.md` § Staging, issue #911), and append a manifest entry via `bun run --cwd <abs repo-root> scripts/stage-manifest.ts append --manifest <abs repo-root>/.blackhole/staged/<issue>/manifest.json --issue <N> --entry-json '<entry json>'` (atomic `.tmp` + rename, never a shell redirect; exit 1 means refused, fix and re-run) (`route: "analyze"`, `sub_mode: "analyze"`, `produced_by:
    "planner"`, `target_path: "ARCHITECTURE.md"`, `target_kind: "append_row"` —
-   `blackhole-state.md` § Staging) to `.blackhole/staged/<issue>/manifest.json`, gated by
+   `blackhole-state.md` § Staging) to the manifest, gated by
    `docs_governance.enabled`/`docs_governance.write_governance` (absent or `false` ⇒ skip
    entirely, same kill switch as `planner-tracks/04-design-track.md` § 4.8's design-route staging). The implementer's carry-step
    (`implementer.md` § Carry Staged Artifacts) commits the appended bullet inside the issue's own
@@ -126,8 +126,7 @@ has no `documentation/` target.
       Phase 2 — supersedes the paired staged `append_row` INDEX-row fragment issue #445
       introduced): the row is reproduced automatically at carry time from this field.
    3. Append one manifest entry (`route: "plan"`, `produced_by: "planner"`, `sub_mode: null`,
-      `target_kind: "new_file"` for the plan body) to `.blackhole/staged/<issue>/manifest.json`
-      per `blackhole-state.md` § Staging write protocol. Never commit into `documentation/` — the
+      `target_kind: "new_file"` for the plan body) via `bun run --cwd <abs repo-root> scripts/stage-manifest.ts append --manifest <abs repo-root>/.blackhole/staged/<issue>/manifest.json --issue <N> --entry-json '<entry json>'` (atomic `.tmp` + rename, never a shell redirect; exit 1 means refused, fix and re-run). Never commit into `documentation/` — the
       implementer carry-step owns delivery.
    4. **Manifest write is mandatory, not narration** (issue #782): completing step 2 (the plan
       body file) without this manifest append — or describing the staged artifact in the plan
