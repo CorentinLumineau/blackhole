@@ -109,6 +109,21 @@ describe('syncQueue — reconcile', () => {
     expect(r.queue.issues?.['2']).toMatchObject({ pr: 12, phase: 'review', status: 'ready' });
     expect(r.queue.issues?.['3']).toMatchObject({ pr: 33, phase: 'review', status: 'ready' });
     expect(r.linked).toEqual([1, 2]);
+    expect(r.linked).not.toContain(3);
+  });
+
+  test('an implement entry whose PR is already linked stays at implement, in-flight or ready (sent back after a review BLOCK)', () => {
+    const q = { issues: {
+      '1': { title: 'a', phase: 'implement', status: 'in-flight', pr: 11 },
+      '2': { title: 'b', phase: 'implement', status: 'ready', pr: 12 },
+    } };
+    const r = sync({ queue: q, issues: [issue(1), issue(2)], prs: [
+      pr(11, { headRefName: 'blackhole/issue-1', body: 'Closes #1' }),
+      pr(12, { headRefName: 'blackhole/issue-2', body: 'Closes #2' }),
+    ] });
+    expect(r.queue.issues?.['1']).toMatchObject({ pr: 11, phase: 'implement', status: 'in-flight' });
+    expect(r.queue.issues?.['2']).toMatchObject({ pr: 12, phase: 'implement', status: 'ready' });
+    expect(r.linked).toEqual([]);
   });
 
   test('an in-flight handle/plan entry, a foreign-lane entry keep their phase when a PR is linked', () => {
