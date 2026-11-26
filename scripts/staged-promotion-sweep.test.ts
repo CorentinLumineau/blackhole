@@ -79,4 +79,21 @@ describe('staged-promotion-sweep CLI', () => {
     const r = spawnSync('bun', ['run', script, '--repo-root', repo], { encoding: 'utf8' });
     expect(r.status).toBe(2);
   });
+
+  // beforeEach leaves staged/2 without a manifest; readdir order is filesystem-dependent, so pin the issue.
+  test('an append_row is carried only when the decisions INDEX already holds the staged row', () => {
+    const header = '| path | summary | type | status | review_trigger |\n|------|---------|------|--------|----------------|\n';
+    const rowA = '| ADR-001-a.md | A | adr | accepted | on ADR acceptance |';
+    const rowB = '| ADR-002-b.md | B | adr | accepted | on ADR acceptance |';
+    write('documentation/decisions/INDEX.md', `${header}${rowA}\n`);
+    git('add', 'documentation');
+    git('commit', '-q', '-m', 'index');
+    write('.blackhole/staged/1/row.md', `${rowB}\n`);
+    stage(1, { issue: 1, entries: [{ ...entry('documentation/decisions/INDEX.md', '.blackhole/staged/1/row.md'), target_kind: 'append_row' }] });
+    expect(sweep('--issue', '1').rows[0].state).toBe('unpromoted_merged');
+    write('documentation/decisions/INDEX.md', `${header}${rowA}\n${rowB}\n`);
+    git('add', 'documentation');
+    git('commit', '-q', '-m', 'index with row');
+    expect(sweep('--issue', '1').rows[0].state).toBe('carried');
+  });
 });

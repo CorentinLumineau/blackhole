@@ -56,7 +56,19 @@ function main(): void {
     spawnSync('git', ['-C', repoRoot, 'cat-file', '-e', `${ref}:${target}`], { stdio: 'ignore' }).status === 0;
   const stagedPathExists = (staged: string): boolean => fs.existsSync(path.resolve(path.dirname(campaignDir), staged));
 
-  const rows = sweepStaged({ manifests, queue, targetExists, stagedPathExists, packageRoot });
+  const readTarget = (target: string): string | null => {
+    const r = spawnSync('git', ['-C', repoRoot, 'show', `${ref}:${target}`], { encoding: 'utf8' });
+    return r.status === 0 ? r.stdout : null;
+  };
+  const readStaged = (staged: string): string | null => {
+    try {
+      return fs.readFileSync(path.resolve(path.dirname(campaignDir), staged), 'utf-8');
+    } catch {
+      return null;
+    }
+  };
+
+  const rows = sweepStaged({ manifests, queue, targetExists, stagedPathExists, readTarget, readStaged, packageRoot });
   process.stdout.write(`${JSON.stringify(rows)}\n`);
 }
 
