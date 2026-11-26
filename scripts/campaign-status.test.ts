@@ -1002,12 +1002,12 @@ describe('status --summary (the launch summary)', () => {
     expect(() => parseStatusArgs(['--now', '1'])).toThrow(/--summary/);
   });
 
-  test('prints the 13-row table for the fixture campaign', () => {
+  test('prints the 14-row table for the fixture campaign', () => {
     const proc = summary('--campaign-dir', FULL, '--now', '1763026200');
     expect(proc.exitCode).toBe(0);
     const out = proc.stdout.toString();
     expect(out).toContain('## Launch summary');
-    for (const label of ['Scope', 'Order', 'Merge', 'Pacing', 'Budget', 'Status page', 'Kaizen and staging', 'Autonomy', 'Resource policy', 'Wave scheduling', 'Peers', 'Decisions', 'Other config']) expect(out).toContain(`| ${label} |`);
+    for (const label of ['Scope', 'Order', 'Roadmap', 'Merge', 'Pacing', 'Budget', 'Status page', 'Kaizen and staging', 'Autonomy', 'Resource policy', 'Wave scheduling', 'Peers', 'Decisions', 'Other config']) expect(out).toContain(`| ${label} |`);
     expect(out).toContain('pacing off');
   });
 
@@ -1016,7 +1016,7 @@ describe('status --summary (the launch summary)', () => {
     expect(proc.exitCode).toBe(0);
     const parsed = JSON.parse(proc.stdout.toString());
     expect(parsed.rows.map((r: { key: string }) => r.key)).toEqual([
-      'scope', 'order', 'merge', 'pacing', 'budget', 'status_page', 'kaizen_staging',
+      'scope', 'order', 'roadmap', 'merge', 'pacing', 'budget', 'status_page', 'kaizen_staging',
       'autonomy', 'resource_policy', 'wave_scheduling', 'peers', 'decisions', 'other_config',
     ]);
     expect(Array.isArray(parsed.cards)).toBe(true);
@@ -1048,18 +1048,18 @@ describe('status --summary (the launch summary)', () => {
     expect(() => parseStatusArgs(['--summary', '--mode', 'other'])).toThrow(/--mode/);
   });
 
-  test('--mode catchup --usage-file prints 13 rows and the pacing object; a run prints 13 too', () => {
+  test('--mode catchup --usage-file prints 14 rows and the pacing object; a run prints 14 too', () => {
     const NOW_FRI = '1794562200';
     const file = path.join(FULL, 'usage.catchup.json');
     const catchup = summary('--campaign-dir', FULL, '--mode', 'catchup', '--usage-file', file, '--now', NOW_FRI, '--json');
     expect(catchup.exitCode).toBe(0);
     const parsed = JSON.parse(catchup.stdout.toString());
     expect(parsed.rows.map((r: { key: string }) => r.key)).toEqual([
-      'scope', 'order', 'merge', 'pacing', 'budget', 'status_page', 'kaizen_staging',
+      'scope', 'order', 'roadmap', 'merge', 'pacing', 'budget', 'status_page', 'kaizen_staging',
       'autonomy', 'resource_policy', 'wave_scheduling', 'peers', 'decisions', 'other_config',
     ]);
     expect(parsed.pacing).toMatchObject({ status: 'ok', floor_pct: 45.71, elapsed_h: 96, target_pct: 80, shortfall_pct: 15.71 });
-    expect(JSON.parse(summary('--campaign-dir', FULL, '--now', NOW_FRI, '--json').stdout.toString()).rows).toHaveLength(13);
+    expect(JSON.parse(summary('--campaign-dir', FULL, '--now', NOW_FRI, '--json').stdout.toString()).rows).toHaveLength(14);
     const adjusted = JSON.parse(summary('--campaign-dir', FULL, '--mode', 'catchup', '--usage-file', file, '--floor', '80', '--now', NOW_FRI, '--json').stdout.toString());
     expect(adjusted.pacing).toMatchObject({ floor_pct: 80, shortfall_pct: 50 });
   });
