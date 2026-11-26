@@ -390,8 +390,17 @@ with an open PR stays until merge: the lease covers an abandoned one. `NOT-HELD`
 ## Contract claim labels
 
 Applies when `claim_labels` is set in `config.json` (for example `["in-progress:claude"]`), lane or no
-lane: a consumer contract labels the issues the campaign works, and the campaign removes the label
-itself. The lane claim above answers `SKIP` with no lane, so it never releases these.
+lane: a consumer contract labels the issues the campaign works, and the campaign adds the label at
+dispatch and removes it itself. The lane claim above answers `SKIP` with no lane, so it never claims
+or releases these.
+
+**Claim at dispatch.** Before spawning an implementer for issue N (a fix-round respawn included;
+`labelAdd` is idempotent), after the lane claim step and independent of it (a lane `SKIP` still gets
+the contract labels), run `bun run scripts/claim-labels.ts --issue <N> --campaign-dir .blackhole`. It adds
+every `claim_labels` entry to the issue through the forge adapter and prints one JSON line `{claimed,
+failed}`; with `claim_labels` unset it writes nothing. It fails open: exit 1 or a non-empty `failed`
+is logged as a warning in the turn notes and never blocks dispatch (the merge then needs the label by
+hand). A label the consumer repo lacks is not created.
 
 `bun run scripts/release-claims.ts --campaign-dir .blackhole` reads the forge: for every `queue.json`
 issue the campaign dispatched (status `in-flight`, `merged` or `closed`, never `ready` or `blocked`,

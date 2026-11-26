@@ -145,7 +145,7 @@ Committed template: `.blackhole/config.json`
 | `ci_capacity.enabled` | no | Master switch for the forge reader (default `false`; `false` ⇒ it prints nothing and the worker count is the token budget's) |
 | `ci_capacity.lanes` | no | Runner labels the consumer's PR gate needs (default `[]`; an empty list reads nothing). A runner or queued job counts when it carries any of them; no label is assumed by the plugin |
 | `ci_capacity.queue_allowance` | no | Backlog beyond idle runners tolerated before workers are lowered, and the workers allowed once every runner in the lanes is busy (default `1`; integer `>= 0`) |
-| `claim_labels` | no | Contract claim labels the campaign releases on `stop` and on a drained queue, for issues with no open PR in flight (for example `["in-progress:claude"]`; default `[]` = off; read by `scripts/release-claims.ts`). **Resolution**: absent key ⇒ the default; a wrong type throws with the key path |
+| `claim_labels` | no | Contract claim labels the campaign adds to an issue at implementer dispatch (`scripts/claim-labels.ts`) and releases on `stop` and on a drained queue, for issues with no open PR in flight (for example `["in-progress:claude"]`; default `[]` = off; read by `scripts/release-claims.ts`). **Resolution**: absent key ⇒ the default; a wrong type throws with the key path |
 | `catchup` | no | Pacing preset of `/blackhole catchup` mode (ADR-054): the keys below. Never read by `run`. **Resolution**: absent block or key ⇒ the default; a wrong type throws with the key path |
 | `catchup.weekly_target_pct` | no | Share of the weekly allowance the pace floor reaches at the reset; the floor grows linearly over all 168 h of the week (default `80`; number in (0, 100]). **Resolution**: absent block or key ⇒ the default; a wrong type or range throws with the key path |
 | `catchup.five_hour.no_spawn_at` | no | 5-hour `used_percentage` at or above which a catchup spawns no new worker (default `75`; must be `<` `stop_workers_at`). **Resolution**: absent block or key ⇒ the default; a wrong type throws with the key path |
@@ -339,7 +339,7 @@ cell leaves out.
 | `forge` | `links` | — | Picks the forge the quick links point at | Other config |
 | `parallel_max` | `config` | Concurrency | | Budget |
 | `pareto_max_age_days` | none | — | Staleness threshold of the re-score; nothing the owner acts on | Other config |
-| `claim_labels` | none | — | Contract labels released on stop; the stop report lists them, not the page | Other config |
+| `claim_labels` | none | — | Contract labels claimed at implementer dispatch (`scripts/claim-labels.ts`) and released on stop; the stop report lists them, not the page | Other config |
 | `scratchpad_dir` | none | — | Where worktrees live on this machine; nothing the owner acts on | Other config |
 | `size_label_prefix` | none | — | Label spelling the sync reads; sizes appear on no panel | Other config |
 | `default_touch_paths` | none | — | Per-issue plan scope; each plan carries its own | Other config |
