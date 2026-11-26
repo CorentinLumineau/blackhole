@@ -515,6 +515,73 @@ describe('Bash writes into a newly trusted root are limited to the plain file sh
   });
 });
 
+describe('harness auto-memory directory: ~/.claude/projects/<project>/memory/*.md', () => {
+  const memoryDir = (w: World, project = 'my-project') => {
+    const dir = path.join(w.home, '.claude', 'projects', project, 'memory');
+    fs.mkdirSync(dir, { recursive: true });
+    return dir;
+  };
+
+  test('a markdown memory file is writable from either tool, MEMORY.md included', async () => {
+    await withWorld(async (w) => {
+      const dir = memoryDir(w);
+      expect(await w.both(path.join(dir, 'feedback-rule.md'))).toBe('allow');
+      expect(await w.both(path.join(dir, 'MEMORY.md'))).toBe('allow');
+      expect(await w.both(path.join(dir, 'feedback-rule.md'), { env: { BLACKHOLE_ASSIGNED_WORKTREE: w.wtA } })).toBe('allow');
+      expect((await w.bash(`echo x >> ${path.join(dir, 'MEMORY.md')}`)).verdict).toBe('allow');
+    });
+  });
+
+  test('anything else under ~/.claude stays denied to both tools', async () => {
+    await withWorld(async (w) => {
+      const dir = memoryDir(w);
+      const claude = path.join(w.home, '.claude');
+      fs.mkdirSync(path.join(claude, 'plugins'), { recursive: true });
+      fs.mkdirSync(path.join(claude, 'rules'), { recursive: true });
+      fs.mkdirSync(path.join(claude, 'projects', 'my-project', 'other'), { recursive: true });
+      const denied = [
+        path.join(claude, 'settings.json'),
+        path.join(claude, 'CLAUDE.md'),
+        path.join(claude, 'rules', 'rule.md'),
+        path.join(claude, 'plugins', 'p.md'),
+        path.join(claude, 'projects', 'my-project', 'other', 'x.md'),
+        path.join(claude, 'projects', 'my-project', 'notes.md'),
+        path.join(claude, 'projects', 'memory', 'x.md'),
+        path.join(dir, 'transcript.jsonl'),
+        path.join(dir, 'script.sh'),
+        path.join(dir, 'nested', 'deep.md'),
+        path.join(dir, '..', 'escape.md'),
+      ];
+      for (const target of denied) {
+        expect(await w.both(target)).toBe('deny');
+      }
+    });
+  });
+
+  test('a symlinked memory dir or leaf that lands elsewhere is never written through', async () => {
+    await withWorld(async (w) => {
+      const dir = memoryDir(w);
+      const elsewhere = path.join(w.home, '.claude', 'plugins');
+      fs.mkdirSync(elsewhere, { recursive: true });
+      fs.writeFileSync(path.join(elsewhere, 'real.md'), 'x');
+      fs.symlinkSync(path.join(elsewhere, 'real.md'), path.join(dir, 'link.md'));
+      fs.mkdirSync(path.join(w.home, '.claude', 'projects', 'linked'), { recursive: true });
+      fs.symlinkSync(elsewhere, path.join(w.home, '.claude', 'projects', 'linked', 'memory'));
+      expect(await w.both(path.join(dir, 'link.md'))).toBe('deny');
+      expect(await w.both(path.join(w.home, '.claude', 'projects', 'linked', 'memory', 'x.md'))).toBe('deny');
+    });
+  });
+
+  test('a directory destination or recursive copy into the memory dir keeps the block', async () => {
+    await withWorld(async (w) => {
+      const dir = memoryDir(w);
+      expect((await w.bash(`cp -r ${path.join(w.wtA, 'srcdir')} ${dir}`)).verdict).toBe('deny');
+      expect((await w.bash(`cp ${path.join(w.wtA, 'srcdir', 'f.txt')} ${dir}`)).verdict).toBe('deny');
+      expect((await w.bash(`cp ${path.join(w.wtA, 'srcdir', 'f.txt')} ${path.join(dir, 'copied.md')}`)).verdict).toBe('allow');
+    });
+  });
+});
+
 describe('Write and Bash reach the same verdict for every target', () => {
   test('table of targets', async () => {
     await withWorld(async (w) => {

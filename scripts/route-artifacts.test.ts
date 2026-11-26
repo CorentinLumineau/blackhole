@@ -83,6 +83,18 @@ describe('route-artifacts CLI — governance gate', () => {
     config({ enabled: true, write_governance: false });
     expect((await dispatch()).code).toBe(0);
   });
+  // Same truth table as the shared resolver (carry-staged-artifacts.test.ts) so the call sites cannot drift.
+  test.each([
+    ['empty block', {}, true],
+    ['enabled unset, write_governance true', { write_governance: true }, true],
+    ['enabled true, write_governance unset', { enabled: true }, false],
+  ] as Array<[string, Record<string, unknown>, boolean]>)('%s: skipped=%p', async (_n, block, skipped) => {
+    config(block);
+    const r = await dispatch();
+    expect(r.stdout.includes('skipped')).toBe(skipped);
+    // Active gate with no recorded route is a V-AUTO-03 failure, never a silent pass.
+    expect(r.code).toBe(skipped ? 0 : 1);
+  });
 });
 
 describe('route-artifacts CLI — dispatch (governance on)', () => {

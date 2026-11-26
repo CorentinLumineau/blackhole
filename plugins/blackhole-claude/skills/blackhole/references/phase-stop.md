@@ -34,7 +34,9 @@ normal turn is step 3.
    wait). No new mechanism; do not poll, do not interrupt.
 3. **Do not spawn the next wave** — the entire behavioral change. Triage every completed worker
    exactly as `orchestrator-runtime.md` § Background worker barrier § Triage already specifies.
-   Release a claim that has no open own PR (`orchestrator-dispatch.md` § Lane claim and release).
+   Release a claim that has no open own PR (`orchestrator-dispatch.md` § Lane claim and release),
+   and with `claim_labels` configured run `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/release-claims.ts --campaign-dir .blackhole`
+   (`orchestrator-dispatch.md` § Contract claim labels); its `released`/`kept` sets go in the report.
 4. **Run the Exit Invariants checklist** (below) before reporting.
 5. **Checkpoint**: `stopped_by: user`, `stop_kind: drained` (`checkpoint-protocol.md` §
    Checkpoint template).
@@ -130,7 +132,9 @@ them.
    to `ready` (or `blocked` with `notes: recovery-needed` if step 3 finds a dirty worktree) and
    remove its row from `## In-flight workers`. This is a direct action the stop procedure
    performs itself — the orchestrator already knows no worker is running. Release each reset
-   issue's claim (`orchestrator-dispatch.md` § Lane claim and release). It is not the
+   issue's claim (`orchestrator-dispatch.md` § Lane claim and release), then run
+   `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/release-claims.ts --campaign-dir .blackhole` for the contract claim labels
+   (§ Contract claim labels there). It is not the
    `recovery-protocol.md` §9 drift-detection case: §9 detects a worker that finished silently and
    left an artifact; an abandoned worker leaves no artifact to detect.
 3. **Worktree dirty-check** — for every affected worktree, run `recovery-protocol.md` §2
@@ -216,6 +220,9 @@ Never on a usage stop:
   released with `bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-record.ts keep-awake --workers 0` (`keep-awake.md`), except
   a drain-and-wake usage stop (`STOP-WORKERS`, `PACE-WAIT`), which keeps it with `--wake-armed`
   until the wake
+- [ ] With `claim_labels` configured, `scripts/release-claims.ts` ran (every tier) and the report
+  lists its `released` and `kept` claims; a queue issue with no open PR in flight carries no
+  `claim_labels` entry
 - [ ] The report states the exact command to resume and what will happen first (**`stop --now`
   tier: additionally names which workers cooperated, flushed (issue #492) a partial result, or
   were abandoned, per step 7 above — the resumer needs to know which issues may carry a partial
