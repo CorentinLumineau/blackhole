@@ -48,8 +48,8 @@ const {
   isUnderRoot,
   resolveExistingAncestor,
   campaignStateRoot,
-  trustedWriteRoots,
   orchestratorStateRoots,
+  lazyTrustedWriteRoots,
   isTrustedExtraPath,
   settingsFileCandidates,
   isSettingsFilePath,
@@ -1956,7 +1956,7 @@ const evaluateBashWriteTargets = (command, cwd, input = {}) => {
   if (!assignedRoot) return null;
   const stateRoot = campaignStateRoot(cwd);
   const mainClone = mainCloneRoot(cwd);
-  const extraRoots = trustedWriteRoots(cwd, input, { mainClone, assignedRoot });
+  const extraRoots = lazyTrustedWriteRoots(cwd, input, { mainClone, assignedRoot });
   const orchestratorRoots = orchestratorStateRoots(cwd, input, { assignedRoot });
   const settingsFiles = settingsFileCandidates(cwd, mainClone);
   const isExtraPath = (p) => isTrustedExtraPath(p, extraRoots);

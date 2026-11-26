@@ -663,6 +663,31 @@ describe('orchestratorStateRoots: only an orchestrator-class caller gets roots',
     }
   });
 
+  test('no agent_type from a repository nested under the project dir receives []: standalone, planted pointer file, or a clone under a broad project dir', async () => {
+    const standalone: At = (w) => {
+      const nestedRepo = path.join(w.mainA, 'standalone');
+      fs.mkdirSync(nestedRepo, { recursive: true });
+      runGit(nestedRepo, ['init', '--quiet']);
+      return { cwd: nestedRepo, project: w.mainA };
+    };
+    const plantedPointer: At = (w) => {
+      const planted = path.join(w.mainA, 'planted');
+      fs.mkdirSync(planted, { recursive: true });
+      fs.writeFileSync(path.join(planted, '.git'), `gitdir: ${path.join(w.mainB, '.git')}\n# padding\nsecond line\n`);
+      return { cwd: planted, project: w.mainA };
+    };
+    const broadProject: At = (w) => {
+      const broad = path.join(w.scratch, 'broad-project');
+      const clone = path.join(broad, 'clone');
+      fs.mkdirSync(clone, { recursive: true });
+      runGit(clone, ['init', '--quiet']);
+      return { cwd: clone, project: broad };
+    };
+    for (const at of [standalone, plantedPointer, broadProject]) {
+      expect(await rootsFor(undefined, () => undefined, {}, at)).toEqual([]);
+    }
+  });
+
   test('every worker and unknown agent_type receives []', async () => {
     for (const agentType of ['implementer', 'reviewer', 'planner', 'router', 'investigator', 'hunter', 'general-purpose', 'Explore', '']) {
       expect(await rootsFor(agentType)).toEqual([]);
@@ -676,5 +701,93 @@ describe('orchestratorStateRoots: only an orchestrator-class caller gets roots',
   test('a declared clone without a campaign config receives nothing', async () => {
     const roots = await rootsFor(undefined, (w) => fs.rmSync(path.join(w.mainB, '.blackhole', 'config.json')));
     expect(roots.some((root) => root.startsWith('<B>'))).toBe(false);
+  });
+});
+
+describe('lazy roots: nothing is resolved until a target lies outside the trusted roots', () => {
+  const { trustedWriteRoots, lazyTrustedWriteRoots, isTrustedExtraPath } = require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'hook-event-log.js'));
+  const countingInput = (scratch: string) => {
+    const reads = { count: 0 };
+    const input = {
+      get scratchpad_dir() {
+        reads.count++;
+        return scratch;
+      },
+    };
+    return { input, reads };
+  };
+
+  test('constructing the lazy roots does no work, and the first call returns the eager roots', async () => {
+    await withWorld(async (w) => {
+      const env = { HOME: process.env.HOME, CLAUDE_PROJECT_DIR: process.env.CLAUDE_PROJECT_DIR, BLACKHOLE_SCRATCHPAD_DIR: process.env.BLACKHOLE_SCRATCHPAD_DIR };
+      process.env.BLACKHOLE_SCRATCHPAD_DIR = '';
+      process.env.HOME = w.home;
+      try {
+        const eager = countingInput(w.scratch);
+        const expected = trustedWriteRoots(w.wtA, eager.input, {});
+        expect(expected).toContain(fs.realpathSync(w.scratch));
+
+        const lazy = countingInput(w.scratch);
+        const roots = lazyTrustedWriteRoots(w.wtA, lazy.input, {});
+        expect(lazy.reads.count).toBe(0);
+        expect(roots()).toEqual(expected);
+        const afterFirst = lazy.reads.count;
+        expect(afterFirst).toBeGreaterThan(0);
+        expect(roots()).toBe(roots());
+        expect(lazy.reads.count).toBe(afterFirst);
+      } finally {
+        for (const [key, value] of Object.entries(env)) {
+          if (value === undefined) delete process.env[key];
+          else process.env[key] = value;
+        }
+      }
+    });
+  });
+
+  test('a target the harness-memory check decides never resolves the roots', async () => {
+    let resolved = 0;
+    const roots = () => {
+      resolved++;
+      return [];
+    };
+    expect(isTrustedExtraPath(`${os.tmpdir()}/../x.txt`, roots)).toBe(false);
+    expect(resolved).toBe(0);
+    expect(isTrustedExtraPath(path.join(os.tmpdir(), 'trw-lazy-none.txt'), roots)).toBe(false);
+    expect(resolved).toBe(1);
+  });
+});
+
+describe('lazy roots: a resolution failure for an out-of-root target fails closed', () => {
+  const PRELOAD = path.join(import.meta.dir, 'lib', 'throw-in-trusted-roots.preload.ts');
+  // Not red-first: the fail-closed branch in validate-file-changes.js already exists; this pins it.
+  const spawnWithBrokenRoots = async (w: World, target: string) => {
+    const base: Record<string, string | undefined> = { ...process.env };
+    for (const key of SCOPED_ENV) delete base[key];
+    const proc = Bun.spawn({
+      cmd: ['bun', 'run', '--preload', PRELOAD, path.join(PRETOOLUSE_HOOKS_DIR, FILE_HOOK)],
+      stdin: new Blob([JSON.stringify({ agent_type: 'implementer', tool_name: 'Write', tool_input: { file_path: target, content: 'x' }, cwd: w.wtA })]),
+      stdout: 'pipe',
+      stderr: 'pipe',
+      cwd: w.wtA,
+      env: { ...base, HOME: w.home, BLACKHOLE_CLAUDE_HOME: NO_CLAUDE_HOME } as Record<string, string>,
+    });
+    const [exitCode, stdout] = await Promise.all([proc.exited, new Response(proc.stdout).text(), new Response(proc.stderr).text()])
+    return { exitCode, stdout };
+  };
+
+  test('an out-of-root target denies as worktree-root-resolution-failure and is recorded as a block', async () => {
+    await withWorld(async (w) => {
+      const r = await spawnWithBrokenRoots(w, path.join(w.mainB, 'README.md'));
+      expect(r.exitCode).toBe(2);
+      expect(patternOf(r.stdout)).toBe('worktree-root-resolution-failure');
+      expect(readHookEvents(w.mainA).at(-1)).toMatchObject({ tier: 'block', pattern_id: 'worktree-root-resolution-failure' });
+    });
+  });
+
+  test('an in-root target never resolves the roots, so the same failure is not reached', async () => {
+    await withWorld(async (w) => {
+      const r = await spawnWithBrokenRoots(w, path.join(w.wtA, 'srcdir', 'f.txt'));
+      expect(r.exitCode).toBe(0);
+    });
   });
 });

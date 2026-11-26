@@ -217,7 +217,7 @@ root through `readAssignedWorktreeRoot(cwd)` in `hook-event-log.js`. That functi
 derives the assignment structurally from the PreToolUse payload's own `cwd`: when `cwd` resolves
 to a linked (non-main) worktree, that worktree becomes the sole assigned root automatically —
 writes to the main clone or a sibling worktree are denied (`outside-assigned-worktree` /
-`bash-outside-assigned-worktree`, block tier). An orchestrator or coordinator whose cwd is a linked worktree is denied a state write into a main clone's `.blackhole/` only when that clone is neither its anchored own clone nor named in `permissions.additionalDirectories`: the remedy is to declare the clone in the user settings file, never to widen a worker (`hook-schemas.md`, ADR-064 validated scratchpad root (`scratchpad_dir` in
+`bash-outside-assigned-worktree`, block tier). An orchestrator or coordinator whose cwd is a linked worktree is denied a state write into a main clone's `.blackhole/` only when that clone is neither its anchored own clone nor named in `permissions.additionalDirectories`: the remedy is to declare the clone in the user settings file, never to widen a worker (`hook-schemas.md`, ADR-064). A validated scratchpad root (`scratchpad_dir` in
 `.blackhole/config.json`, or the opt-in `BLACKHOLE_SCRATCHPAD_DIR` override) is never dropped by
 this narrowing. When `cwd` resolves to the main clone itself (the orchestrator's/`planner`'s/
 `investigator`'s/`hunter`'s legitimate case), this tier does not fire at all — behaviour is
