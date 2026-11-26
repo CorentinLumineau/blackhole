@@ -72,3 +72,6 @@ export function selectBatch(issues: Issues, limit: number, userQueueOrder: numbe
     .sort((a, b) => pinned(a) - pinned(b)) // stable: ties keep the Pareto order
     .slice(0, limit);
 }
+
+/** The ready issues of `batch` that carry no stored score: `pareto-order.ts --require-scored` fails on them. */
+export const unscoredIn = (issues: Issues, batch: number[]): number[] => batch.filter((n) => !issues[String(n)]?.pareto);

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { QueueIssue } from './campaign-status/types.ts';
-import { orderReady, selectBatch, waveOf } from './pareto-order.ts';
+import { orderReady, selectBatch, unscoredIn, waveOf } from './pareto-order.ts';
 
 const p = (gain: number, effort: number) => ({ gain, effort, priority: gain * (11 - effort) });
 const ready = (extra: QueueIssue = {}): QueueIssue => ({ status: 'ready', ...extra });
@@ -79,5 +79,13 @@ describe('selectBatch', () => {
   test('empty and non-positive limits', () => {
     expect(selectBatch({}, 4)).toEqual([]);
     expect(selectBatch(fixture(), 0)).toEqual([]);
+  });
+});
+
+describe('unscoredIn', () => {
+  test('lists the batch members with no stored score', () => {
+    const issues = { '1': { status: 'ready', pareto: { gain: 8, effort: 5, priority: 48 } }, '2': { status: 'ready' }, '3': { status: 'ready' } } as never;
+    expect(unscoredIn(issues, [1, 2, 3])).toEqual([2, 3]);
+    expect(unscoredIn(issues, [1])).toEqual([]);
   });
 });
