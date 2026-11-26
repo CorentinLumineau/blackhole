@@ -221,6 +221,16 @@ describe('apply then detect round trip', () => {
     const r = await applyScores(adapter, queue({ '3': { status: 'ready' } }), forgeIssues(), [score], { now: NOW, rescore: {} });
     expect(scoreRequests(r.queue, forgeIssues(), { now: later })).toEqual([]);
   });
+  test('a same-score re-score still writes the new rationale line, stamped after the edit', async () => {
+    const body = `${SCORED}\n\nPareto rationale: old reason`;
+    const { adapter, forgeIssues } = bumpingForge([issue(3, body, ['ready', 'pareto:P2'])]);
+    const stale = queue({ '3': { status: 'ready', pareto: { gain: 8, effort: 4, priority: 56, scored_at: ago(9) } } });
+    const r = await applyScores(adapter, stale, forgeIssues(), [{ number: 3, gain: 8, effort: 4, rationale: 'new reason' }], { now: NOW, rescore: {} });
+    expect(r.outcomes).toEqual([{ number: 3, result: 'rescored' }]);
+    expect(forgeIssues()[0]!.body).toContain('Pareto rationale: new reason');
+    expect(forgeIssues()[0]!.body).not.toContain('old reason');
+    expect(scoreRequests(r.queue, forgeIssues(), { now: later })).toEqual([]);
+  });
   test('a rescore of a stale score is not edited on the next detect', async () => {
     const { adapter, forgeIssues } = bumpingForge([issue(3, SCORED, ['ready', 'pareto:P2'])]);
     const stale = queue({ '3': { status: 'ready', pareto: { gain: 8, effort: 4, priority: 56, scored_at: ago(9) } } });

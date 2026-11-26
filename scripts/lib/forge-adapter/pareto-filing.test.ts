@@ -30,6 +30,18 @@ describe('rescoreIssue', () => {
     expect(await rescoreIssue(adapter, issue(['pareto:P2'], 'x\n\nPareto: gain=8 effort=4 priority=56'), { gain: 8, effort: 4 })).toBe(false);
     expect(calls).toEqual([]);
   });
+  test('writes a new rationale even when the score is unchanged', async () => {
+    const { adapter, calls } = fake();
+    const body = 'x\n\nPareto: gain=8 effort=4 priority=56\n\nPareto rationale: old';
+    expect(await rescoreIssue(adapter, issue(['pareto:P2'], body), { gain: 8, effort: 4, rationale: 'new' })).toBe(true);
+    expect(calls).toEqual([['issueEdit', 4, { body: 'x\n\nPareto: gain=8 effort=4 priority=56\n\nPareto rationale: new' }]]);
+  });
+  test('makes no adapter call when score and rationale already match', async () => {
+    const { adapter, calls } = fake();
+    const body = 'x\n\nPareto: gain=8 effort=4 priority=56\n\nPareto rationale: same';
+    expect(await rescoreIssue(adapter, issue(['pareto:P2'], body), { gain: 8, effort: 4, rationale: 'same' })).toBe(false);
+    expect(calls).toEqual([]);
+  });
   test('propagates an adapter error', async () => {
     const { adapter } = fake('labelAdd');
     await expect(rescoreIssue(adapter, issue([]), { gain: 8, effort: 4 })).rejects.toThrow('labelAdd failed');
