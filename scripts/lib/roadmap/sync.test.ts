@@ -167,3 +167,28 @@ describe('syncRoadmap', () => {
     expect(fs.readdirSync(r)).toEqual([]);
   });
 });
+
+describe('syncRoadmap foreign-file guard', () => {
+  test('refuses to overwrite an existing document the generator did not write', () => {
+    const r = root();
+    const foreign = '---\ntitle: Readme\n---\n\n# Readme\n\nHand-written.\n';
+    fs.mkdirSync(path.join(r, 'documentation/plans'), { recursive: true });
+    fs.writeFileSync(path.join(r, 'documentation/plans/roadmap.md'), foreign);
+    expect(() => syncRoadmap({ queue: queue(), config: on, repoRoot: r, date: '2026-11-26' })).toThrow(/not generated|generator/);
+    expect(fs.readFileSync(path.join(r, 'documentation/plans/roadmap.md'), 'utf-8')).toBe(foreign);
+  });
+
+  test('refuses a foreign document without frontmatter too', () => {
+    const r = root();
+    fs.mkdirSync(path.join(r, 'documentation/plans'), { recursive: true });
+    fs.writeFileSync(path.join(r, 'documentation/plans/roadmap.md'), '# Notes\n');
+    expect(() => syncRoadmap({ queue: queue(), config: on, repoRoot: r, date: '2026-11-26' })).toThrow(/roadmap\.md/);
+  });
+
+  test('an empty existing file is replaced', () => {
+    const r = root();
+    fs.mkdirSync(path.join(r, 'documentation/plans'), { recursive: true });
+    fs.writeFileSync(path.join(r, 'documentation/plans/roadmap.md'), '');
+    expect(syncRoadmap({ queue: queue(), config: on, repoRoot: r, date: '2026-11-26' }).status).toBe('written');
+  });
+});

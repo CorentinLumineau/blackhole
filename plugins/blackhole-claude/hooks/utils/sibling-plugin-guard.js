@@ -67,7 +67,9 @@ const shouldDeferToMercure = (cwd = process.cwd()) => {
   // AND-composed short-circuit returning `false` on any failure, so moving a failure-capable
   // step earlier changes no observable outcome, only which check reports first.
   // Anchored (`anchoredMainClone`): a clone a worker forged without a config must not read as "no
-  // campaign here" and switch blackhole's containment off. No anchor means do not defer.
+  // campaign here" and switch blackhole's containment off. A null result (the clone `cwd` names
+  // disagrees with an established anchor, or `cwd` is in no repository) means do not defer; with no
+  // anchor established `anchoredMainClone` falls back to the pre-anchor clone instead of null.
   const mainClone = anchoredMainClone(cwd);
   if (!mainClone) return false;
 

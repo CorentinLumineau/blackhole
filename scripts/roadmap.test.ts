@@ -43,6 +43,33 @@ describe('roadmap.ts', () => {
     expect(result.stderr.toString()).toContain('roadmap.path');
   });
 
+  test('no config and no queue is a clean no-op, not an error', () => {
+    const root = makeTempDir('roadmap-cli-empty');
+    dirs.push(root);
+    const result = run(root);
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout.toString())).toEqual({ status: 'skipped', reason: 'no-path' });
+  });
+
+  test('a configured path with no queue still exits 1', () => {
+    const root = makeTempDir('roadmap-cli-noqueue');
+    dirs.push(root);
+    fs.mkdirSync(path.join(root, '.blackhole'));
+    fs.writeFileSync(path.join(root, '.blackhole/config.json'), JSON.stringify({ roadmap: { enabled: true, path: 'documentation/plans/roadmap.md' } }));
+    const result = run(root);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr.toString()).toContain('no queue');
+  });
+
+  test('a configured path that holds a foreign document exits 1 and leaves it intact', () => {
+    const root = repo({ roadmap: { enabled: true, path: 'README.md' } });
+    fs.writeFileSync(path.join(root, 'README.md'), '---\ntitle: mine\n---\n\n# Readme\n');
+    const result = run(root);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr.toString()).toContain('README.md');
+    expect(fs.readFileSync(path.join(root, 'README.md'), 'utf-8')).toBe('---\ntitle: mine\n---\n\n# Readme\n');
+  });
+
   test('an unknown flag exits 2', () => {
     expect(run(repo(null), '--nope').exitCode).toBe(2);
   });
