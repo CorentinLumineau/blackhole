@@ -24,7 +24,7 @@ const {
   isUnderRoot,
   campaignStateRoot,
   isStateDirTrustedPath,
-  trustedWriteRoots,
+  lazyTrustedWriteRoots,
   isTrustedExtraPath,
   settingsFileCandidates,
   isSettingsFilePath,
@@ -146,14 +146,14 @@ const main = () => {
   let assignedRoot;
   let roots;
   let stateRoot = null;
-  let extraRoots = [];
+  let extraRoots = () => [];
   let settingsFiles = [];
   try {
     assignedRoot = readAssignedWorktreeRoot(cwd);
     roots = assignedRoot ? [assignedRoot] : allWorktreeRoots(cwd);
     if (roots) stateRoot = campaignStateRoot(cwd);
     const mainClone = mainCloneRoot(cwd);
-    extraRoots = trustedWriteRoots(cwd, input, { mainClone, assignedRoot });
+    extraRoots = lazyTrustedWriteRoots(cwd, input, { mainClone, assignedRoot });
     settingsFiles = settingsFileCandidates(cwd, mainClone);
   } catch (error) {
     failClosed({
@@ -185,12 +185,23 @@ const main = () => {
     return;
   }
   if (scoped && roots) {
-    if (
-      filePath &&
-      !isInsideAnyRoot(filePath, roots) &&
-      !isStateDirTrustedPath(filePath, stateRoot) &&
-      !isTrustedExtraPath(filePath, extraRoots)
-    ) {
+    let outside = Boolean(filePath) && !isInsideAnyRoot(filePath, roots) && !isStateDirTrustedPath(filePath, stateRoot);
+    if (outside) {
+      try {
+        outside = !isTrustedExtraPath(filePath, extraRoots);
+      } catch (error) {
+        failClosed({
+          hook: HOOK,
+          tool,
+          error,
+          patternId: 'worktree-root-resolution-failure',
+          label: 'worktree containment resolution',
+          cwd,
+        });
+        return;
+      }
+    }
+    if (outside) {
       denyAndRecord({
         hook: HOOK,
         tool,

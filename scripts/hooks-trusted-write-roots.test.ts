@@ -608,3 +608,56 @@ describe('Write and Bash reach the same verdict for every target', () => {
     });
   });
 });
+
+describe('lazy roots: nothing is resolved until a target lies outside the trusted roots', () => {
+  const { trustedWriteRoots, lazyTrustedWriteRoots, isTrustedExtraPath } = require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'hook-event-log.js'));
+  const countingInput = (scratch: string) => {
+    const reads = { count: 0 };
+    const input = {
+      get scratchpad_dir() {
+        reads.count++;
+        return scratch;
+      },
+    };
+    return { input, reads };
+  };
+
+  test('constructing the lazy roots does no work, and the first call returns the eager roots', async () => {
+    await withWorld(async (w) => {
+      const env = { HOME: process.env.HOME, CLAUDE_PROJECT_DIR: process.env.CLAUDE_PROJECT_DIR, BLACKHOLE_SCRATCHPAD_DIR: process.env.BLACKHOLE_SCRATCHPAD_DIR };
+      process.env.BLACKHOLE_SCRATCHPAD_DIR = '';
+      process.env.HOME = w.home;
+      try {
+        const eager = countingInput(w.scratch);
+        const expected = trustedWriteRoots(w.wtA, eager.input, {});
+        expect(expected).toContain(fs.realpathSync(w.scratch));
+
+        const lazy = countingInput(w.scratch);
+        const roots = lazyTrustedWriteRoots(w.wtA, lazy.input, {});
+        expect(lazy.reads.count).toBe(0);
+        expect(roots()).toEqual(expected);
+        const afterFirst = lazy.reads.count;
+        expect(afterFirst).toBeGreaterThan(0);
+        expect(roots()).toBe(roots());
+        expect(lazy.reads.count).toBe(afterFirst);
+      } finally {
+        for (const [key, value] of Object.entries(env)) {
+          if (value === undefined) delete process.env[key];
+          else process.env[key] = value;
+        }
+      }
+    });
+  });
+
+  test('a target the harness-memory check decides never resolves the roots', async () => {
+    let resolved = 0;
+    const roots = () => {
+      resolved++;
+      return [];
+    };
+    expect(isTrustedExtraPath(`${os.tmpdir()}/../x.txt`, roots)).toBe(false);
+    expect(resolved).toBe(0);
+    expect(isTrustedExtraPath(path.join(os.tmpdir(), 'trw-lazy-none.txt'), roots)).toBe(false);
+    expect(resolved).toBe(1);
+  });
+});
