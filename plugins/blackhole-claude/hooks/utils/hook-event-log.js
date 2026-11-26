@@ -999,15 +999,18 @@ const overlapsProtectedPaths = (root, mainClones, settingsFiles) =>
   settingsFiles.some((file) => isUnderRoot(file, root));
 
 /** True when `project` (`CLAUDE_PROJECT_DIR`, set by the harness) may be read for roots: an existing
- * absolute directory the worker cannot write: not inside or equal to one of the writable `roots`
- * (assigned root, scratchpad and extra roots found so far), not strictly inside the nearest repo of
+ * absolute directory the worker cannot write: neither it nor its two settings files inside or equal
+ * to one of the writable `roots` (assigned root, scratchpad and extra roots found so far), not a
+ * campaign state dir (`.blackhole`), not strictly inside the nearest repo of
  * `cwd`, and not a linked worktree (its `.git` is a pointer file), which is where workers write. A
  * session in the main clone has that clone as its project dir, so the owner's project and local
  * settings still count there. */
 const isHarnessProjectDir = (project, cwd, writableRoots) => {
   if (!path.isAbsolute(project) || !isExistingDirectory(project)) return false;
   if (readPointerFile(path.join(project, '.git')) !== null) return false;
-  if (writableRoots.some((root) => root && isUnderRoot(project, root))) return false;
+  if (path.basename(resolveExistingAncestor(project)) === '.blackhole') return false;
+  const settings = [path.join(project, '.claude', 'settings.json'), path.join(project, '.claude', 'settings.local.json')];
+  if (writableRoots.some((root) => root && [project, ...settings].some((file) => isUnderRoot(file, root)))) return false;
   const top = nearestGitRoot(cwd);
   return !(top && resolveExistingAncestor(project) !== resolveExistingAncestor(top) && isUnderRoot(project, top));
 };

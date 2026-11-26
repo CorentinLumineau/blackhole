@@ -424,6 +424,28 @@ describe('the settings trust sources are only the user file and the harness proj
     });
   });
 
+  test('a scratchpad holding the project settings files is not a source, so a dir-destination cp cannot plant a grant', async () => {
+    await withWorld(async (w) => {
+      const scratch = path.join(w.mainA, '.claude');
+      fs.mkdirSync(scratch, { recursive: true });
+      const opts = { env: { CLAUDE_PROJECT_DIR: w.mainA }, payload: { scratchpad_dir: scratch } };
+      const planted = path.join(scratch, 'settings.local.json');
+      fs.writeFileSync(planted, JSON.stringify({ permissions: { additionalDirectories: [w.wtB] } }));
+      const target = path.join(w.wtB, 'x.txt');
+      expect((await w.write(target, opts)).verdict).toBe('deny');
+      expect((await w.bash(`echo x > ${target}`, opts)).verdict).toBe('deny');
+    });
+  });
+
+  test('a harness project dir that is a campaign state dir is not a source', async () => {
+    await withWorld(async (w) => {
+      const state = path.join(w.mainA, '.blackhole');
+      grant(state, w.wtB);
+      const opts = { env: { CLAUDE_PROJECT_DIR: state } };
+      expect((await w.write(path.join(w.wtB, 'x.txt'), opts)).verdict).toBe('deny');
+    });
+  });
+
   test('a main-clone session trusts its own project settings; a worker session trusts the user file', async () => {
     await withWorld(async (w) => {
       grant(w.mainA, w.wtB);
