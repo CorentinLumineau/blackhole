@@ -27,7 +27,7 @@ const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { rotateHookEvents } = require('./hook-event-rotation');
-const { isOrchestratorCaller } = require('./campaign-scope');
+const { isOrchestratorCaller, hasNoAgentType } = require('./campaign-scope');
 
 /** Credential-shaped literals are masked before anything is written to disk. The warn tier exists
  * precisely because a command may carry a secret, and recording it verbatim would move that secret
@@ -1110,18 +1110,33 @@ const declaredMainClone = (entry) => {
   }
 };
 
-/** Campaign state dirs an orchestrator-class caller (`isOrchestratorCaller`: no `agent_type`, or
- * `orchestrator`/`coordinator`) may write from any cwd, the one place both guards read them from.
+/** True when `cwd` is the harness project dir (`CLAUDE_PROJECT_DIR`, the session's own folder) or a
+ * directory inside it that is not inside a linked worktree nested under it: the main session's
+ * position. An in-process teammate worker carries no `agent_type` either, but runs in its assigned
+ * linked worktree, which is neither the project dir nor outside a nested one, so it is refused. */
+const isMainSessionCwd = (cwd) => {
+  const project = process.env.CLAUDE_PROJECT_DIR;
+  if (typeof project !== 'string' || !path.isAbsolute(project) || !isExistingDirectory(project)) return false;
+  if (!isUnderRoot(cwd, project)) return false;
+  const top = nearestGitRoot(cwd);
+  return !top || resolveExistingAncestor(top) === resolveExistingAncestor(project) || readPointerFile(path.join(top, '.git')) === null;
+};
+
+/** Campaign state dirs an orchestrator-class caller may write from any cwd, the one place both
+ * guards read them from. The caller is an `orchestrator`/`coordinator` `agent_type`
+ * (`isOrchestratorCaller`), or a payload with no `agent_type` whose `cwd` is the main session's
+ * (`isMainSessionCwd`).
  * Two sources: the anchored own clone (`campaignStateRoot`), and the main clones the owner
  * declares in `permissions.additionalDirectories` of the user settings file and of the harness
  * project dir's settings (`isHarnessProjectDir`), each validated by `declaredMainClone` and
  * `stateRootOf` (a `.blackhole/config.json`, not a broad root), at most `MAX_EXTRA_ROOT_CANDIDATES`
  * entries. Nothing is derived from git metadata a worker can write. Callers judge a path with
  * `isStateDirTrustedPath`, so `config.json`, `hook-events/` and the state root stay protected.
- * Returns `[]` for every worker or unknown `agent_type`, and whenever `BLACKHOLE_ASSIGNED_WORKTREE`
- * marks the process as a worker's, so no worker gains a write it lacked. */
+ * Returns `[]` for every worker or unknown `agent_type`, for an in-process teammate, and whenever
+ * `BLACKHOLE_ASSIGNED_WORKTREE` marks the process as a worker's, so no worker gains a write it lacked. */
 const orchestratorStateRoots = (cwd = process.cwd(), input = {}, { assignedRoot = null } = {}) => {
-  if (!isOrchestratorCaller(input && input.agent_type)) return [];
+  const agentType = input && input.agent_type;
+  if (hasNoAgentType(agentType) ? !isMainSessionCwd(cwd) : !isOrchestratorCaller(agentType)) return [];
   const assigned = process.env.BLACKHOLE_ASSIGNED_WORKTREE;
   if (typeof assigned === 'string' && assigned.trim().length > 0) return [];
   const roots = new Set();

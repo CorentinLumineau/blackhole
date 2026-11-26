@@ -106,8 +106,9 @@ describe('orchestrator-class callers write main-clone state from a linked worktr
       test('S2: own worktree, project dir is the main clone', async () => {
         await withWorld(async (w) => {
           const caller = { agentType, project: w.mainA };
-          expect((await w.write(path.join(w.mainA, '.blackhole', 'plans', 'issue-1.md'), w.wtA, caller)).verdict).toBe('allow');
-          expect((await w.move(path.join(w.mainA, '.blackhole', 'queue.json'), w.wtA, caller)).verdict).toBe('allow');
+          const cwd = agentType === undefined ? w.mainA : w.wtA;
+          expect((await w.write(path.join(w.mainA, '.blackhole', 'plans', 'issue-1.md'), cwd, caller)).verdict).toBe('allow');
+          expect((await w.move(path.join(w.mainA, '.blackhole', 'queue.json'), cwd, caller)).verdict).toBe('allow');
         });
       });
 
@@ -115,8 +116,9 @@ describe('orchestrator-class callers write main-clone state from a linked worktr
         await withWorld(async (w) => {
           w.declare([w.mainA]);
           const caller = { agentType, project: w.mainB };
-          expect((await w.write(path.join(w.mainA, '.blackhole', 'plans', 'issue-1.md'), w.wtB, caller)).verdict).toBe('allow');
-          expect((await w.move(path.join(w.mainA, '.blackhole', 'queue.json'), w.wtB, caller)).verdict).toBe('allow');
+          const cwd = agentType === undefined ? w.mainB : w.wtB;
+          expect((await w.write(path.join(w.mainA, '.blackhole', 'plans', 'issue-1.md'), cwd, caller)).verdict).toBe('allow');
+          expect((await w.move(path.join(w.mainA, '.blackhole', 'queue.json'), cwd, caller)).verdict).toBe('allow');
         });
       });
 
@@ -124,8 +126,9 @@ describe('orchestrator-class callers write main-clone state from a linked worktr
         await withWorld(async (w) => {
           w.declare([path.join(w.mainA, '.blackhole')]);
           const caller = { agentType, project: w.mainB };
-          expect((await w.write(path.join(w.mainA, '.blackhole', 'plans', 'issue-1.md'), w.wtA, caller)).verdict).toBe('allow');
-          expect((await w.move(path.join(w.mainA, '.blackhole', 'queue.json'), w.wtA, caller)).verdict).toBe('allow');
+          const cwd = agentType === undefined ? w.mainB : w.wtA;
+          expect((await w.write(path.join(w.mainA, '.blackhole', 'plans', 'issue-1.md'), cwd, caller)).verdict).toBe('allow');
+          expect((await w.move(path.join(w.mainA, '.blackhole', 'queue.json'), cwd, caller)).verdict).toBe('allow');
         });
       });
     });
@@ -152,6 +155,31 @@ describe('negative cases stay denied', () => {
       const caller = { project: w.mainB, env: { BLACKHOLE_ASSIGNED_WORKTREE: w.wtB } };
       expect(await w.write(stateFile(w, 'plans', 'issue-1.md'), w.wtB, caller)).toEqual({ verdict: 'deny', patternId: WRITE_DENY });
       expect(await w.move(stateFile(w, 'queue.json'), w.wtB, caller)).toEqual({ verdict: 'deny', patternId: BASH_DENY });
+    });
+  });
+
+  test('an in-process teammate (no agent_type, cwd a linked worker worktree) gains nothing', async () => {
+    await withWorld(async (w) => {
+      w.declare([w.mainA]);
+      // wtB is nested under the project dir mainB; wtA is a worktree of another repo outside it.
+      for (const [project, cwd] of [[w.mainB, w.wtB], [w.mainB, w.wtA]]) {
+        const caller = { project };
+        expect(await w.write(stateFile(w, 'plans', 'issue-1.md'), cwd, caller)).toEqual({ verdict: 'deny', patternId: WRITE_DENY });
+        expect(await w.move(stateFile(w, 'queue.json'), cwd, caller)).toEqual({ verdict: 'deny', patternId: BASH_DENY });
+      }
+    });
+  });
+
+  test('no agent_type from a nested linked worktree under the project dir is refused, the project dir itself is allowed', async () => {
+    await withWorld(async (w) => {
+      w.declare([w.mainA]);
+      const caller = { project: w.mainB };
+      expect(await w.write(stateFile(w, 'plans', 'issue-1.md'), w.wtB, caller)).toEqual({ verdict: 'deny', patternId: WRITE_DENY });
+      expect((await w.write(stateFile(w, 'plans', 'issue-1.md'), w.mainB, caller)).verdict).toBe('allow');
+      expect((await w.move(stateFile(w, 'queue.json'), w.mainB, caller)).verdict).toBe('allow');
+      const sub = path.join(w.mainB, 'src');
+      fs.mkdirSync(sub, { recursive: true });
+      expect((await w.write(stateFile(w, 'plans', 'issue-2.md'), sub, caller)).verdict).toBe('allow');
     });
   });
 

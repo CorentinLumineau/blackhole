@@ -1,6 +1,6 @@
 ---
 type: adr
-summary: "A PreToolUse caller with no agent_type, or agent_type orchestrator or coordinator, may write single files in the .blackhole/ of its own clone and of the main clones named in permissions.additionalDirectories from a linked-worktree cwd, through the existing state-dir allow-list; every worker agent_type, config.json, hook-events/ and settings files stay denied, and config.json edits and git restore of tracked state are out of scope"
+summary: "A PreToolUse caller with agent_type orchestrator or coordinator, or no agent_type and a cwd at the harness project dir outside any nested linked worktree, may write single files in the .blackhole/ of its own clone and of the main clones named in permissions.additionalDirectories from a linked-worktree cwd, through the existing state-dir allow-list; every worker agent_type, config.json, hook-events/ and settings files stay denied, and config.json edits and git restore of tracked state are out of scope"
 status: accepted
 review_trigger: "on a change to the campaign-state trust allow-list, trustedWriteRoots, the caller predicate in campaign-scope.js, or how Claude Code reports agent_type in a PreToolUse payload"
 created: 2026-11-26
@@ -36,7 +36,10 @@ cannot change its folder, so the refusal would make the mode unusable.
 ## Decision
 
 Grant the state-dir write allow-list, and nothing wider, to an orchestrator-class caller: a
-payload with no `agent_type`, or `agent_type` exactly `orchestrator` or `coordinator`.
+payload with `agent_type` exactly `orchestrator` or `coordinator`, or a payload with no
+`agent_type` whose `cwd` is the harness project dir (`CLAUDE_PROJECT_DIR`, the session's own
+folder) or inside it but not inside a linked worktree nested under it. An in-process teammate
+worker also carries no `agent_type`, but runs in its assigned linked worktree, so it is refused.
 
 1. Roots granted: the caller's own clone state dir (anchored, else the `mainCloneRoot(cwd)`
    fallback), plus the `.blackhole/` of each main clone that is a
@@ -64,10 +67,12 @@ payload with no `agent_type`, or `agent_type` exactly `orchestrator` or `coordin
 ## Consequences
 
 - An orchestrator no longer needs the parser gap to update campaign state; a worker is unaffected
-  because Claude Code sets `agent_type` inside every subagent.
-- The grant depends on the main session payload carrying no `agent_type` and on spawned workers
-  (workflow-spawned included) carrying one. If the real Pattern C payload carries a non-empty
-  `agent_type`, the design returns for revision.
+  because a typed worker has no grant, and an in-process teammate (no `agent_type`) runs in its
+  assigned linked worktree, which is not the project dir.
+- An absent `agent_type` alone is no grant: in-process teammates carry none (ADR-045, ADR-047).
+  The grant for the main session depends on its `cwd` being the project dir; a main session that
+  moved into a linked worktree other than the project dir loses the grant and must run
+  orchestrator-class work as an `orchestrator` or `coordinator` agent.
 - A subagent of an unlisted type (for example `general-purpose`) gets nothing.
 - Out of scope, follow-up issue: orchestrator edits of `.blackhole/config.json` and
   `git restore -- .blackhole/<tracked file>` (`git-main-clone-guard.js`) stay denied.

@@ -131,9 +131,11 @@ it stays the one warn-and-record `bash-write-target-unresolvable` tier.
 for one caller class, because an orchestrator in a linked-worktree cwd (the desktop session cannot
 change its own folder) otherwise cannot move a file into the `.blackhole/` of the clone it
 coordinates: the anchor names the project dir's clone, not the one the campaign runs in. The caller
-predicate is `isOrchestratorCaller` in `utils/campaign-scope.js`: `agent_type` absent (Claude Code
-sets the field only inside a subagent, so the main session has none) or `orchestrator` /
-`coordinator`, bare or plugin-prefixed. Every worker type, an unknown type such as
+predicate is `agent_type` `orchestrator` / `coordinator` (`isOrchestratorCaller` in
+`utils/campaign-scope.js`), bare or plugin-prefixed, or `agent_type` absent with `cwd` at or inside
+the harness project dir (`CLAUDE_PROJECT_DIR`) and not inside a linked worktree nested under it
+(`isMainSessionCwd`). An in-process teammate worker has no `agent_type` either but runs in its
+assigned worktree, so it is refused. Every worker type, an unknown type such as
 `general-purpose`, and any process with `BLACKHOLE_ASSIGNED_WORKTREE` set receive `[]`.
 
 The roots for that caller are the anchored own clone's state dir plus the state dir of every main

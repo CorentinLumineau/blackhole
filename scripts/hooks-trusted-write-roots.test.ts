@@ -614,7 +614,10 @@ describe('orchestratorStateRoots: only an orchestrator-class caller gets roots',
   const PROGRAM = `const [mod, cwd, input] = process.argv.slice(1); console.log(JSON.stringify(require(mod).orchestratorStateRoots(cwd, JSON.parse(input))));`;
 
   // A child process, because `os.homedir()` is fixed at process start and the roots read the user settings from it.
-  const rootsFor = async (agentType: string | undefined, setup: (w: World) => void = () => undefined, env: Record<string, string> = {}) => {
+  // `at` picks the call's cwd and CLAUDE_PROJECT_DIR from the world: a worktree session (default) or the main session in a clone.
+  type At = (w: World) => { cwd: string; project?: string };
+  const inWorktree: At = (w) => ({ cwd: w.wtA });
+  const rootsFor = async (agentType: string | undefined, setup: (w: World) => void = () => undefined, env: Record<string, string> = {}, at: At = inWorktree) => {
     let result: string[] = [];
     await withWorld(async (w) => {
       fs.mkdirSync(path.join(w.home, '.claude'), { recursive: true });
@@ -622,19 +625,41 @@ describe('orchestratorStateRoots: only an orchestrator-class caller gets roots',
       setup(w);
       const base: Record<string, string | undefined> = { ...process.env };
       for (const key of SCOPED_ENV) delete base[key];
+      const { cwd, project } = at(w);
       const proc = Bun.spawnSync({
-        cmd: ['bun', '-e', PROGRAM, MODULE, w.wtA, JSON.stringify(agentType === undefined ? {} : { agent_type: agentType })],
-        cwd: w.wtA,
-        env: { ...base, HOME: w.home, ...env } as Record<string, string>,
+        cmd: ['bun', '-e', PROGRAM, MODULE, cwd, JSON.stringify(agentType === undefined ? {} : { agent_type: agentType })],
+        cwd,
+        env: { ...base, HOME: w.home, ...(project ? { CLAUDE_PROJECT_DIR: project } : {}), ...env } as Record<string, string>,
       });
       result = (JSON.parse(proc.stdout.toString()) as string[]).map((root) => root.replace(w.mainB, '<B>'));
     });
     return result;
   };
 
-  test('no agent_type, orchestrator and coordinator receive the declared clone state dir', async () => {
-    for (const agentType of [undefined, 'orchestrator', 'blackhole:coordinator']) {
+  test('orchestrator and coordinator receive the declared clone state dir', async () => {
+    for (const agentType of ['orchestrator', 'blackhole:coordinator']) {
       expect(await rootsFor(agentType)).toContain('<B>/.blackhole');
+    }
+  });
+
+  test('no agent_type receives it only with cwd at or inside the project dir, outside any nested linked worktree', async () => {
+    const mainSession: At = (w) => ({ cwd: w.mainA, project: w.mainA });
+    expect(await rootsFor(undefined, () => undefined, {}, mainSession)).toContain('<B>/.blackhole');
+    const subdir: At = (w) => {
+      const sub = path.join(w.mainA, 'src');
+      fs.mkdirSync(sub, { recursive: true });
+      return { cwd: sub, project: w.mainA };
+    };
+    expect(await rootsFor(undefined, () => undefined, {}, subdir)).toContain('<B>/.blackhole');
+    const worktreeIsProject: At = (w) => ({ cwd: w.wtA, project: w.wtA });
+    expect(await rootsFor(undefined, () => undefined, {}, worktreeIsProject)).toContain('<B>/.blackhole');
+  });
+
+  test('no agent_type from a teammate worktree, nested under the project dir or not, or without a project dir receives []', async () => {
+    const nested: At = (w) => ({ cwd: w.wtA, project: w.mainA });
+    const outside: At = (w) => ({ cwd: w.wtA, project: w.mainB });
+    for (const at of [nested, outside, inWorktree]) {
+      expect(await rootsFor(undefined, () => undefined, {}, at)).toEqual([]);
     }
   });
 
