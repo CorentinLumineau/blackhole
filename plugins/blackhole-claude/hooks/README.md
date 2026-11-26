@@ -125,6 +125,31 @@ file with one hard link. Anything else under `.blackhole/` (a directory destinat
 block as any other main-clone path. A Bash target built from a shell variable is never expanded:
 it stays the one warn-and-record `bash-write-target-unresolvable` tier.
 
+### Orchestrator-scoped state roots
+
+`orchestratorStateRoots(cwd, input)` in `utils/hook-event-log.js` extends the state dir allowance
+for one caller class, because an orchestrator in a linked-worktree cwd (the desktop session cannot
+change its own folder) otherwise cannot move a file into the `.blackhole/` of the clone it
+coordinates: the anchor names the project dir's clone, not the one the campaign runs in. The caller
+predicate is `agent_type` `orchestrator` / `coordinator` (`isOrchestratorCaller` in
+`utils/campaign-scope.js`), bare or plugin-prefixed, or `agent_type` absent with `cwd` at or inside
+the harness project dir (`CLAUDE_PROJECT_DIR`) and not inside a linked worktree nested under it
+(`isMainSessionCwd`). An in-process teammate worker has no `agent_type` either but runs in its
+assigned worktree, so it is refused. Every worker type, an unknown type such as
+`general-purpose`, and any process with `BLACKHOLE_ASSIGNED_WORKTREE` set receive `[]`.
+
+The roots for that caller are the anchored own clone's state dir plus the state dir of every main
+clone named in `permissions.additionalDirectories` of the user settings file and of the harness
+project dir's settings (the same two sources and the same 16-entry cap as the cross-repo worktree
+leg below). An entry names a main clone when it is that clone, or a `.blackhole` directory, or a
+path inside one; the clone's `.git` must be a directory (a worktree or a planted pointer file is
+refused) and `.blackhole/config.json` must exist. Both guards judge a path against these roots with
+the same allow-list and the same two Bash write shapes as the state dir above, so the protected set
+is unchanged for every caller: `config.json`, `hook-events/`, `archive/hook-events-*`, the root and
+`archive/` themselves, symlink and hard-link leaves, and the settings files
+(`settings-roots-write`, `bash-settings-roots-write`). Editing `config.json` and `git restore` of
+tracked state (`main-clone-restore`) stay out of scope. Decision record: ADR-064.
+
 ## Trusted write roots (scratchpad and cross-repo worktrees)
 
 `trustedWriteRoots(cwd, input)` in `utils/hook-event-log.js` is the one place that names the extra

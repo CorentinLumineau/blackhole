@@ -42,6 +42,21 @@ const bareAgentType = (agentType) => {
 
 const isCampaignAgentType = (agentType) => CAMPAIGN_AGENT_TYPES.has(bareAgentType(agentType));
 
+/** The only callers that run the campaign rather than work in it. Claude Code sets `agent_type`
+ * only inside a subagent, so the main session has none; an empty or non-string value on a payload
+ * that carries the field is never the main session. */
+const ORCHESTRATOR_AGENT_TYPES = new Set(['orchestrator', 'coordinator']);
+
+/** True for an `orchestrator`/`coordinator` agent, bare or plugin-prefixed: the one named caller
+ * class allowed to write campaign state dirs of main clones from a linked-worktree cwd
+ * (`orchestratorStateRoots`). Every worker type, and an unknown type such as `general-purpose`, is
+ * not. An absent `agent_type` is no grant here: an in-process teammate worker carries none either,
+ * so that case is decided by where the call runs (`isMainSessionCwd` in `hook-event-log.js`). */
+const isOrchestratorCaller = (agentType) => ORCHESTRATOR_AGENT_TYPES.has(bareAgentType(agentType));
+
+/** True when the payload carries no `agent_type`: the main session or an in-process teammate. */
+const hasNoAgentType = (agentType) => agentType === undefined || agentType === null;
+
 /**
  * @param {{ agent_type?: unknown }} input hook payload
  * @param {string | null} assignedRoot result of readAssignedWorktreeRoot(cwd) — the caller already
@@ -51,4 +66,4 @@ const isCampaignAgentType = (agentType) => CAMPAIGN_AGENT_TYPES.has(bareAgentTyp
 const isCampaignScoped = (input, assignedRoot, env = process.env) =>
   env.BLACKHOLE_HOOK_SCOPE === 'all' || isCampaignAgentType(input && input.agent_type) || Boolean(assignedRoot);
 
-module.exports = { CAMPAIGN_AGENT_TYPES, isCampaignAgentType, isCampaignScoped };
+module.exports = { CAMPAIGN_AGENT_TYPES, isCampaignAgentType, isOrchestratorCaller, hasNoAgentType, isCampaignScoped };

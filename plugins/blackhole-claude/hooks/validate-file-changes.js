@@ -24,6 +24,7 @@ const {
   isUnderRoot,
   campaignStateRoot,
   isStateDirTrustedPath,
+  orchestratorStateRoots,
   lazyTrustedWriteRoots,
   isTrustedExtraPath,
   settingsFileCandidates,
@@ -147,6 +148,7 @@ const main = () => {
   let roots;
   let stateRoot = null;
   let extraRoots = () => [];
+  let orchestratorRoots = [];
   let settingsFiles = [];
   try {
     assignedRoot = readAssignedWorktreeRoot(cwd);
@@ -154,6 +156,7 @@ const main = () => {
     if (roots) stateRoot = campaignStateRoot(cwd);
     const mainClone = mainCloneRoot(cwd);
     extraRoots = lazyTrustedWriteRoots(cwd, input, { mainClone, assignedRoot });
+    orchestratorRoots = orchestratorStateRoots(cwd, input, { assignedRoot });
     settingsFiles = settingsFileCandidates(cwd, mainClone);
   } catch (error) {
     failClosed({
@@ -185,7 +188,11 @@ const main = () => {
     return;
   }
   if (scoped && roots) {
-    let outside = Boolean(filePath) && !isInsideAnyRoot(filePath, roots) && !isStateDirTrustedPath(filePath, stateRoot);
+    let outside =
+      Boolean(filePath) &&
+      !isInsideAnyRoot(filePath, roots) &&
+      !isStateDirTrustedPath(filePath, stateRoot) &&
+      !orchestratorRoots.some((root) => isStateDirTrustedPath(filePath, root));
     if (outside) {
       try {
         outside = !isTrustedExtraPath(filePath, extraRoots);
