@@ -63,6 +63,12 @@ export const revParse = (repoRoot: string, rev: string, git: GitRunner = realGit
 export const isAncestor = (repoRoot: string, ancestor: string, descendant: string, git: GitRunner = realGit): boolean =>
   git(repoRoot, ['merge-base', '--is-ancestor', ancestor, descendant]).ok;
 
+/** Best common ancestor of two revisions, or null when they share none. */
+export const mergeBaseOf = (repoRoot: string, a: string, b: string, git: GitRunner = realGit): string | null => {
+  const result = git(repoRoot, ['merge-base', a, b]);
+  return result.ok ? result.stdout.trim() : null;
+};
+
 /** Changed-file count between two revisions, the same number a PR's "files changed" reports. */
 export const changedFileCount = (
   repoRoot: string,
