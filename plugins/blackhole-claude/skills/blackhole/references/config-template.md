@@ -292,9 +292,15 @@ unreadable file or a malformed reading warns on stderr and leaves the count unch
 
 `scripts/ci-capacity-read.ts` produces that reading from the forge when `ci_capacity.enabled` is `true`:
 `GET repos/{repo}/actions/runners` (online runners carrying a lane label, split by `busy`), `GET
-repos/{repo}/actions/runs?status=queued`, and the jobs of the first ten queued runs (a run past ten counts as
-one queued job). GitHub only; any other forge, a missing `repo`, a forge error or an unexpected payload prints
-nothing and a warning, exit 0. The caller supplies the lanes; the plugin assumes no runner layout.
+repos/{repo}/actions/runs?status=queued` and `?status=in_progress` (a running run can still hold queued jobs), and
+the jobs of the first ten runs, queued runs first (a queued run past ten counts as one queued job, an in-progress
+run past ten counts none). GitHub only; any other forge, a missing `repo`, a forge error or an unexpected payload
+prints nothing and a warning, exit 0. The caller supplies the lanes; the plugin assumes no runner layout.
+
+The runner read is repo-level and needs a token with admin rights on the repository: runners registered at
+organization level are not counted, and a `403` is no reading (a warning, the worker count unchanged). The reader makes
+up to 13 sequential `gh api` calls, so the call site bounds it with `timeout 60` (`orchestrator-runtime.md` § spawn round);
+a timeout exits non-zero, which is also no reading.
 
 ## catchup
 
@@ -358,7 +364,7 @@ cell leaves out.
 | `resource_policy` | `config` | Verification | The test-lock carve-out; the host pace line is on the `--html` Host section | Resource policy |
 | `usage_budget` | `budget` | Workers allowed, Weekly, Weekly target, Pace | Verdict, weekly %, target, pace against the target and reset | Pacing, Peers |
 | `usage_budget.coordination` | `run` | Coordination | | Peers |
-| `ci_capacity` | none | — | A pacing input: the worker cap it causes shows in the usage verdict's reasons | Other config |
+| `ci_capacity` | none | — | A pacing input: the worker cap it causes shows in the usage verdict's reasons | CI capacity |
 | `catchup` | none | — | The pacing preset is shown on the launch summary's Pacing row; the budget panel keeps the verdict | Pacing |
 | `stop_budget_cleared_at` | none | — | Audit timestamp of a past owner action | Other config |
 | `issue_484_disposition` | none | — | One campaign's historical pin; the parked issue shows on the board | Other config |

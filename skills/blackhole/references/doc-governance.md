@@ -190,7 +190,7 @@ alone; the root index spans many folders and needs the folder-prefixed form).
 
 **Generated, not hand-appended (issue #832, ADR-031 Phase 2)**: the root `documentation/INDEX.md`
 is a **purely generated artifact** — every row is derived from its own doc's frontmatter
-(`summary`/`type`/`status`/`review_trigger`), never hand-appended from a staged row fragment.
+(`type`/`status`/`review_trigger`, plus the optional `summary`, which falls back to the doc's first H1), never hand-appended from a staged row fragment.
 `scripts/lib/doc-index-generate.ts`'s `buildDocIndexRows` walks `documentation/` (excluding
 `decisions/**`, `milestones/_archived/**`, and `INDEX.md` itself) and reads each doc's
 frontmatter directly; `renderFullIndexFile` renders the resulting table, sorted by
