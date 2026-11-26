@@ -176,12 +176,17 @@ const literalWord = (token) => {
 };
 
 /** Index just past the `}` that closes a `${` whose body starts at `start`, or -1 when none does.
- * A quoted span inside the body is walked whole, so a `}` or space in it never ends the word. */
+ * A nested `${` opens its own level, and a quoted span or backslash-escaped character inside the
+ * body is walked whole, so a `}` or space in it never ends the word. */
 const bracedExpansionEnd = (text, start, n) => {
+  let depth = 1;
   for (let i = start; i < n; ) {
     const ch = text[i];
-    if (ch === '}') return i + 1;
-    if (ch === "'" || ch === '"') i = skipQuotedSpan(text, i, n);
+    if (ch === '}' && --depth === 0) return i + 1;
+    if (ch === '$' && text[i + 1] === '{') {
+      depth++;
+      i += 2;
+    } else if (ch === "'" || ch === '"') i = skipQuotedSpan(text, i, n);
     else i += ch === '\\' ? 2 : 1;
   }
   return -1;
@@ -291,7 +296,12 @@ const PREFIX_VALUE_OPTIONS = new Set(['-u', '-g', '-n', '-C', '-k', '-p', '-I', 
 
 /** A word that is one whole substitution placeholder (`$(…)` or backticks, see `extractSubstitutions`)
  * or one bare parameter expansion (`$X`, `${X}`, `$@`): each may expand to nothing. */
-const WHOLE_PLACEHOLDER_RE = /^\$(?:\u0001\d+\u0001|[A-Za-z_]\w*|[@*#?!$0-9-]|\{[^{}]*\})$/;
+const WHOLE_PLACEHOLDER_RE = /^\$(?:\u0001\d+\u0001|[A-Za-z_]\w*|[@*#?!$0-9-])$/;
+
+/** A word that is one whole `${…}` expansion, nested or quoted bodies included. */
+const isWholeBracedExpansion = (word) => word.startsWith('${') && bracedExpansionEnd(word, 2, word.length) === word.length;
+
+const isPossiblyEmptyWord = (word) => WHOLE_PLACEHOLDER_RE.test(word) || isWholeBracedExpansion(word);
 
 /** Index of the first word at or after `i` that is not a redirect or a redirect's separate target. */
 const skipRedirectWords = (tokens, i) => {
@@ -319,7 +329,7 @@ const commandPositions = (tokens) => {
     i = skipOperandsAndRedirects(tokens, i, (t) => /^[A-Za-z_]\w*=/.test(t));
     if (i >= tokens.length) break;
     positions.add(i);
-    if (WHOLE_PLACEHOLDER_RE.test(tokens[i])) {
+    if (isPossiblyEmptyWord(tokens[i])) {
       i++;
       continue;
     }
