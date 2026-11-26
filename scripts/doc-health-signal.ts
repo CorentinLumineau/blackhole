@@ -4,6 +4,7 @@ import { evaluateDocTreeHealth } from './checks/doc-health.check.ts';
 import { root } from './checks/check-utils.ts';
 import { parseDecisionLogIds } from './decision-log-append.ts';
 import { readJsonFile } from './lib/fs.ts';
+import { FOREIGN_INDEX_NOTE } from './lib/doc-index-generate.ts';
 import { parseFlags } from './lib/argv-flags.ts';
 
 // Issue #499 (ADR-021 D6 residual) — the always-on-channel half of the Scope-1 doc-tree health
@@ -50,7 +51,7 @@ export const computeDocHealthSignal = (
   return {
     version: 1,
     refreshed_at: now.toISOString(),
-    doc_debt: result.detail ? 'yes' : 'no',
+    doc_debt: (result.detail ?? '').split('; ').some((d) => d && d !== FOREIGN_INDEX_NOTE) ? 'yes' : 'no',
     detail: result.detail ?? null,
     decision_log_silent_prs: computeDecisionLogSilentPrs(decisionLogPath, queueJsonPath),
   };
@@ -81,6 +82,7 @@ export const resolveRepoRoot = (argv: string[], ownRoot: string): string => {
   return resolved;
 };
 
+// Computes the signal for one repo root and writes <repoRoot>/.blackhole/doc-health.json.
 export const runDocHealthSignal = (repoRoot: string): DocHealthSignal => {
   const campaignDir = path.join(repoRoot, '.blackhole');
   const signal = computeDocHealthSignal(

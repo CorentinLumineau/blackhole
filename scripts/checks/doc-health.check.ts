@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { parseMdFrontmatter, parseFrontmatterFields } from '../lib/build/content.ts';
 import { parseIndexTableRows, walkMdFilesAbs } from '../lib/check-common.ts';
-import { buildDocIndexRows, diffDocIndexRows, isRegenerableRootIndex, type DocIndexDiff } from '../lib/doc-index-generate.ts';
+import { buildDocIndexRows, diffDocIndexRows, FOREIGN_INDEX_NOTE, isRegenerableRootIndex, type DocIndexDiff } from '../lib/doc-index-generate.ts';
 import { DOC_HEALTH_THRESHOLDS } from '../lib/build/facts.ts';
 import { findAdrsMissingIndexRow } from '../lib/adr-index-presence.ts';
 import { malformedTriggerDetail } from '../lib/review-trigger-grammar.ts';
@@ -161,7 +161,7 @@ export const evaluateDocTreeHealth = (docsDir: string): CheckResult => {
     const indexContent = fs.readFileSync(indexAbs, 'utf-8');
     // A foreign index is not blackhole's table, so counting its rows would invent a number.
     const rowCount = isRegenerableRootIndex(indexContent) ? parseRootIndexRows(indexContent).length : null;
-    if (rowCount === null) details.push('foreign root INDEX, row ceiling not evaluated');
+    if (rowCount === null) details.push(FOREIGN_INDEX_NOTE);
     else if (isRootIndexRowCeilingExceeded(rowCount, DOC_HEALTH_THRESHOLDS.rootIndexRowCeiling))
       details.push(`INDEX.md row count ${rowCount} exceeds ${DOC_HEALTH_THRESHOLDS.rootIndexRowCeiling}`);
   }

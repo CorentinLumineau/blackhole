@@ -103,6 +103,15 @@ describe('computeDocHealthSignal', () => {
   // (doc-health.check.ts's evaluateIndexDangling/evaluateOrphanFiles idiom). evaluateDocTreeHealth
   // already handles a missing docsDir via walkFilesAbs's "[] for a directory that does not
   // exist" contract — this test only confirms that behavior passes through this wrapper intact.
+  test('a clean tree with a foreign root INDEX keeps the note visible but is not doc_debt', () => {
+    withFixtureDir((dir) => {
+      write(dir, 'INDEX.md', '# Docs\n\n| doc | owner |\n|---|---|\n| a.md | me |\n');
+      const signal = computeDocHealthSignal(dir);
+      expect(signal.doc_debt).toBe('no');
+      expect(signal.detail).toContain('foreign root INDEX, row ceiling not evaluated');
+    });
+  });
+
   test('a docs directory that does not exist yields doc_debt: no without throwing', () => {
     const missingDir = path.join(makeTempDir('doc-health-signal-missing'), 'documentation');
     expect(fs.existsSync(missingDir)).toBe(false);
