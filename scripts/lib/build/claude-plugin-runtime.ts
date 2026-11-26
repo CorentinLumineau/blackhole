@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { readJsonFile, walkFilesAbs } from '../fs.ts';
+import { walkFilesAbs } from '../fs.ts';
 import { root, srcDir, CLAUDE_DISTRIBUTION_AGENT_DIR } from './paths.ts';
 
 // The Claude Code marketplace bundle must work from wherever Claude Code installs it (the
@@ -125,7 +125,7 @@ export const withSessionStartExport = (hooksJson: { hooks?: Record<string, unkno
 };
 
 /** Ships the runtime scripts, rewrites invocations in every compiled markdown file, and wires
- * the SessionStart export into the bundle's hooks.json. */
+ * the SessionStart export into the bundle's hooks.json — the only hook the bundle registers (ADR-065). */
 export const finalizeClaudePluginBundle = (destRoot: string, repoRoot: string = root): void => {
   for (const rel of runtimeScriptClosure(listRuntimeScriptEntrypoints(path.join(repoRoot, 'src')), repoRoot)) {
     const dest = path.join(destRoot, rel);
@@ -145,10 +145,8 @@ export const finalizeClaudePluginBundle = (destRoot: string, repoRoot: string = 
     fs.writeFileSync(skillPath, skill.replace(/(runbook: `[^`]+`\.\n)/, `$1${PLUGIN_ROOT_NOTE}`), 'utf-8');
   }
   const hooksPath = path.join(destRoot, 'hooks', 'hooks.json');
-  if (fs.existsSync(hooksPath)) {
-    const parsed = readJsonFile(hooksPath, hooksPath) as { hooks?: Record<string, unknown[]> };
-    fs.writeFileSync(hooksPath, `${JSON.stringify(withSessionStartExport(parsed), null, 2)}\n`, 'utf-8');
-  }
+  fs.mkdirSync(path.dirname(hooksPath), { recursive: true });
+  fs.writeFileSync(hooksPath, `${JSON.stringify(withSessionStartExport({}), null, 2)}\n`, 'utf-8');
 };
 
 /** Shape errors for a finalized bundle: missing runtime scripts, a compiled markdown file that

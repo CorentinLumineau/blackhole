@@ -307,6 +307,7 @@ co-located `*.test.ts`.
 ---
 
 ## Active Constraints
+- No tool-call-denying hook ships in any harness build; gates are non-hook (ADR-065)
 - A campaign session must register a heartbeat in the git common dir campaign registry and must not start, dispatch, or link a PR for an issue held by another live session's claims; a clean detection states its reach (clone), never a bare solo (ADR-057)
 - Playbook prose invokes bundled scripts only by source path (`bun run scripts/<file>.ts`), never by a `package.json` alias; `status` and `doctor` resolve the campaign from the working directory (ADR-056)
 - A path may be exempted from the V-STACK-02 overlap test only when it is regenerated wholesale from the merged tree and a blocking verify check fails when it is stale — list it in the `REGENERATED_PATHS` code constant, never through a config key, repo attribute, or path prefix, and keep every conflict outside it stacking, except pure row additions to an `APPEND_ONLY_PATHS` file (ADR-055)
