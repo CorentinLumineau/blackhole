@@ -59,4 +59,5 @@ ADR-061 kept six PreToolUse guards where auto mode could not cover them. On 2026
 
 - About 5.9k lines of guard code and about 10.9k lines of guard tests go away; no `.blackhole/hook-events/` record is produced after this lands. Retiring the ingestion code, the `V-HOOK-01..03` rows and the worker workaround prose (`cd`-first state writes, `BLACKHOLE_ASSIGNED_WORKTREE`) follows in a second change.
 - A future guard needs a new ADR.
+- Installed copies keep the old blocking hooks until the plugin is updated: the plugin cache is keyed by version, so run `/plugin marketplace update` and reinstall `blackhole` (or clear `~/.claude/plugins/cache`, restart Claude Code and reinstall) to drop the guards from an existing installation. The v0.37.3 cut is automatic, with generated release notes, so this note lives here and in the README.
 - Safety on non-auto-mode harnesses becomes detective, not preventive.

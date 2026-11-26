@@ -152,6 +152,8 @@ stale marketplace cache) via `scripts/cloud-agent-plugins.sh`. See
 to the committed `plugins/blackhole-claude/` bundle, which is what gets installed (ADR-009).
 Both trees are committed, so no local build is needed to install.
 
+**Updating**: the plugin cache is keyed by version, so an installed copy keeps its old hooks (including the blocking PreToolUse guards removed in v0.37.3, ADR-065) until you run `/plugin marketplace update`, then reinstall `blackhole`. Alternatively clear `~/.claude/plugins/cache`, restart Claude Code and reinstall.
+
 ### skills.sh registry
 ```bash
 npx skills add CorentinLumineau/blackhole --skill blackhole -y
