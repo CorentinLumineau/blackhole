@@ -68,6 +68,76 @@ describe('buildRoadmap', () => {
   });
 });
 
+describe('owner-only detection', () => {
+  const blocked = (notes: string | undefined, extra: QueueIssue = {}): QueueIssue => ({ title: 'T', status: 'blocked', notes, ...extra });
+  const ownerOf = (issue: QueueIssue) => buildRoadmap(queue({ '1': issue })).owner;
+
+  test('an awaiting-* token waits on that token', () => {
+    expect(ownerOf(blocked('awaiting-user-clarification: which provider?'))[0]?.waitingFor).toBe('awaiting-user-clarification');
+  });
+
+  test('an escalated block waits on blocked-escalated', () => {
+    expect(ownerOf(blocked('blocked-escalated: failed attempts'))[0]?.waitingFor).toBe('blocked-escalated');
+  });
+
+  test('free-text notes addressed to the owner are shown, flattened and truncated', () => {
+    const prefixed = ownerOf(blocked('owner:   pick\n a provider'));
+    expect(prefixed.map((r) => r.waitingFor)).toEqual(['owner: pick a provider']);
+    expect(ownerOf(blocked('see decision card, needs-owner approval'))).toHaveLength(1);
+    const long = ownerOf(blocked(`owner: ${'x'.repeat(200)}`))[0].waitingFor;
+    expect(long).toHaveLength(120);
+    expect(long.endsWith('…')).toBe(true);
+  });
+
+  test('a blocked issue whose notes do not address the owner stays in the ranking', () => {
+    for (const notes of [undefined, '', 'merge-conflict-semantic on #3', 'overlap with #9', 'waiting for upstream release']) {
+      const model = buildRoadmap(queue({ '1': blocked(notes) }));
+      expect(model.owner).toEqual([]);
+      expect(model.rows.map((r) => r.issue)).toEqual([1]);
+    }
+  });
+
+  test('owner notes on an issue that is not blocked do not move it to the owner table', () => {
+    const model = buildRoadmap(queue({ '1': { title: 'T', status: 'ready', notes: 'owner: look at this' } }));
+    expect(model.owner).toEqual([]);
+    expect(model.rows).toHaveLength(1);
+  });
+});
+
+describe('row details', () => {
+  test('a long title is cut to one line with an ellipsis', () => {
+    const [row] = buildRoadmap(queue({ '1': { title: `${'word '.repeat(40)}end`, status: 'ready' } })).rows;
+    expect(row.title).toHaveLength(120);
+    expect(row.title.endsWith('…')).toBe(true);
+  });
+
+  test('a missing title renders as the bare issue number, a missing app as "-"', () => {
+    const body = renderRoadmapBody(buildRoadmap(queue({ '1': { status: 'ready' } })));
+    expect(body).toContain('| 1 | #1 | - | - | - | - | unscored | - | - |');
+  });
+
+  test('kind falls back to the route task type, dependencies sort ascending', () => {
+    const [row] = buildRoadmap(queue({ '1': { status: 'ready', route: { task_type: 'refactor' }, depends_on: [9, 3] }, '3': { status: 'merged' }, '9': { status: 'merged' } })).rows;
+    expect(row).toMatchObject({ kind: 'refactor', dependsOn: [3, 9] });
+  });
+
+  test('a third and later wave all land in Later', () => {
+    const model = buildRoadmap(queue({ '1': { status: 'ready' }, '2': { status: 'ready', depends_on: [1] }, '3': { status: 'ready', depends_on: [2] }, '4': { status: 'ready', depends_on: [3] } }));
+    expect(model.now.map((r) => r.issue)).toEqual([1]);
+    expect(model.next.map((r) => r.issue)).toEqual([2]);
+    expect(model.later.map((r) => r.issue)).toEqual([3, 4]);
+  });
+
+  test('an undefined queue is an empty roadmap', () => {
+    expect(buildRoadmap(undefined)).toEqual({ rows: [], now: [], next: [], later: [], owner: [], counts: [] });
+  });
+
+  test('a pin for an issue outside the open set is ignored', () => {
+    const model = buildRoadmap(queue({ '1': { status: 'ready' }, '2': { status: 'ready' } }, [99, 2]));
+    expect(model.rows.map((r) => r.issue)).toEqual([2, 1]);
+  });
+});
+
 describe('renderRoadmapBody', () => {
   test('snapshot: horizons, dependencies, owner table and counts', () => {
     expect(renderRoadmapBody(buildRoadmap(fixture()))).toBe(`# Roadmap

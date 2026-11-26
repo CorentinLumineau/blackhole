@@ -25,7 +25,7 @@ const run = (root: string, ...args: string[]) => Bun.spawnSync(['bun', 'run', sc
 describe('roadmap.ts', () => {
   test('writes the configured file, then reports it unchanged', () => {
     const root = repo({ roadmap: { enabled: true, path: 'documentation/plans/roadmap.md' } });
-    expect(JSON.parse(run(root).stdout.toString())).toEqual({ status: 'written', path: 'documentation/plans/roadmap.md' });
+    expect(JSON.parse(run(root).stdout.toString())).toEqual({ status: 'written', path: 'documentation/plans/roadmap.md', index: 'none' });
     expect(fs.readFileSync(path.join(root, 'documentation/plans/roadmap.md'), 'utf-8')).toContain('| 1 | #1 Only |');
     expect(JSON.parse(run(root).stdout.toString()).status).toBe('unchanged');
   });

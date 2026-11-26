@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { QueueIssue } from './campaign-status/types.ts';
-import { orderReady, selectBatch, unscoredIn, waveOf } from './pareto-order.ts';
+import { orderIssues, orderReady, selectBatch, unscoredIn, waveOf } from './pareto-order.ts';
 
 const p = (gain: number, effort: number) => ({ gain, effort, priority: gain * (11 - effort) });
 const ready = (extra: QueueIssue = {}): QueueIssue => ({ status: 'ready', ...extra });
@@ -79,6 +79,21 @@ describe('selectBatch', () => {
   test('empty and non-positive limits', () => {
     expect(selectBatch({}, 4)).toEqual([]);
     expect(selectBatch(fixture(), 0)).toEqual([]);
+  });
+});
+
+describe('orderIssues', () => {
+  test('a pin moves an issue to the front of its own wave, never over a lower wave', () => {
+    const all = () => true;
+    expect(orderIssues(fixture(), all, [4, 6])).toEqual([4, 3, 5, 2, 1, 6]);
+    expect(orderIssues(fixture(), all, [6])).toEqual([3, 5, 2, 1, 4, 6]);
+  });
+  test('pins order pinned issues by their position in user_queue_order', () => {
+    expect(orderIssues(fixture(), (i) => i.status === 'ready', [5, 3]).slice(0, 2)).toEqual([5, 3]);
+  });
+  test('the include predicate selects the issues, whatever their status', () => {
+    const issues = { '1': { status: 'blocked', pareto: p(1, 1) }, '2': { status: 'merged' } } as Record<string, QueueIssue>;
+    expect(orderIssues(issues, (i) => i.status !== 'merged')).toEqual([1]);
   });
 });
 

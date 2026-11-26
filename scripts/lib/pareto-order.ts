@@ -38,42 +38,46 @@ export function waveOf(issues: Issues): { waves: Record<number, number>; cycles:
   return { waves, cycles: [...cycles].sort((a, b) => a - b) };
 }
 
-/** The issue numbers `include` accepts, in selection order: wave, stored priority desc, effort asc, oldest. */
-export function orderIssues(issues: Issues, include: (issue: QueueIssue) => boolean): number[] {
+/**
+ * The issue numbers `include` accepts, in selection order: wave, owner pin (`userQueueOrder`
+ * position, unpinned last), stored priority desc, effort asc, oldest. A pin moves an issue to the
+ * front of its own wave only; it never lifts an issue over an unmet dependency.
+ */
+export function orderIssues(issues: Issues, include: (issue: QueueIssue) => boolean, userQueueOrder: number[] = []): number[] {
   const { waves } = waveOf(issues);
   const rank = (n: number) => {
     const pareto = issues[String(n)].pareto;
-    return { wave: waves[n], priority: pareto?.priority ?? -1, effort: pareto?.effort ?? Number.POSITIVE_INFINITY };
+    const pin = userQueueOrder.indexOf(n);
+    return {
+      wave: waves[n],
+      pin: pin === -1 ? Number.POSITIVE_INFINITY : pin,
+      priority: pareto?.priority ?? -1,
+      effort: pareto?.effort ?? Number.POSITIVE_INFINITY,
+    };
   };
   return Object.entries(issues)
     .filter(([, i]) => include(i))
     .map(([n]) => Number(n))
     .sort((a, b) => {
       const [x, y] = [rank(a), rank(b)];
-      return x.wave - y.wave || y.priority - x.priority || x.effort - y.effort || a - b;
+      return x.wave - y.wave || x.pin - y.pin || y.priority - x.priority || x.effort - y.effort || a - b;
     });
 }
 
 /** Ready issue numbers in selection order. */
-export const orderReady = (issues: Issues): number[] => orderIssues(issues, (i) => i.status === 'ready');
+export const orderReady = (issues: Issues, userQueueOrder: number[] = []): number[] =>
+  orderIssues(issues, (i) => i.status === 'ready', userQueueOrder);
 
 /**
  * Up to `limit` issues from the current (lowest) wave's ready set: `userQueueOrder` first, then the
  * Pareto order (`queue-dag.md` Step 5).
  */
 export function selectBatch(issues: Issues, limit: number, userQueueOrder: number[] = []): number[] {
-  const ordered = orderReady(issues);
+  const ordered = orderReady(issues, userQueueOrder);
   if (ordered.length === 0 || limit <= 0) return [];
   const { waves } = waveOf(issues);
   const current = waves[ordered[0]];
-  const pinned = (n: number) => {
-    const at = userQueueOrder.indexOf(n);
-    return at === -1 ? Number.POSITIVE_INFINITY : at;
-  };
-  return ordered
-    .filter((n) => waves[n] === current)
-    .sort((a, b) => pinned(a) - pinned(b)) // stable: ties keep the Pareto order
-    .slice(0, limit);
+  return ordered.filter((n) => waves[n] === current).slice(0, limit);
 }
 
 /** The ready issues of `batch` that carry no stored score: `pareto-order.ts --require-scored` fails on them. */

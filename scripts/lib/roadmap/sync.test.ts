@@ -50,7 +50,7 @@ describe('resolveRoadmapTarget', () => {
 
   test('a path that leaves the repo, is absolute, or is not markdown is refused', () => {
     const cfg = (pathValue: string) => ({ ...on, roadmap: { path: pathValue } });
-    for (const bad of ['../roadmap.md', 'documentation/../../x.md', '/etc/roadmap.md', 'documentation/roadmap.txt', '']) {
+    for (const bad of ['../roadmap.md', 'documentation/../../x.md', '..\\x.md', '/etc/roadmap.md', 'C:\\roadmap.md', '.', './', 'documentation/roadmap.txt', '']) {
       expect(() => resolveRoadmapTarget(cfg(bad), '/r')).toThrow('roadmap.path');
     }
   });
@@ -63,7 +63,7 @@ describe('syncRoadmap', () => {
   test('writes the roadmap with lifecycle frontmatter where the config says', () => {
     const r = root();
     const result = run(r, queue(), '2026-11-26');
-    expect(result).toEqual({ status: 'written', path: 'documentation/plans/roadmap.md' });
+    expect(result).toEqual({ status: 'written', path: 'documentation/plans/roadmap.md', index: 'none' });
     const text = fs.readFileSync(path.join(r, 'documentation/plans/roadmap.md'), 'utf-8');
     expect(text).toStartWith('---\ntype: reference\n');
     expect(text).toContain('status: current\n');
@@ -77,7 +77,7 @@ describe('syncRoadmap', () => {
     const file = path.join(r, 'documentation/plans/roadmap.md');
     const before = fs.readFileSync(file, 'utf-8');
     fs.utimesSync(file, new Date(1_000_000), new Date(1_000_000));
-    expect(run(r, queue(), '2026-12-01')).toEqual({ status: 'unchanged', path: 'documentation/plans/roadmap.md' });
+    expect(run(r, queue(), '2026-12-01')).toEqual({ status: 'unchanged', path: 'documentation/plans/roadmap.md', index: 'none' });
     expect(fs.readFileSync(file, 'utf-8')).toBe(before);
     expect(fs.statSync(file).mtimeMs).toBe(1_000_000);
   });
@@ -91,6 +91,73 @@ describe('syncRoadmap', () => {
     const text = fs.readFileSync(path.join(r, 'documentation/plans/roadmap.md'), 'utf-8');
     expect(text).toContain('created: 2026-11-26\nlast_updated: 2026-12-01\n');
     expect(text.indexOf('#2 Second')).toBeLessThan(text.indexOf('#1 First'));
+  });
+
+  test('a path that is refused writes nothing', () => {
+    const r = root();
+    expect(() => run(r, queue(), '2026-11-26', { ...on, roadmap: { path: '../outside.md' } })).toThrow('roadmap.path');
+    expect(fs.existsSync(path.join(path.dirname(r), 'outside.md'))).toBe(false);
+    expect(fs.readdirSync(r)).toEqual([]);
+  });
+
+  describe('documentation index', () => {
+    const indexPath = (r: string) => path.join(r, 'documentation/INDEX.md');
+    const seed = (r: string, rows: string[] = []) => {
+      fs.mkdirSync(path.join(r, 'documentation'), { recursive: true });
+      fs.writeFileSync(
+        indexPath(r),
+        ['# Documentation Index', '', '| path | summary | type | status | review_trigger |', '|------|---------|------|--------|----------------|', ...rows, ''].join('\n'),
+      );
+    };
+    const roadmapRow = '| plans/roadmap.md | Ranked roadmap of every open issue, regenerated from the campaign scores | reference | current | on file change |';
+
+    test('adds its row, sorted, when the repo has a blackhole-shaped documentation/INDEX.md', () => {
+      const r = root();
+      seed(r, ['| a.md | A | reference | current | x |', '| z.md | Z | reference | current | x |']);
+      expect(run(r, queue(), '2026-11-26')).toMatchObject({ status: 'written', index: 'added' });
+      const rows = fs.readFileSync(indexPath(r), 'utf-8').split('\n').filter((l) => l.startsWith('| ') && !l.startsWith('| path'));
+      expect(rows).toEqual(['| a.md | A | reference | current | x |', roadmapRow, '| z.md | Z | reference | current | x |']);
+    });
+
+    test('a second run with an unchanged ranking leaves the index byte-identical', () => {
+      const r = root();
+      seed(r);
+      run(r, queue(), '2026-11-26');
+      const before = fs.readFileSync(indexPath(r), 'utf-8');
+      expect(run(r, queue(), '2026-12-01')).toMatchObject({ status: 'unchanged', index: 'present' });
+      expect(fs.readFileSync(indexPath(r), 'utf-8')).toBe(before);
+    });
+
+    test('an unchanged roadmap still gets its row when the index lost it', () => {
+      const r = root();
+      run(r, queue(), '2026-11-26');
+      seed(r);
+      expect(run(r, queue(), '2026-11-26')).toMatchObject({ status: 'unchanged', index: 'added' });
+      expect(fs.readFileSync(indexPath(r), 'utf-8')).toContain(roadmapRow);
+    });
+
+    test('no documentation/INDEX.md: none is created', () => {
+      const r = root();
+      expect(run(r, queue(), '2026-11-26')).toMatchObject({ status: 'written', index: 'none' });
+      expect(fs.existsSync(indexPath(r))).toBe(false);
+    });
+
+    test('a roadmap outside documentation/ is not indexed', () => {
+      const r = root();
+      seed(r);
+      const before = fs.readFileSync(indexPath(r), 'utf-8');
+      expect(run(r, queue(), '2026-11-26', { ...on, roadmap: { path: 'ROADMAP.md' } })).toMatchObject({ status: 'written', index: 'none' });
+      expect(fs.readFileSync(indexPath(r), 'utf-8')).toBe(before);
+    });
+
+    test('a consumer-owned index shape is left alone', () => {
+      const r = root();
+      fs.mkdirSync(path.join(r, 'documentation'), { recursive: true });
+      const foreign = '# Docs\n\n| Title | Link |\n|---|---|\n| Roadmap | [r](plans/roadmap.md) |\n';
+      fs.writeFileSync(indexPath(r), foreign);
+      expect(run(r, queue(), '2026-11-26')).toMatchObject({ status: 'written', index: 'skipped' });
+      expect(fs.readFileSync(indexPath(r), 'utf-8')).toBe(foreign);
+    });
   });
 
   test('absent path or a disabled switch writes nothing', () => {

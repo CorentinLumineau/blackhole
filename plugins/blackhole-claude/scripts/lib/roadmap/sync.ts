@@ -1,6 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { QueueJson } from '../campaign-status/types.ts';
+import { appendIndexRowIfAbsent } from '../check-common.ts';
+import { ROOT_DOC_INDEX_PATH, isRegenerableRootIndex, rootIndexRowFor } from '../doc-index-generate.ts';
 import { buildRoadmap, renderRoadmapBody } from './render.ts';
 
 // Writes the roadmap document where the consumer's config declares one, and only when the ranking
@@ -13,6 +15,8 @@ export type RoadmapConfig = {
 };
 
 export type RoadmapTarget = { target: string } | { skip: 'no-path' | 'disabled' };
+
+const WINDOWS_DRIVE = /^[A-Za-z]:/;
 
 const fail = (key: string, why: string): never => {
   throw new Error(`roadmap config: ${key} ${why}`);
@@ -34,7 +38,7 @@ export function resolveRoadmapTarget(config: RoadmapConfig | undefined, repoRoot
   const relative = path.posix.normalize(declared.replace(/\\/g, '/'));
   const root = path.resolve(repoRoot);
   const target = path.resolve(root, relative);
-  if (declared === '' || path.isAbsolute(declared) || !relative.endsWith('.md') || !target.startsWith(root + path.sep)) {
+  if (declared === '' || path.isAbsolute(declared) || WINDOWS_DRIVE.test(declared) || !relative.endsWith('.md') || !target.startsWith(root + path.sep)) {
     return fail('roadmap.path', `must be a repo-relative .md path inside the repo (got ${JSON.stringify(declared)})`);
   }
   return { target };
@@ -56,9 +60,30 @@ const frontmatter = (created: string, updated: string): string =>
     '',
   ].join('\n');
 
+/** What happened to the roadmap's row in `documentation/INDEX.md`. */
+export type IndexOutcome = 'added' | 'present' | 'skipped' | 'none';
+
 export type RoadmapSync =
-  | { status: 'written' | 'unchanged'; path: string }
+  | { status: 'written' | 'unchanged'; path: string; index: IndexOutcome }
   | { status: 'skipped'; reason: 'no-path' | 'disabled' };
+
+/**
+ * Doc governance: a roadmap under `documentation/` gets its row in `documentation/INDEX.md`, built
+ * from the file's own frontmatter and inserted in path order. A repo without that index gets none
+ * created, and an index that is not blackhole's own shape (`isRegenerableRootIndex`) is left alone.
+ */
+function upsertIndexRow(repoRoot: string, rel: string, text: string): IndexOutcome {
+  const docsPrefix = 'documentation/';
+  const indexAbs = path.join(repoRoot, ROOT_DOC_INDEX_PATH);
+  if (!rel.startsWith(docsPrefix) || !fs.existsSync(indexAbs)) return 'none';
+  const existing = fs.readFileSync(indexAbs, 'utf-8');
+  if (!isRegenerableRootIndex(existing)) return 'skipped';
+  const row = rootIndexRowFor(rel.slice(docsPrefix.length), text);
+  if (row === null) return 'none';
+  const { content, appended } = appendIndexRowIfAbsent(existing, row);
+  if (appended) fs.writeFileSync(indexAbs, content);
+  return appended ? 'added' : 'present';
+}
 
 /**
  * Renders the roadmap from the queue and writes it when its body differs from the file on disk;
@@ -72,9 +97,12 @@ export function syncRoadmap(opts: { queue: QueueJson | undefined; config: Roadma
   const body = renderRoadmapBody(buildRoadmap(opts.queue));
   const existing = fs.existsSync(resolved.target) ? fs.readFileSync(resolved.target, 'utf-8') : null;
   const match = existing === null ? null : FRONTMATTER.exec(existing);
-  if (existing !== null && match && existing.slice(match[0].length) === body) return { status: 'unchanged', path: rel };
+  if (existing !== null && match && existing.slice(match[0].length) === body) {
+    return { status: 'unchanged', path: rel, index: upsertIndexRow(opts.repoRoot, rel, existing) };
+  }
   const created = /^created: (\d{4}-\d{2}-\d{2})$/m.exec(match?.[1] ?? '')?.[1] ?? opts.date;
+  const text = frontmatter(created, opts.date) + body;
   fs.mkdirSync(path.dirname(resolved.target), { recursive: true });
-  fs.writeFileSync(resolved.target, frontmatter(created, opts.date) + body);
-  return { status: 'written', path: rel };
+  fs.writeFileSync(resolved.target, text);
+  return { status: 'written', path: rel, index: upsertIndexRow(opts.repoRoot, rel, text) };
 }

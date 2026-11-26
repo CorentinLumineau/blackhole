@@ -5,8 +5,8 @@ import type { QueueIssue, QueueJson } from '../campaign-status/types.ts';
 import { orderIssues, waveOf } from '../pareto-order.ts';
 
 // The consumer roadmap: every open issue of `queue.json` in the order the run takes them, as a
-// pure function of the queue. The order is `pareto-order.ts`'s (wave, stored priority, effort,
-// oldest); this module groups and renders it and ranks nothing itself. No clock, no I/O: the same
+// pure function of the queue. The order is `pareto-order.ts`'s (wave, owner pin, stored priority,
+// effort, oldest); this module groups and renders it and ranks nothing itself. No clock, no I/O: the same
 // queue renders the same bytes, so a file that is rewritten only when the body changed stays quiet.
 
 export type RoadmapRow = {
@@ -74,7 +74,7 @@ function ownerWait(issue: QueueIssue, issues: Record<string, QueueIssue>): strin
 export function buildRoadmap(queue: QueueJson | undefined): RoadmapModel {
   const issues = Object.fromEntries(Object.entries(queue?.issues ?? {}).filter(([key]) => isSameRepoKey(key)));
   const isOpen = (i: QueueIssue) => !DONE_STATUSES.includes(i.status ?? '');
-  const open = orderIssues(issues, isOpen);
+  const open = orderIssues(issues, isOpen, queue?.user_queue_order);
   const waits = new Map(open.map((n) => [n, ownerWait(issues[String(n)], issues)]));
 
   const owner: RoadmapRow[] = open
@@ -82,12 +82,7 @@ export function buildRoadmap(queue: QueueJson | undefined): RoadmapModel {
     .map((n) => ({ ...rowOf(n, issues[String(n)]), waitingFor: waits.get(n) ?? '' }));
 
   const { waves } = waveOf(issues);
-  const pins = queue?.user_queue_order ?? [];
-  const pinned = (n: number) => (pins.includes(n) ? pins.indexOf(n) : Number.POSITIVE_INFINITY);
-  // `open` is already in wave, priority, effort, oldest order; a pin sorts first within its wave and ties keep that order.
-  const ranked = open
-    .filter((n) => waits.get(n) === null)
-    .sort((a, b) => waves[a] - waves[b] || pinned(a) - pinned(b));
+  const ranked = open.filter((n) => waits.get(n) === null);
 
   const rows: RoadmapRanked[] = ranked.map((n, at) => ({ ...rowOf(n, issues[String(n)]), rank: at + 1 }));
   const distinctWaves = [...new Set(ranked.map((n) => waves[n]))];
