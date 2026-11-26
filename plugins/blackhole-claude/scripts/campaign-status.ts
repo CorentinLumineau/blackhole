@@ -16,7 +16,7 @@ import { resolveHost, usageSourceFor } from './lib/usage-source.ts';
 import { collectDenyCounts } from './lib/campaign-status/deny-counts.ts';
 import { crossRepoBlockersOf, fetchForgeCounts, fetchMergedPrs, readOpenIssues } from './lib/campaign-status/forge.ts';
 import { readPrLanding } from './lib/forge-adapter/pr-landing.ts';
-import { DONE_STATUSES } from './lib/campaign-status/queue.ts';
+import { DONE_STATUSES, isSameRepoKey } from './lib/campaign-status/queue.ts';
 import { writeStatusData } from './lib/campaign-status/data.ts';
 import { fetchPrSignals } from './lib/campaign-status/pr-signals.ts';
 import { renderStatusHtml } from './lib/campaign-status/html.ts';
@@ -41,6 +41,7 @@ import { forgeDeclaredCrossRepo } from './lib/pr-dependencies.ts';
 import type { PluginDriftSignal, PluginDriftSource } from './plugin-drift-signal.ts';
 import type { CatchupArgs, StatusReport } from './lib/campaign-status/types.ts';
 import { pluginVersionWarning, readPluginVersion, readPluginVersionCheck } from './lib/plugin-drift.ts';
+import { readWorkerContext } from './lib/worker-context-report.ts';
 import { projectIdentity } from './project-identity.ts';
 
 const PLUGIN_ROOT = path.join(import.meta.dir, '..');
@@ -213,6 +214,7 @@ export async function collectStatusReport(
     runContext: readJsonOrNull(path.join(campaignDir, 'run-context.json')),
     pending: readPending(campaignDir),
     docCarry: readDocCarry(campaignDir, config as Record<string, any>, queue, ledger),
+    workerContext: readWorkerContext(campaignDir),
   });
   return { report, state, host, crossRepoBlockers };
 }
@@ -237,13 +239,14 @@ const readJsonOrNull = (file: string): unknown => {
 };
 
 /** Doc carry totals from each issue's route and `staged/<n>/manifest.json`; null when docs governance is off (gate as `route-artifacts.ts`). */
-function readDocCarry(campaignDir: string, config: Record<string, any>, queue: QueueJson, ledger: LedgerJson): DocCarryRead {
+export function readDocCarry(campaignDir: string, config: Record<string, any>, queue: QueueJson, ledger: LedgerJson): DocCarryRead {
   const docs = config.docs_governance;
   if (docs?.enabled !== true || docs?.write_governance === false) return null;
   try {
     const repoRoot = path.dirname(campaignDir);
     const issues: DocCarryIssue[] = [];
     for (const [key, q] of Object.entries(queue.issues ?? {})) {
+      if (!isSameRepoKey(key)) continue;
       const n = Number(key);
       const done = DONE_STATUSES.includes(q?.status ?? '');
       const route = latestRoute(ledger as never, queue as never, n);

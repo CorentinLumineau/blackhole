@@ -1,14 +1,15 @@
 import * as path from 'path';
 import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
 import { readJsonFile } from './lib/fs.ts';
-import { QUEUE_PHASES, QUEUE_STATUSES } from './lib/campaign-status/queue.ts';
+import { DONE_STATUSES, QUEUE_PHASES, QUEUE_STATUSES } from './lib/campaign-status/queue.ts';
 import { installStateFile } from './lib/state-write-guard.ts';
 
 // One-shot migration of a consumer `queue.json` that still carries legacy `status`/`phase` values
 // the state-write guard now refuses (`queue-dag.md` § Legacy values). Dry run by default; `--apply`
 // snapshots the live file to `archive/` and installs through `installStateFile`, so the guard
 // validates the result. Every entry is kept: a value with no documented mapping throws, naming the
-// entry, rather than being guessed or dropped.
+// entry, rather than being guessed or dropped. It also drops the ingest-appended numbers from
+// `user_queue_order`, which must hold only owner pins (`migrateUserQueueOrder`).
 
 const USAGE = 'Usage: bun run scripts/queue-migrate.ts [--campaign-dir <dir>] [--apply]';
 
@@ -74,25 +75,54 @@ export function migrateQueueEntries(issues: Record<string, unknown>): { issues: 
   return { issues: out, changes };
 }
 
+/** Notes an ingest-created entry carries (`auto-sync ingest`, `Ingested turn 13 ...`). */
+export const INGEST_NOTE_RE = /\bauto-sync\b|^\s*ingested\b/i;
+
+/**
+ * Splits `user_queue_order` into owner pins and leftovers of the old ingest append. Ingest left no
+ * marker, so the rule is conservative: drop a number only when it has no queue entry, its entry is
+ * terminal, or its entry is still `ready` with an ingest note; keep everything else (a kept ingest
+ * entry is harmless, a dropped owner pin is lost intent). Pure; order of kept entries is preserved.
+ */
+export function migrateUserQueueOrder(queue: { user_queue_order?: unknown; issues?: Record<string, unknown> }): {
+  order: number[];
+  dropped: number[];
+  kept: number[];
+} {
+  const order: number[] = [];
+  const dropped: number[] = [];
+  const raw = Array.isArray(queue.user_queue_order) ? queue.user_queue_order : [];
+  for (const n of raw as number[]) {
+    const entry = queue.issues?.[String(n)] as Entry | undefined;
+    const notes = typeof entry?.notes === 'string' ? entry.notes : '';
+    const ingestOnly = entry?.status === 'ready' && INGEST_NOTE_RE.test(notes);
+    const drop = !entry || DONE_STATUSES.includes(String(entry.status ?? '')) || ingestOnly;
+    (drop ? dropped : order).push(n);
+  }
+  return { order, dropped, kept: [...order] };
+}
+
 /** Reads `<campaignDir>/queue.json`, migrates it, and with `apply` installs it through the guard. */
 export function runQueueMigration(
   campaignDir: string,
   opts: { apply?: boolean; now?: string } = {},
-): { changes: QueueChange[]; applied: boolean } {
+): { changes: QueueChange[]; orderDropped: number[]; orderKept: number[]; applied: boolean } {
   const livePath = path.join(campaignDir, 'queue.json');
   const live = readJsonFile(livePath, livePath) as { issues?: Record<string, unknown>; [key: string]: unknown };
   if (typeof live.issues !== 'object' || live.issues === null) throw new Error(`${livePath} has no "issues" object`);
   const { issues, changes } = migrateQueueEntries(live.issues);
-  if (!opts.apply || changes.length === 0) return { changes, applied: false };
+  const { order, dropped, kept } = migrateUserQueueOrder({ user_queue_order: live.user_queue_order, issues });
+  const report = { changes, orderDropped: dropped, orderKept: kept };
+  if (!opts.apply || (changes.length === 0 && dropped.length === 0)) return { ...report, applied: false };
 
   const result = installStateFile({
     livePath,
     archiveDir: path.join(campaignDir, 'archive'),
-    content: `${JSON.stringify({ ...live, refreshed_at: opts.now ?? new Date().toISOString(), issues }, null, 2)}\n`,
+    content: `${JSON.stringify({ ...live, refreshed_at: opts.now ?? new Date().toISOString(), ...(Array.isArray(live.user_queue_order) ? { user_queue_order: order } : {}), issues }, null, 2)}\n`,
     entityKey: 'issues',
   });
   if (!result.ok) throw new Error(`state-write-guard refused the migrated queue: ${result.reason}`);
-  return { changes, applied: true };
+  return { ...report, applied: true };
 }
 
 /** Parses the CLI flags; an error string means print usage and exit 2. */
@@ -114,11 +144,13 @@ if (import.meta.main) {
   }
   const { campaignDir } = args;
   try {
-    const { changes, applied } = runQueueMigration(campaignDir, { apply: args.apply });
+    const { changes, orderDropped, orderKept, applied } = runQueueMigration(campaignDir, { apply: args.apply });
     for (const c of changes) console.log(`#${c.issue} ${c.field}: ${c.from} -> ${c.to}`);
+    for (const n of orderDropped) console.log(`dropped from user_queue_order: #${n}`);
+    for (const n of orderKept) console.log(`kept pin: #${n}`);
     const issues = new Set(changes.map((c) => c.issue)).size;
-    if (changes.length === 0) console.log('queue-migrate: no legacy values, nothing to do');
-    else console.log(applied ? `queue-migrate: ${issues} entries migrated` : `queue-migrate: ${issues} entries would change (dry run; pass --apply to write)`);
+    if (changes.length === 0 && orderDropped.length === 0) console.log('queue-migrate: no legacy values or ingest-appended pins, nothing to do');
+    else console.log(applied ? `queue-migrate: ${issues} entries migrated, ${orderDropped.length} dropped from user_queue_order` : `queue-migrate: ${issues} entries, ${orderDropped.length} user_queue_order entries would change (dry run; pass --apply to write)`);
   } catch (error) {
     console.error(`queue-migrate: ${error instanceof Error ? error.message : String(error)}`);
     process.exit(1);

@@ -285,6 +285,26 @@ describe('buildStatusReport — ready_to_merge', () => {
     expect(r.ready_to_merge[0].pr).toBe(11);
   });
 
+  test('a cross-repo key delivered at LGTM is not listed as ready, and no issue is NaN (#1499)', () => {
+    const r = buildStatusReport({
+      config: { repo: 'acme/widgets' },
+      queue: {
+        issues: {
+          '1': queue.issues['1']!,
+          'blackhole#7': { title: 'other repo', status: 'in-flight', phase: 'review', pr: 77, notes: 'delivered-at-LGTM (leave-open)' },
+        },
+      },
+      ledger: {},
+      checkpoint: {},
+      forge: FORGE_OK,
+      paceLine: null,
+      hostNotes: [],
+      generatedAt: GENERATED_AT,
+    });
+    expect(r.ready_to_merge.map((i) => i.issue)).toEqual([1]);
+    expect(r.ready_to_merge.some((i) => Number.isNaN(i.issue))).toBe(false);
+  });
+
   test('Gitea uses the origin host and /pulls/', () => {
     const r = build({ forge: 'gitea' }, { forge: 'gitea', host: 'git.example.org' });
     expect(r.ready_to_merge[0].pr_url).toBe('https://git.example.org/acme/widgets/pulls/11');

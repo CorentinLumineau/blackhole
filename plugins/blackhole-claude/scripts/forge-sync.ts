@@ -11,6 +11,7 @@ import type { QueueJson } from './lib/campaign-status/types.ts';
 import { installStateFile } from './lib/state-write-guard.ts';
 import { readLaneConfig } from './lib/lane.ts';
 import { syncQueue, type SyncResult } from './lib/forge-sync.ts';
+import { ISSUE_LIMIT } from './lib/pareto-score.ts';
 import { peerClaims, type DetectResult } from './lib/peer-campaigns.ts';
 import { detectForCampaign, sessionIdentity } from './peer-campaigns.ts';
 
@@ -26,7 +27,6 @@ import { detectForCampaign, sessionIdentity } from './peer-campaigns.ts';
 // queue is read again just before the write and the sync is re-applied to that copy.
 
 const USAGE = 'Usage: bun run scripts/forge-sync.ts [--campaign-dir <dir>] [--lane <name>] [--dry-run]';
-const ISSUE_LIMIT = 1000;
 
 type Config = { auto_sync?: boolean; repo?: string; forge?: string; scope_milestone?: string; scope_labels?: string[]; default_touch_paths?: string[]; size_label_prefix?: string; catchup?: unknown };
 

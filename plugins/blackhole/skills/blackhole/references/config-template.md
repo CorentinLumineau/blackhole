@@ -36,6 +36,7 @@ Committed template: `.blackhole/config.json`
 | `target_branch` | yes | Merge target (usually `main`) |
 | `forge` | yes | `github` \| `gitea` \| `gitlab` (v2 — see ADR-027). Default `github`. When unset at bootstrap, infer from `git remote get-url origin`; explicit value always wins. Mismatch between configured `forge` and detected origin host **must** fail bootstrap loudly (never silently fall back to `github` on a non-GitHub origin). Backend CLIs: `gh` (GitHub), `tea` (Gitea), `glab` (GitLab). Detection/validation implementation: #682 |
 | `parallel_max` | no | Max parallel workers (default 4) |
+| `pareto_max_age_days` | no | Days after which a stored Pareto score is stale and re-scored (default `7`; `forge-sync.md` § Score on ingest) |
 | `scratchpad_dir` | no | Parent dir for git worktrees |
 | `size_label_prefix` | no | Label prefix for size tags (default `size:`) |
 | `default_touch_paths` | no | Glob patterns for default scope boundary |
@@ -309,6 +310,7 @@ cell leaves out.
 | `target_branch` | none | — | The merge target; every PR card already links its PR on the forge | Other config |
 | `forge` | `links` | — | Picks the forge the quick links point at | Other config |
 | `parallel_max` | `config` | Concurrency | | Budget |
+| `pareto_max_age_days` | none | — | Staleness threshold of the re-score; nothing the owner acts on | Other config |
 | `scratchpad_dir` | none | — | Where worktrees live on this machine; nothing the owner acts on | Other config |
 | `size_label_prefix` | none | — | Label spelling the sync reads; sizes appear on no panel | Other config |
 | `default_touch_paths` | none | — | Per-issue plan scope; each plan carries its own | Other config |

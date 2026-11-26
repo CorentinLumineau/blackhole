@@ -430,10 +430,24 @@ export class GiteaForgeAdapter implements ForgeAdapter {
     runTeaText(['pull', 'comment', String(number), ...this.repoFlag(), '--content', body]);
   }
 
+  /** `tea --add-labels` fails on a label the repo lacks (GitHub and GitLab create it), so it is created first. */
   async labelAdd(entity: { type: 'issue' | 'pr'; number: number }, labels: string[]): Promise<void> {
+    for (const label of labels) this.ensureLabel(label);
+    this.addLabels(entity, labels);
+  }
+
+  private addLabels(entity: { type: 'issue' | 'pr'; number: number }, labels: string[]): void {
     if (labels.length === 0) return;
     const kind = entity.type === 'issue' ? 'issue' : 'pull';
     runTeaText([kind, 'edit', String(entity.number), ...this.repoFlag(), '--add-labels', labels.join(',')]);
+  }
+
+  private ensureLabel(label: string): void {
+    try {
+      runTeaText(['labels', 'create', ...this.repoFlag(), '--name', label, '--color', '#1d76db']);
+    } catch (error) {
+      if (!/already exists/i.test(String(error))) throw error;
+    }
   }
 
   async labelRemove(entity: { type: 'issue' | 'pr'; number: number }, labels: string[]): Promise<void> {
@@ -471,14 +485,8 @@ export class GiteaForgeAdapter implements ForgeAdapter {
         return { state: mapped.state, labels: mapped.labels.map((l) => l.name), assignees: mapped.assignees ?? [], updatedAt: mapped.updatedAt };
       },
       prActivity: async (issue) => latestClosingPrActivity(this.listPrsRest('open', 100), issue),
-      ensureLabel: async (label) => {
-        try {
-          runTeaText(['labels', 'create', ...this.repoFlag(), '--name', label, '--color', '#1d76db']);
-        } catch (error) {
-          if (!/already exists/i.test(String(error))) throw error;
-        }
-      },
-      labelAdd: (issue, label) => this.labelAdd({ type: 'issue', number: issue }, [label]),
+      ensureLabel: async (label) => this.ensureLabel(label),
+      labelAdd: async (issue, label) => this.addLabels({ type: 'issue', number: issue }, [label]),
       labelRemove: (issue, label) => this.labelRemove({ type: 'issue', number: issue }, [label]),
       assign: async (issue, user, current) => setAssignees(issue, [...current, user]),
       unassign: async (issue, user, current) => setAssignees(issue, current.filter((a) => a !== user)),

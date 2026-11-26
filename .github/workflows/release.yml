@@ -4,6 +4,13 @@ on:
   push:
     tags:
       - 'v*'
+  # Called by release-cadence.yml: its GITHUB_TOKEN tag push starts no `push` run.
+  workflow_call:
+    inputs:
+      tag:
+        description: "Release tag to publish (vX.Y.Z)"
+        type: string
+        required: true
 
 jobs:
   release:
@@ -20,6 +27,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Setup Bun
         uses: ./.github/actions/setup-bun
@@ -46,7 +54,7 @@ jobs:
       - name: Resolve release notes
         id: notes
         run: |
-          TAG="${GITHUB_REF#refs/tags/}"
+          TAG="${{ inputs.tag || github.ref_name }}"
           NOTES_FILE=".github/releases/${TAG}.md"
           if [ -f "$NOTES_FILE" ]; then
             echo "source=file" >> "$GITHUB_OUTPUT"
@@ -76,5 +84,6 @@ jobs:
         with:
           name: ${{ steps.notes.outputs.source == 'file' && format('{0} — Release', steps.notes.outputs.title) || '' }}
           body: ${{ steps.notes.outputs.source == 'file' && steps.notes.outputs.body || steps.git-cliff.outputs.content }}
+          tag_name: ${{ inputs.tag || github.ref_name }}
           draft: false
           prerelease: false

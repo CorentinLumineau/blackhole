@@ -11,7 +11,7 @@ disable-model-invocation: true
 Maintainer workflow for publishing a **product-focused** GitHub release.
 Every tag `vX.Y.Z` must have a matching notes file before the tag is pushed.
 
-The every-20-merged-PR cadence (when the owner has set `RELEASE_CADENCE_ENABLED=true`) is the
+The every-10-merged-PR cadence (on unless the owner set the kill switch `RELEASE_CADENCE_ENABLED=false`) is the
 **primary** release path ([ADR-060](../../../documentation/decisions/ADR-060-cadence-primary-release-policy.md),
 [runbook](../../../documentation/runbooks/release-cadence.md)). This skill is the **hotfix /
 off-cadence** path only: use it when a fix cannot wait for the cadence and no merged PR already

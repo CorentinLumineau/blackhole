@@ -21,7 +21,7 @@ below are the procedure only.
     primary reviewer's severity or reasoning is correct merely because it was reported;
     this mode exists for a second, unprejudiced look.
 *   **Verdict per finding**: for each stamped finding, emit one `verification[]` entry
-    (`worker-schemas.md` § Reviewer) — `finding_id` (echoed verbatim from the stamped
+    (`reviewer-schemas.md` § Reviewer) — `finding_id` (echoed verbatim from the stamped
     input), `verdict` (`confirmed` if the exploit path is reproducible or otherwise
     substantiated, `refuted` if it is not demonstrable), and `evidence` (a concrete
     pointer — what was checked and why it did or did not hold, not a restatement of the

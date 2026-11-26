@@ -46,7 +46,7 @@ const pct = (n: number, total: number): number => Math.round((n / total) * 1000)
 const percentile = (sorted: number[], p: number): number | null =>
   sorted.length === 0 ? null : sorted[Math.min(sorted.length - 1, Math.ceil((p / 100) * sorted.length) - 1)];
 
-const median = (sorted: number[]): number | null => {
+export const median = (sorted: number[]): number | null => {
   if (sorted.length === 0) return null;
   const mid = sorted.length >> 1;
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;

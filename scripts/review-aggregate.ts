@@ -2,6 +2,7 @@ import { readJsonFile } from './lib/fs.ts';
 import { parseFlags } from './lib/argv-flags.ts';
 import { decide, gitIo } from './lib/slop-citation/slop-citation-check.mjs';
 import { severityRank } from './lib/worker-json/constants.ts';
+import { directReviewBlockers, findUnloadedAuditModules, type AuditContext } from './lib/audit-module-triggers.ts';
 
 export type Finding = {
   id?: string;
@@ -64,6 +65,8 @@ export type ReviewerInput = {
   // the orchestrator and passed to aggregateReview's separate `verification` input
   // below, not consumed from this field directly by aggregateReview itself.
   verification?: VerificationEntry[];
+  // On-demand audit modules the reviewer Read (`reviewer.md` § On-demand audit modules).
+  loaded_modules?: string[];
   error?: string;
 };
 
@@ -473,6 +476,8 @@ function parseArgs(argv: string[]): {
   baseRef?: string;
   repoDir?: string;
   head?: string;
+  auditContextFile?: string;
+  directReview: boolean;
 } {
   const flags = parseFlags(argv.slice(2));
   return {
@@ -485,6 +490,8 @@ function parseArgs(argv: string[]): {
     baseRef: typeof flags['base-ref'] === 'string' ? flags['base-ref'] : undefined,
     repoDir: typeof flags['repo-dir'] === 'string' ? flags['repo-dir'] : undefined,
     head: typeof flags['head'] === 'string' ? flags['head'] : undefined,
+    auditContextFile: typeof flags['audit-context-file'] === 'string' ? flags['audit-context-file'] : undefined,
+    directReview: flags['direct-review'] === true,
   };
 }
 
@@ -518,11 +525,11 @@ function isVerificationEntryArray(value: unknown): value is VerificationEntry[] 
 }
 
 if (import.meta.main) {
-  const { reviewerFile, issueRef, prRef, priorFile, verificationFile, reviewIteration, baseRef, repoDir, head } = parseArgs(process.argv);
+  const { reviewerFile, issueRef, prRef, priorFile, verificationFile, reviewIteration, baseRef, repoDir, head, auditContextFile, directReview } = parseArgs(process.argv);
 
   if (!reviewerFile || !issueRef) {
     console.error(
-      'Usage: bun run scripts/review-aggregate.ts --reviewer-file <path> --issue-ref <N> [--pr-ref <P>] [--prior-file <ledger-rows.json>] [--verification-file <verification-entries.json>] [--review-iteration <N>] [--base-ref <PR base ref>] [--repo-dir <PR checkout>] [--head <PR head ref>]',
+      'Usage: bun run scripts/review-aggregate.ts --reviewer-file <path> --issue-ref <N> [--pr-ref <P>] [--prior-file <ledger-rows.json>] [--verification-file <verification-entries.json>] [--review-iteration <N>] [--base-ref <PR base ref>] [--repo-dir <PR checkout>] [--head <PR head ref>] --audit-context-file <audit-context.json> [--direct-review]',
     );
     process.exit(1);
   }
@@ -546,6 +553,27 @@ if (import.meta.main) {
     const reviewerRaw = readJsonFile(reviewerFile, 'reviewer file');
     if (!isReviewerInput(reviewerRaw)) {
       throw new Error('reviewer file: invalid reviewer JSON shape');
+    }
+
+    // Fail closed: a review whose diff matches an on-demand module's trigger but whose
+    // `loaded_modules` omits that module skipped an audit (ADR-034 amendment, V-AUDIT-01). The
+    // context comes from `scripts/audit-context.ts`. `--direct-review` (the orchestrator's own
+    // review, no reviewer spawned) is not an opt-out: it is accepted only when that same context
+    // shows a docs-only diff with no other module trigger holding.
+    if (!auditContextFile) {
+      throw new Error('--audit-context-file is required (build it with scripts/audit-context.ts)');
+    }
+    const auditContext = readJsonFile(auditContextFile, 'audit context file') as AuditContext;
+    if (directReview) {
+      const blockers = directReviewBlockers(auditContext);
+      if (blockers.length > 0) {
+        throw new Error(`--direct-review refused: ${blockers.join('; ')} — spawn a reviewer instead`);
+      }
+    } else {
+      const unloaded = findUnloadedAuditModules(auditContext, reviewerRaw.loaded_modules);
+      if (unloaded.length > 0) {
+        throw new Error(`reviewer skipped on-demand audit module(s) whose trigger holds: ${unloaded.join(', ')} — re-spawn the reviewer`);
+      }
     }
 
     let priorFindings: Finding[] | undefined;
@@ -624,7 +652,8 @@ if (import.meta.main) {
         `${result.unresolved_recheck.length} unresolved_recheck entr${result.unresolved_recheck.length === 1 ? 'y' : 'ies'} — see the "unresolved_recheck" field in stdout output`,
       );
     }
-    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    const echoed = auditContext.noPlanReason ? { ...result, no_plan_reason: auditContext.noPlanReason } : result;
+    process.stdout.write(`${JSON.stringify(echoed, null, 2)}\n`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(message);

@@ -154,6 +154,26 @@ describe('formatDashboard — Queue health line', () => {
   });
 });
 
+describe('formatDashboard — cross-repo queue keys (#1499)', () => {
+  test('does not throw or print NaN, and counts the skipped entries', () => {
+    const out = formatDashboard({
+      checkpoint: { orchestrator_turn_id: 1 },
+      queue: {
+        refreshed_at: '2026-09-06T00:00:00.000Z',
+        issues: {
+          '10': { title: 'Same repo', status: 'ready' },
+          'blackhole#1162': { title: 'Other repo', status: 'ready', depends_on: [10] },
+        },
+      },
+      ledger: { findings: [] },
+      forge: { openIssues: 0, openPrs: 0, ok: true },
+    });
+
+    expect(out).not.toContain('NaN');
+    expect(out).toContain('Cross-repo entries not shown: 1 (blackhole#1162)');
+  });
+});
+
 // Issue #929 Task 3 — Routing/Waves output caps, mirroring the existing 350-row
 // renderLedgerOpenSection cap test.
 describe('renderRoutingSection — section cap', () => {
