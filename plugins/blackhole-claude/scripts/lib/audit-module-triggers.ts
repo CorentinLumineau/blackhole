@@ -4,6 +4,8 @@
 // `src/agents/reviewer.md` stubs stay the reviewer-facing wording; `findAuditModuleTriggerDrift`
 // (audit-modules.check.ts) keeps this table and the module directory from diverging.
 
+import { writeGovernanceActive } from './merge-gate/review-artifact.ts';
+
 export type AuditContext = {
   /** Repo-relative paths of the reviewed diff (for a recheck dispatch: the fix commits' files). */
   changedFiles: string[];
@@ -47,7 +49,7 @@ const changedSource = (c: AuditContext): string[] =>
   c.changedFiles.filter((f) => matchesAny(SOURCE_ROOT_GLOBS, f) && !matchesAny(TEST_GLOBS, f) && !isDocPath(f));
 
 const docsGate = (c: AuditContext): boolean => c.config?.docs_governance?.enabled === true;
-const writeGate = (c: AuditContext): boolean => docsGate(c) && c.config?.docs_governance?.write_governance !== false;
+const writeGate = (c: AuditContext): boolean => writeGovernanceActive(c.config?.docs_governance);
 const planHasHeading = (c: AuditContext, heading: string): boolean =>
   new RegExp(`^## ${heading}\\b`, 'm').test(c.planText ?? '');
 const planFrontmatterValue = (c: AuditContext, key: string): string | undefined =>

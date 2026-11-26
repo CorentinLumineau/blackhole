@@ -1,4 +1,5 @@
 import { checkpointSection, hasCheckpointSection } from './dashboard.ts';
+import { writeGovernanceActive } from '../merge-gate/review-artifact.ts';
 import { formatScopeLabel } from './scope-label.ts';
 import type { BlockedClass, BoardItem, ConfigSummaryInput, QueueDrift, StageCounts, StatusReport, Tone } from './types.ts';
 
@@ -97,7 +98,7 @@ const scopeFilter = (c: ConfigSummaryInput): string => formatScopeLabel({ milest
 // staging carry follows `write_governance`, default on.
 const docsGovernance = (c: ConfigSummaryInput): string => {
   if (c.docs_governance?.enabled !== true) return 'off';
-  return `on · staging carry ${c.docs_governance.write_governance === false ? 'off' : 'on'}`;
+  return `on · staging carry ${writeGovernanceActive(c.docs_governance) ? 'on' : 'off'}`;
 };
 
 /** The rules the run works under, read from `config.json`; defaults are the ones `config-template.md` documents. */
