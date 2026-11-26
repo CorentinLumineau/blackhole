@@ -825,14 +825,14 @@ describe('validate-bash-command.js — worktree removal is left to the harness',
 // was naive character-by-character `(`/`)` depth counting with no awareness of a heredoc body
 // nested inside it, so `"$(cat <<'EOF' … EOF)"` pulled the ENTIRE heredoc body — including any
 // literal `worktree`/`remove` words in its prose — verbatim into the enclosing clause's token
-// stream, which `containsWorktreeRemoveTokens` then matched as a real invocation. Fixed by a new,
+// stream, where the invocation scan then matched it as a real command. Fixed by a new,
 // additive `computeHeredocBodyMask` export from `bash-context.js` (an independent pass reusing
 // its private heredoc-scanning helpers verbatim, not a second heredoc-boundary detector — see
 // that function's own docstring for why it must NOT skip double-quoted spans wholesale the way
 // `computeMaskedSpans` does), threaded through `skipDollarParenSpan` and `clauseTailFrom` only.
 // `findClauseStartIndices` — the actual quote-UNAWARE clause splitter ADR-040 protects — is
-// untouched by this fix; see the F-00065 describe block above, re-run unmodified as this fix's
-// own regression guard.
+// untouched by this fix; the clause-splitting cases in this file stay unmodified as its
+// regression guard.
 describe('bash-context.js — computeHeredocBodyMask (#895)', () => {
   // In-process require of the hook utility module, same convention as
   // `hooks-validate-file.test.ts`'s `mainCloneRoot` unit tests (#889): a boolean-array-position

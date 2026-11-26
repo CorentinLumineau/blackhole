@@ -511,7 +511,8 @@ const extractCdTargetText = (argTokens) => {
 const resolveAgainstBase = (text, base) => (path.isAbsolute(text) ? text : path.resolve(base, text));
 
 /**
- * Every worktree-removing invocation in `command`, in either spelling this guard covers. For the
+ * Every worktree-removing invocation in `command`, in either spelling (`git worktree remove`, `rm`)
+ * that `git-main-clone-guard.js` classifies. For the
  * `git worktree remove` spelling the walk is tolerant of global options between `git` and
  * `worktree` (`-C <path>`, `-c k=v`, `--no-pager`, `--git-dir=<path>`, combinations), of more than
  * one such invocation in a chained command, and of leading `NAME=value` assignments before the
@@ -731,7 +732,7 @@ const findRemovalInvocations = (command, cwd) => {
 /** True when `arg` is a literal path this hook can resolve without executing anything — no shell
  * variable (`$VAR`, `${VAR}`), command substitution (`$(...)`, `` `...` ``), glob metacharacter,
  * parenthesis, or quote character. A dynamic argument cannot be resolved by static inspection, so
- * the unpushed-commit check below has nothing to run against — same "cannot verify, must refuse"
+ * a caller (`bash-write-target-guard.js`) has no statically known path to check — same "cannot verify, must refuse"
  * posture pattern-loader.js takes for a pattern file it cannot parse. `(`/`)` are rejected here as
  * defense in depth (F-00058): after `clauseTailFrom`'s own fix, an unmasked `)` can no longer reach
  * a token via that path at all, but a path argument built any other way (e.g. a future tokenizer

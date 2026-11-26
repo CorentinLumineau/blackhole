@@ -74,7 +74,7 @@ Bash write-target guard must keep the fallback #1495 asks for.
 - A Cursor, Codex or Antigravity worker can remove a worktree holding unpushed commits. Accepted:
   git still refuses a dirty tree without `--force`, and `recovery-protocol.md` § 6(c) still tells
   the worker to push first.
-- About 2,100 lines of removal-guard tests and about 1,400 lines of guard code go away. The
+- About 700 lines of guard code and about 2,100 lines of removal-guard tests go away. The
   pattern ids `worktree-remove-*` and `too-many-removal-targets` no longer exist.
 - The unpushed-work rule is prose in `blackhole-protocol.md` and `recovery-protocol.md`; the
   hook-enforced wording is removed from both.
