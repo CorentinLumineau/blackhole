@@ -53,7 +53,7 @@ const {
   isSettingsFilePath,
 } = require('./hook-event-log');
 const { FILE_WRITE, isTrustedShapedWrite, isTrustedStateWrite } = require('./state-dir-write-shape');
-const { isLiteralPathArg, extractCdTargetText, normalizeShellWord, MAX_CWD_CANDIDATES } = require('./worktree-removal-guard');
+const { isLiteralPathArg, extractCdTargetText, normalizeShellWord, MAX_CWD_CANDIDATES } = require('./shell-invocation-scan');
 
 /** Command words whose write behavior cannot be resolved by static inspection of the command
  * string at all — the residual gap ADR-029 accepts and downgrades to WARN rather than a silent
@@ -251,7 +251,7 @@ const tokenize = (text) => {
  * F-00034 incident class. Pinned by
  * `scripts/hooks-validate-bash.test.ts`'s `#804: 'sed -i' whose script contains a quoted ';'
  * still resolves its real target (quote-policy pin)` case. Do not make this quote-unaware to
- * match `worktree-removal-guard.js`'s `findClauseStartIndices` — that guard needs the opposite
+ * match `shell-invocation-scan.js`'s `findClauseStartIndices` — that guard needs the opposite
  * policy for its own, equally load-bearing reason (see that function's own `QUOTE POLICY:` note).
  */
 const clauseRanges = (visible) => {
@@ -1419,7 +1419,7 @@ const hasPipedScript = (visible) => {
   return false;
 };
 
-/** `isLiteralPathArg` (from `worktree-removal-guard.js`) excludes shell metacharacters that make a
+/** `isLiteralPathArg` (from `shell-invocation-scan.js`) excludes shell metacharacters that make a
  * target dynamic (`$`, `` ` ``, `*`, `?`, `[`, `]`, `{`, `}`) but not bash tilde (`~`) expansion —
  * a target like `~/foo.txt` passes it as "literal," yet `path.resolve(cwd, target)` never performs
  * that expansion (it is a shell-level substitution, not a filesystem one), so the resolved path
@@ -1430,7 +1430,7 @@ const hasPipedScript = (visible) => {
  * (a worktree-spawned implementer's environment is not guaranteed to match), so a `~`-prefixed
  * target is routed to the `warn`/`bash-write-target-unresolvable` tier instead — the same treatment
  * already given to `python3 -c`/`awk`/etc. Scoped to this module's own new usage only:
- * `worktree-removal-guard.js`'s pre-existing `isLiteralPathArg` call is unaffected (see that
+ * `shell-invocation-scan.js`'s pre-existing `isLiteralPathArg` call is unaffected (see that
  * module's own containment check, which fails closed on an unresolvable path rather than allowing
  * it — a different, non-silent-allow failure mode, tracked separately rather than fixed here). */
 const isResolvableLiteralTarget = (raw, decoded = false) =>
