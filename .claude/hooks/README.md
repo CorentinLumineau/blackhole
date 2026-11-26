@@ -91,12 +91,14 @@ repository), so on its own that metadata is only a claim, and the anchor is the 
   process. This never adds a deny: the value `CLAUDE_PROJECT_DIR` holds for a natively dispatched
   worker is visible only to the hook process, and failing closed on a wrong guess would block every
   worker write. **Residual risk:** with no established anchor a forged clone (variants B and C) and a
-  nested repository (variant D) are not contained, and the Bash guard cannot tell a nested repository
-  from the campaign clone at all; the Write hook still denies D. Tracked in #1609, closed by the
-  OS-level sandbox direction in #1357.
+  nested repository (variant D) are not contained. Variants B and C are tracked in #1615. For D the
+  Bash guard cannot tell a nested repository from the campaign clone at all, while the Write hook
+  still denies it; that is tracked in #1609. Both close with the OS-level sandbox direction in #1357.
 
-A session whose project dir is a linked worktree, or that works in another repo's worktree than its
-project's, is in the second case; start the campaign from the main clone.
+A session whose project dir is a linked worktree is in the second case; start the campaign from the
+main clone. A session whose project dir is a main clone but whose `cwd` is in another repository (its
+clone or one of its worktrees) is in the first case: the two clones disagree, so that repository's
+campaign config grants nothing and no fallback warning is emitted.
 
 Trust is an allow-list of write shapes (`utils/state-dir-write-shape.js`), because the guard
 judges a path while the shell picks the file actually written. In the Bash guard, a target under
