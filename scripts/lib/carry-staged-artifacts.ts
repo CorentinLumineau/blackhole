@@ -288,6 +288,47 @@ const isWithinRoot = (candidate: string, root: string): boolean => {
   return realCandidate === realRoot || realCandidate.startsWith(realRoot + path.sep);
 };
 
+// Trees the campaign or CI executes; a carry never lands under one, whatever the allowlist says
+// about the raw string (a `--package-root` of `hooks` admits `hooks/documentation/**`).
+const PROTECTED_CARRY_PREFIXES = ['.git', '.github', 'package.json', 'hooks'] as const;
+
+const isProtectedCarryPath = (relPath: string): boolean =>
+  PROTECTED_CARRY_PREFIXES.some((prefix) => relPath === prefix || relPath.startsWith(`${prefix}/`));
+
+/**
+ * The target's real path relative to the real repo root (posix), or null when it cannot be
+ * judged: a dangling symlink on the way, or an unreadable component. Resolves the deepest
+ * existing ancestor and re-appends the not-yet-existing tail, so a symlinked directory or file is
+ * judged by where it really lands, not by its lexical name.
+ */
+const realTargetRelative = (targetAbs: string, repoRoot: string): string | null => {
+  let existing = targetAbs;
+  const tail: string[] = [];
+  for (;;) {
+    let stat: fs.Stats | undefined;
+    try {
+      stat = fs.lstatSync(existing);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      const parent = path.dirname(existing);
+      if ((code !== 'ENOENT' && code !== 'ENOTDIR') || parent === existing) return null;
+      tail.unshift(path.basename(existing));
+      existing = parent;
+      continue;
+    }
+    if (stat.isSymbolicLink()) {
+      try {
+        fs.realpathSync(existing);
+      } catch {
+        return null;
+      }
+    }
+    break;
+  }
+  const realTarget = path.join(resolveExistingAncestor(existing), ...tail);
+  return path.relative(resolveExistingAncestor(repoRoot), realTarget).split(path.sep).join('/');
+};
+
 // Shared write step for both the `new_file` and `append_row` branches below — identical
 // mkdir/write/catch shape, differing only in the content variable written. Never throws: it
 // resolves to `{ ok: false }` and the caller pushes onto `skipped`. See the `new_file` call site
@@ -392,6 +433,21 @@ export const carryManifest = (
       skipped.push({
         index,
         reason: `target_path "${entry.target_path}" is outside the carry allowlist (documentation/** or root ARCHITECTURE.md, or the same under --package-root)`,
+      });
+      continue;
+    }
+
+    // Real-path gate: the checks above judge the raw string; a symlinked directory or file on the
+    // way makes the write land elsewhere in the repo (`documentation` -> `.github`). The allowlist
+    // and protected trees are re-judged on the resolved path, and a dangling link is refused.
+    const realRel = realTargetRelative(targetAbs, repoRoot);
+    if (realRel === null || !isCarryTargetAllowed(realRel, opts.packageRoot) || isProtectedCarryPath(realRel)) {
+      skipped.push({
+        index,
+        reason:
+          realRel === null
+            ? `target_path "${entry.target_path}" cannot be resolved (dangling symlink or unreadable component)`
+            : `target_path "${entry.target_path}" resolves through a symlink outside the carry allowlist (real path "${realRel}", protected or non-allowlisted)`,
       });
       continue;
     }
