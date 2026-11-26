@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { findMalformedIssueTriggers, parseReviewTrigger } from './review-trigger-grammar.ts';
+import { findMalformedIssueTriggers, malformedTriggerDetail, parseReviewTrigger } from './review-trigger-grammar.ts';
 
 describe('parseReviewTrigger', () => {
   test('exact form parses to the issue number, quoted or bare', () => {
@@ -28,5 +28,17 @@ describe('findMalformedIssueTriggers', () => {
       { relPath: 'plans/d.md', reviewTrigger: '"on merge of the issue #4047 PR"' },
     ];
     expect(findMalformedIssueTriggers(docs)).toEqual(['plans/a.md', 'plans/d.md']);
+  });
+});
+
+describe('malformedTriggerDetail', () => {
+  test('names only the malformed docs, undefined when clean', () => {
+    const docs = [
+      { relPath: 'a.md', fm: { review_trigger: 'when #5 closes' } },
+      { relPath: 'b.md', fm: { review_trigger: 'on issue-close #5' } },
+      { relPath: 'c.md', fm: {} },
+    ];
+    expect(malformedTriggerDetail(docs)).toBe('review_trigger not in grammar (use "on issue-close #N"): a.md');
+    expect(malformedTriggerDetail(docs.slice(1))).toBeUndefined();
   });
 });
