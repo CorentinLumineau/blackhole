@@ -375,16 +375,15 @@ this section states only what the script does not decide.
     the script create a duplicate.
 *   **Invoke**: `bun run --cwd <this worktree's absolute path> scripts/carry-staged-artifacts.ts
     --manifest {repo_root}/.blackhole/staged/<issue>/manifest.json --repo-root <this worktree's
-    absolute path> --staging-root {repo_root}` (optional `--config <path>`) — `--cwd` MUST equal `--repo-root` (issue #798 —
-    pins module resolution to the worktree, the same tree the CLI operates on). `{repo_root}` is
-    the same main-clone absolute path already established for the plan file (§ "Plan artifact
-    paths (worktree rule)"); `staged_path` entries live only in the main clone (`blackhole-state.md`
-    § Staging), never in the worktree, so `--staging-root` must point there while `--repo-root`
-    (and `--cwd`) stay the worktree (issue #760).
+    absolute path> --staging-root {repo_root}` (optional `--config <path>`) — `--cwd` MUST equal `--repo-root` (pins module
+    resolution to the worktree, issue #798). `{repo_root}` is the main-clone path used for the plan
+    file (§ "Plan artifact paths (worktree rule)"); `staged_path` entries live only there
+    (`blackhole-state.md` § Staging), so `--staging-root` points there while `--repo-root` and
+    `--cwd` stay the worktree (issue #760).
     Prints the carried target paths as JSON. Absent manifest ⇒ `[]`, exit 0 (nothing was staged
     for this issue). A manifest that **exists but is zero-byte or fails to parse as JSON** exits
-    1 — distinct from absent (issue #558): it means a staging write was attempted and failed, so
-    treating it identically to "nothing staged" would silently drop staged artifacts. On exit 1,
+    1 — distinct from absent (issue #558): a staging write failed, so treating it as "nothing staged"
+    would silently drop artifacts. On exit 1,
     stop: log a `new_findings[]` row (`kind: bug`) citing the manifest path, return
     `status: blocked`, and do not open the PR as carried — never skip the carry and continue
     (the script itself never writes to the ledger; the sole manifest writer is
@@ -392,32 +391,23 @@ this section states only what the script does not decide.
     (missing field, out-of-enum `target_kind`) is reported on stderr and skipped without failing
     the run; log each such line as its own `new_findings[]` row (`kind: bug`). A declared
     `staged_path` missing under `--staging-root` also exits 1 — the message names both roots and
-    the entry index, never a bare ENOENT — fails loudly instead of the pre-#760 silent-`[]` bug
-    when a relative manifest path happened to resolve against the wrong cwd; log it the same way
-    as the zero-byte case above. A staged `decisions-index-row.md` must match the target index
+    the entry index, never a bare ENOENT; log it the same way as the zero-byte case above. A staged `decisions-index-row.md` must match the target index
     header's column count (blackhole header) or one of its two recognised row shapes (ADR-style
     header), or the carry refuses it and exits 1 too; every entry is checked before any file is written,
     so a refusal leaves the worktree untouched (issue #1478) — fix the fragment and re-run.
-*   **What the script dispatches** (ported verbatim from this section's pre-#715 prose, not
-    restated here): `new_file` entries copy verbatim except an investigator analyze/investigate
-    note, which gets the 9-row frontmatter rewrite (working-note schema → `doc-governance.md`
-    lifecycle schema); `append_row` entries dedup idempotently on these discriminator shapes —
-    for the pipe-table target `documentation/decisions/INDEX.md`, the target's header picks the
-    key: a blackhole header (`path | summary | ...`) dedups and sorts on
-    the row's `path` column value (`appendIndexRowIfAbsent`), an ADR-style header (first column `ADR`)
-    renders the row by its own column names and dedups and sorts on the `ADR-\d+` token
-    (`appendAdrIndexRowIfAbsent`), both with a byte-order comparator, never `localeCompare`
-    (`doc-governance.md` § INDEX.md Maintenance) — an `append_row` entry targeting
-    `documentation/INDEX.md` is skipped as retired, since that index is regenerated (issue #832);
-    and, when `target_path === "ARCHITECTURE.md"` (bullet-list
-    target, `## Active Constraints`), the citation suffix — the mandatory trailing
-    `(ADR-{NNN})` or `(analyze: issue #N)` attribution `planner.md` appends to every constraint
-    bullet, the same discriminator `planner.md`'s own near-duplicate check already uses (§
-    Workflow & Planning Steps step 4) — reused, not reinvented (`V-INT-02`); `target_path` is
-    constrained to an allowlist (`documentation/**` and root `ARCHITECTURE.md` — issue #784
-    AC1), and every write-step filesystem failure skips that one entry with a reason rather than
-    throwing, so neither an out-of-allowlist target nor a write error ever denies the rest of the
-    manifest.
+*   **What the script dispatches** (not restated here): `new_file` entries copy verbatim except an
+    investigator analyze/investigate note, which gets the 9-row frontmatter rewrite (working-note
+    schema → `doc-governance.md` lifecycle schema). `append_row` entries dedup idempotently: for
+    `documentation/decisions/INDEX.md` the header picks the key — blackhole header
+    (`path | summary | ...`) on the row's `path` column value (`appendIndexRowIfAbsent`), ADR-style
+    header (first column `ADR`) on the `ADR-\d+` token (`appendAdrIndexRowIfAbsent`), both sorted
+    byte-order, never `localeCompare` (`doc-governance.md` § INDEX.md Maintenance); when
+    `target_path === "ARCHITECTURE.md"` (`## Active Constraints`, a bullet list) on the
+    citation suffix, the trailing `(ADR-{NNN})` or `(analyze: issue #N)` that `planner.md` step 4's
+    near-duplicate check already uses (`V-INT-02`). An `append_row` for `documentation/INDEX.md` is
+    skipped as retired (regenerated, issue #832). `target_path` is allowlisted (`documentation/**`,
+    root `ARCHITECTURE.md`; issue #784), and a write-step failure skips that one entry with a
+    reason, never the rest of the manifest.
 *   **Commit**: carried files land in the same PR (same commit as the code change, or a
     dedicated `docs: promote staged artifacts for issue #N` commit within the same PR) — never
     a separate PR, never an orchestrator write.
