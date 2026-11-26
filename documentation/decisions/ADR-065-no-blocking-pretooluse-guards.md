@@ -57,7 +57,13 @@ ADR-061 kept six PreToolUse guards where auto mode could not cover them. On 2026
 
 ## Consequences
 
-- About 5.9k lines of guard code and about 10.9k lines of guard tests go away; no `.blackhole/hook-events/` record is produced after this lands. Retiring the ingestion code, the `V-HOOK-01..03` rows and the worker workaround prose (`cd`-first state writes, `BLACKHOLE_ASSIGNED_WORKTREE`) follows in a second change.
+- About 5.9k lines of guard code and about 10.9k lines of guard tests go away; no `.blackhole/hook-events/` record is produced after this lands. Retiring the ingestion code, the `V-HOOK-01..03` rows and the worker workaround prose (`cd`-first state writes, `BLACKHOLE_ASSIGNED_WORKTREE`) followed in a second change (see Post-acceptance amendments).
 - A future guard needs a new ADR.
 - Installed copies keep the old blocking hooks until the plugin is updated: the plugin cache is keyed by version, so run `/plugin marketplace update` and reinstall `blackhole` (or clear `~/.claude/plugins/cache`, restart Claude Code and reinstall) to drop the guards from an existing installation. The v0.37.3 cut is automatic, with generated release notes, so this note lives here and in the README.
 - Safety on non-auto-mode harnesses becomes detective, not preventive.
+
+## Post-acceptance amendments
+
+- 2026-11-26 (issue #1645, slice 2 of #1644): the follow-up change landed. Retired: the hook-event Triage ingestion and its turn-start step, the `V-HOOK-01..03` rows (existing ledger rows with those codes stay valid), the deny-counts section and the status page's "Hook denials" panel, the plugin-drift signal and its hook-source scan with the status line that rendered it, the `BLACKHOLE_ASSIGNED_WORKTREE` and write-root containment prose, the `cd`-first state-write workaround, the hook fixture kit in `test-fixtures.ts`, and the guard Active Constraints in `ARCHITECTURE.md`. ADR-029, ADR-040, ADR-041, ADR-042, ADR-043, ADR-044, ADR-045 and ADR-047 describe those guards and are marked superseded by this ADR.
+- Kept: `V-PLUGIN-01` and `pluginVersionWarning` (the version-bump gate and the running-versus-installed warning), the `hook-events` exclusion in the state-branch scan (old installs still write it), and the `templates/hooks/**` version-bump Active Constraint.
+- Owner decision PD-10 (2026-11-26): the status page and text dashboard drop the "Hook denials" panel and the plugin-drift line outright; the status template's `bh-template-version` is bumped to 10.

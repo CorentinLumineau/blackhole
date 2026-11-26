@@ -1,10 +1,11 @@
 ---
 type: adr
 summary: "Worktree write containment and the main-clone git guard apply only to campaign-scoped PreToolUse calls (a campaign agent_type, an assigned worktree, or BLACKHOLE_HOOK_SCOPE=all); ordinary sessions that load the plugin are no longer denied writes outside the repo, while every other guard stays unscoped"
-status: accepted
+status: superseded
+superseded_by: ADR-065
 review_trigger: "on protocol change, or on a Claude Code change to the PreToolUse payload's agent_type semantics"
 created: 2026-10-10
-last_updated: 2026-10-10
+last_updated: 2026-11-26
 related:
   - documentation/decisions/ADR-043-main-clone-git-mutation-guard.md
   - documentation/decisions/ADR-045-cwd-derived-worker-write-containment.md
@@ -14,6 +15,8 @@ related:
 # ADR-047: Hook containment scoped to campaign workers
 
 ## Status
+
+Superseded by ADR-065 - 2026-11-26. The guards this ADR describes are removed; the original acceptance follows.
 
 Accepted — 2026-10-10 (phase 4 of the run-accuracy plan, approved by the owner).
 
@@ -67,3 +70,7 @@ check itself throws, the Bash guard treats the call as scoped (fail closed).
 - A worker that is neither a named blackhole agent nor inside a worktree is no longer contained.
   Workers are dispatched into worktrees, so this is the expected shape, not a gap in practice.
 - The change touches `templates/hooks/**`, so the plugin version is bumped (`V-PLUGIN-01`).
+
+## Post-acceptance amendments
+
+- 2026-11-26 (issue #1645): superseded in full by ADR-065. The code, the ledger codes and the prose this ADR describes were retired in the follow-up slice of issue #1644.

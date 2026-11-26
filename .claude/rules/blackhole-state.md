@@ -9,9 +9,7 @@ Campaign protocol state lives **only** under `.blackhole/*`:
 - `findings-ledger.json` — V-code findings
 - `plans/<issue>.md` — plan artifacts
 - `staged/<issue>/` — durable artifact staging area (see § Staging (ADR-021 D1) below)
-- `archive/` — rotated ledger snapshots, pre-mutation `queue.json` snapshots, and (ADR-042,
-  issue #893) `hook-events-<turn-timestamp>/` — consumed PreToolUse hook-event files, moved
-  here rather than deleted once ingested
+- `archive/` — rotated ledger snapshots and pre-mutation `queue.json` snapshots
 
 The following are **not** blackhole protocol state:
 
@@ -33,7 +31,6 @@ Mutations to `.blackhole/queue.json` and
 | `plans/<issue>.md` | Plan artifacts (gitignored) |
 | `staged/<issue>/manifest.json` | Durable artifact staging manifest (gitignored, see § Staging (ADR-021 D1)) |
 | `archive/` | Rotated ledger snapshots and pre-mutation `queue.json` snapshots (gitignored) |
-| `archive/hook-events-<ts>/` | Consumed PreToolUse hook-event files, archived rather than deleted once ingested (gitignored, ADR-042/#893) |
 | `doc-health.json` | Doc-tree health signal, Scope-1 only (gitignored, see § Doc-Health Signal) |
 | `pace-log.jsonl` | Per-spawn-round pace/resource verdicts, planned batch and effective concurrency, newest 200 lines (gitignored, written by `scripts/pace-log.ts`, diagnostic only) |
 | `usage-history.jsonl` | Weekly usage readings (`observed_at`, `used_percentage`, `resets_at`), one per `observed_at`, newest 200 lines (gitignored, appended by `scripts/usage-probe.ts`, read by the status page's Pace row) |
@@ -54,14 +51,10 @@ is local and never on the state branch; this session's own id is the host sessio
 host-scoped session records itself in `.tmp/campaign-last-session.json` (see `multitask-mode.md`
 § Peer campaign registry).
 
-The PreToolUse write guards trust this directory (minus `config.json` and `hook-events/`) for campaign workers writing from a linked worktree, for single-file writes only: a Write/Edit, a redirect or `tee` to a file, or a `cp`/`install` of one regular file (a `mv` only between two paths inside it) to an explicit file path, and never through a symlink or hard link. Write the `.tmp` file and the `mv` in separate Bash calls. Full rule: `templates/hooks/pretooluse/README.md` § Campaign state dir trust.
-
-The same guards also trust the validated harness scratchpad and the linked worktrees of other blackhole repos named in `permissions.additionalDirectories` (`trustedWriteRoots`), and refuse any worker write to the settings files that list them. Session-only `--add-dir` directories are not covered. Full rule: `templates/hooks/pretooluse/README.md` § Trusted write roots.
-
 On a machine whose disk does not outlive the session (`state_store: branch`), these files are
 also kept on the `blackhole/state` branch: pushed at every turn end and restored on resume
 (`state-branch.md`). `archive/`, `hook-events/`, `.tmp/`, `*.tmp` and the per-machine signals
-(`run-context.json`, `plugin-drift.json`, `doc-health.json`, `pace-log.jsonl`, `usage-history.jsonl`, `worker-context.json`) stay local.
+(`run-context.json`, `doc-health.json`, `pace-log.jsonl`, `usage-history.jsonl`, `worker-context.json`) stay local.
 
 ### Durable vs scratch
 
@@ -365,76 +358,6 @@ invocation. Scope-2 (a consumer repo's tree) is enforced at review time by `revi
 advisory. Full rationale for this turn-start mechanism over a literal `SessionStart` hook:
 `doc-governance.md` § Doc-Tree Health Signal, "Always-On Channel" (`V-DOC-05` — not restated
 here).
-
-## Plugin-Drift Signal
-
-Same cadence as § Sync above — start of every orchestrator turn
-(`orchestrator-runtime.md` § Session resume & recovery, step 4). Advisory-only, mechanism 2 of
-the composite fix for issue #800 (ADR-030) — mechanism 1 is the diff-content reviewer BLOCK gate
-`V-PLUGIN-01` (`src/agents/reviewer.md` § Plugin Cache Version-Bump Audit). This signal covers the residual gap mechanism 1
-cannot see: a PR correctly bumps `package.json`'s version, but nobody ever runs the manual
-republish+reinstall step afterward, leaving an installed Claude Code plugin cache copy stale
-while reporting the same version string as the repo build (the cache is version-keyed, not
-content-addressed — `blackhole-protocol.md` § Branch & Worktree Hygiene).
-
-**Widened scope (issue #912, ADR-044).** Claude Code composes PreToolUse hooks from every
-enabled source and merges them deny-wins, with no override — a signal built from one guessed
-installed-cache path can report "not installed" while a *different*, stale copy is actively
-vetoing calls the repo's own current code allows. The signal now enumerates every registered
-source instead of guessing one path, and asserts an ordering only where a resolvable commit SHA
-proves one:
-
-1. **Enumerate** (`scripts/lib/hook-sources.ts`) four settings layers plus every candidate row
-   in `~/.claude/plugins/installed_plugins.json`: project `.claude/settings.json` (resolves to
-   the repo's own build output, `origin_kind: repo-build`), `enabledPlugins` (resolves to one or
-   more installed-cache rows, `origin_kind: plugin-cache` — when more than one install row could
-   apply to this project, e.g. a project-scope row alongside a user-scope row, **all candidates
-   are reported and none is picked**; the scope-precedence rule is a reconstructed assumption,
-   never adjudicated), user `~/.claude/settings.json` and `.claude/settings.local.json`
-   (`origin_kind: foreign` — third-party or unrecognized automation).
-2. **Order** (`scripts/lib/hook-source-ordering.ts`) each present, SHA-bearing source against
-   `origin/main` via an injected git resolver (`merge-base --is-ancestor` run in **both**
-   directions), rendering exactly three distinct outcomes, none collapsed into "no drift":
-   *strict* (older / newer / identical / **diverged** — two installs off different branches, its
-   own state), *version-differs-ordering-unproven* (a version string with no resolvable SHA — the
-   majority consumer-repo topology, since a consumer has neither blackhole's commit history nor a
-   blackhole `origin/main`), and *no-baseline* (a foreign source — presence and deny-wins
-   participation only, rendered as its own state in the clean case **and** the drifted one).
-   `veto_pairs[]` names every pair where one source is provably older than another, since
-   deny-wins composition means an older source can still override a newer one.
-3. **Hash** (`scripts/lib/plugin-drift.ts`'s reused `hashDirectory`) each present directory-kind
-   source's content, feeding the `installed_present`/`hooks_hash_match` derived roll-up so
-   `renderPluginDriftWarning` keeps working: `hooks_hash_match` is `true` only when **every**
-   present plugin-cache candidate's content matches the repo build's — any one mismatch flips it
-   to `false` (the "prefer false positives" bias the design's binding constraints require).
-
-Existence-gated: when `scripts/plugin-drift-signal.ts` is available (blackhole's own repo, or
-an installed plugin that ships it), refresh `.blackhole/plugin-drift.json` via
-`bun run --cwd <abs repo-root> scripts/plugin-drift-signal.ts --repo-root <abs repo-root>`;
-`--repo-root` names the campaign repo, an existing git checkout whose settings are read and
-whose `.blackhole/` gets the signal. Without it, an installed plugin refuses to run rather than
-describe its own cache folder. Absent the script, this step is inert — no error, no attempted
-invocation. The signal is schema `version: 2`, carrying `sources[]` (each with its
-enumeration, ordering, and content-hash fields merged) and `veto_pairs[]`.
-
-`scripts/campaign-status.ts`'s `renderPluginDriftWarning` renders one line per non-clean source
-(never fully silent while a foreign source is registered — its unverifiable provenance never
-becomes clean, even after every SHA-bearing source matches) plus one line per `veto_pairs[]`
-entry — visibility only, no ledger append, no phase gate. The ordering leg is
-**effectively self-hosting-only**: in a consumer repo, blackhole's commit history is absent from
-the local object store and `origin/main` is a different project, so the signal renders
-`ordering_available: false` with a reason rather than guessing.
-
-**Scan-boundary disclosure (ADR-044 § A-5), unconditional.** Every source outside the four-layer
-scan (e.g. a plugin's own bundled settings registering a matcher this scan doesn't parse) stays
-invisible. The signal states this boundary in its own emitted output — a fixed `scan_boundary`
-field on the JSON signal (`SCAN_BOUNDARY_NOTE`, `plugin-drift-signal.ts`), printed by the CLI on
-its own line, and appended by `renderPluginDriftWarning` to **every** render, clean or not — so a
-clean render never reads as "the net is current". A fully clean render still surfaces a `✓
-Plugin cache: every registered source within scan boundary is clean.` line followed by the
-disclosure; a warning render appends the same disclosure after its per-source and `veto_pairs[]`
-lines. Whether a copy this scan cannot see actually issued a live denial is only ever observed at
-runtime, which is issue #919's scope, not this one's.
 
 ## Worktree & Branch obligations
 

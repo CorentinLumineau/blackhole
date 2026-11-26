@@ -213,8 +213,7 @@ D5 narrowing as Step 0.5 above).
    or dispatching further this turn. This closes the exact gap that caused issue #792's
    incident — a stale main clone silently disagreeing with a reviewer's independent check
    right after a merge — for every facts-read that follows: this turn's remaining
-   `plan-quality-gate.ts` reads, the next issue's build-in-main-clone (step 3),
-   and the plugin-drift-signal scan at the next turn start.
+   `plan-quality-gate.ts` reads and the next issue's build-in-main-clone (step 3).
 4.6. **Stacked-child recovery (mandatory whenever Step 0.7 listed children)**: after 4.5's
    main-clone refresh, run `merge-gate.md` § 7's `stack-repair.ts repair --apply` once per open
    child, each with `--child-issue <N>` and `--repo-root` set to that child's own worktree, **in the

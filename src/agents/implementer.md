@@ -114,8 +114,8 @@ Your work is strictly governed by the 5-field contract delegated to you by the o
         detected the gate degrades to a logged no-op (never a false pass, per § No-runner
         degradation), and the completion note must say plainly that no runner was found.
         Coverage is structurally **unmeasurable** for any file under `templates/hooks/**` — those
-        modules execute only inside a subprocess spawned by `runPreToolUseHook`
-        (`scripts/hooks-validate-file.test.ts`), so `bun test --coverage` never instruments them;
+        modules execute only inside a hook subprocess, so `bun test --coverage` never
+        instruments them;
         when the diff's only changed source lives under that path, this gate MUST be reported as
         `unmeasurable`, never `pass`. An `unmeasurable` report must state what was verified
         instead — e.g. the end-to-end behavioral test-case count for the affected hook before and

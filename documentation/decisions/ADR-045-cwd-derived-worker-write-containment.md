@@ -1,10 +1,11 @@
 ---
 type: adr
 summary: "readAssignedWorktreeRoot gains a cwd-derived containment tier — when BLACKHOLE_ASSIGNED_WORKTREE is unset/invalid and the PreToolUse payload's cwd resolves inside a linked (non-main) worktree, that worktree becomes the sole assigned root — closing the confirmed gap where the env-var channel never reaches a native Pattern C worker; design-aggregate.ts blocked on dominance only (unanimous 3/3 winner B, no disagreement, no breaking consumer), owner-ruled per the same override pattern as ADR-029"
-status: accepted
+status: superseded
+superseded_by: ADR-065
 review_trigger: "on protocol change, or on a Claude Code change to the PreToolUse payload's cwd semantics"
 created: 2026-09-07
-last_updated: 2026-09-07
+last_updated: 2026-11-26
 related:
   - documentation/decisions/ADR-029-bash-write-target-worktree-containment.md
   - documentation/decisions/ADR-030-plugin-cache-version-bump-gate.md
@@ -15,6 +16,8 @@ related:
 # ADR-045: cwd-derived worker write containment (Pattern C channel closure)
 
 ## Status
+
+Superseded by ADR-065 - 2026-11-26. The guards this ADR describes are removed; the original acceptance follows.
 
 Accepted — 2026-09-07 (owner ruling on issue #907, `design-aggregate.ts` verdict `blocked` —
 dominance-margin only, per `.blackhole/plans/issue-907-design-aggregate-verdict.json`).
@@ -191,3 +194,7 @@ gate ... Owner is reported to, not asked"), on the same basis ADR-029 applied. V
   dropped.
 - **Residual risk carried forward**: `input.cwd`'s harness-trust assumption is reused, not
   freshly re-audited; flagged via this ADR's `review_trigger`.
+
+## Post-acceptance amendments
+
+- 2026-11-26 (issue #1645): superseded in full by ADR-065. The code, the ledger codes and the prose this ADR describes were retired in the follow-up slice of issue #1644.

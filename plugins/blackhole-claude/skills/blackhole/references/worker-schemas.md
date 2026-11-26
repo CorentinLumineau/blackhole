@@ -11,7 +11,7 @@ schema source, unchanged. This complements, not replaces, the SubagentStop hook 
 path documented in [`hook-schemas.md`](hook-schemas.md) for harnesses without a native fan-out primitive.
 
 See [`hook-schemas.md`](hook-schemas.md) for the Cursor SubagentStop validate/resume hook
-install specs and the PreToolUse `.blackhole/hook-events/` schema (split out, issue #473).
+install specs and the removed-PreToolUse note (split out, issue #473).
 
 See [`implementer-schemas.md`](implementer-schemas.md) for the `implementer` worker's JSON
 return contract (split out, issue #802), and [`reviewer-schemas.md`](reviewer-schemas.md) for the

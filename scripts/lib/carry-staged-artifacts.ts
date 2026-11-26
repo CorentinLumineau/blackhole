@@ -264,11 +264,6 @@ export const appendPipeTableRowIfAbsent = (
  * target routinely does not exist yet, so a bare `fs.realpathSync` would throw, while any
  * intermediate directory on the way to it may be a symlink pointing out of the root — the walk-up
  * is what lets the containment comparison below run on resolved paths in both cases.
- *
- * Same algorithm as the identically-named helper in
- * `templates/hooks/pretooluse/utils/hook-event-log.js`, re-implemented rather than imported: that
- * tree is CommonJS mirrored verbatim into the per-platform hook dists and shares no build target
- * with this Bun/ESM module tree, so there is no import path between them.
  */
 const resolveExistingAncestor = (p: string): string => {
   let current = path.resolve(p);

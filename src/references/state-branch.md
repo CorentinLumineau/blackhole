@@ -39,15 +39,13 @@ bun run scripts/state-branch.ts pull
 ## What travels
 
 Everything under `.blackhole/` except `archive/`, `hook-events/`, `.tmp/`, `*.tmp` files and the
-signals that describe one machine (`run-context.json`, `plugin-drift.json`, `doc-health.json`, `worker-context.json`),
+signals that describe one machine (`run-context.json`, `doc-health.json`, `worker-context.json`),
 which the next machine derives again. Restores are byte-for-byte.
 
 ## Local-only steps
 
-On `state_store: branch`, two steps are skipped, each said once in the turn:
-
-- The plugin-cache drift signal (`orchestrator-runtime.md` § Session resume & recovery, step 5).
-- The installed plugin cache refresh (`blackhole-protocol.md` § Branch & Worktree Hygiene).
+On `state_store: branch`, the installed plugin cache refresh (`blackhole-protocol.md` § Branch &
+Worktree Hygiene) is skipped, said once in the turn.
 
 There is no long-lived plugin cache on such a machine. Transcript recovery
 (`recovery-protocol.md`) still runs: it reads transcripts of the current session, which exist on

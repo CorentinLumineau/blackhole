@@ -32,12 +32,11 @@ export function fixtureReport(queue: QueueJson = FIXTURE_QUEUE): StatusReport {
     checkpointBody: '---\norchestrator_turn_id: 7\n---\n\n## Notes\n\nMerged #2\n\n## In-flight workers\n\n- worker for #2\n',
     forge: { openIssues: 3, openPrs: 1, ok: true },
     paceLine: 'pace: GO (session 12%)',
-    hostNotes: ['⚠ Plugin cache drift: layer 2'],
+    hostNotes: [],
     generatedAt: '2026-11-11T12:00:00.000Z',
     decisions: [{ date: '2026-11-10', text: 'Leave every PR open for review' }],
     prSignals: { 9: { review: 'LGTM', review_read: true, ci: 'running', failing: [], mergeable: true } },
     pluginVersion: '1.2.3',
-    denyCounts: [{ pattern_id: 'rm-rf', deny: 3, warn: 1 }],
     pending: [
       { id: 'PD-1', question: 'Ship the gate as a draft?', options: [{ label: 'Yes' }, { label: 'No' }], recommended: 0, blocks: [1], gate: 'plan-approval', created_at: '2026-11-11T09:00:00.000Z' },
     ],

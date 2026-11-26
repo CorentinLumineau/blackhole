@@ -1,10 +1,11 @@
 ---
 type: adr
 summary: "The plugin-drift signal enumerates every registered PreToolUse source instead of one path guessed from the repo's own version, and asserts an ordering only where a resolvable gitCommitSha proves one — three rendered outcomes (strict ordering incl. diverged / version-differs-ordering-unproven / no-baseline), never collapsed into 'no drift'; amends ADR-030's mechanism-2 scope, leaves V-PLUGIN-01 and the advisory-not-gate posture untouched; design-aggregate.ts blocked (dominance, disagreement, breaking-consumer; primary and critic_a pick Option A, critic_b picks Option C), resolved by owner ruling for Option A on critic_b's own V-UNFALSIFIABLE-01 finding against its pick"
-status: accepted
+status: superseded
+superseded_by: ADR-065
 review_trigger: "on #919 consuming this enumeration for runtime denial capture, on a Claude Code change to installed_plugins.json's shape or plugin scope precedence, or on a fourth advisory signal adopting this enumerate-then-order pattern"
 created: 2026-09-06
-last_updated: 2026-09-06
+last_updated: 2026-11-26
 related:
   - documentation/decisions/ADR-030-plugin-cache-version-bump-gate.md
   - documentation/decisions/ADR-021-durable-artifact-staging.md
@@ -14,6 +15,8 @@ related:
 # ADR-044: Hook-source enumeration and provable ordering for the plugin-drift signal
 
 ## Status
+
+Superseded by ADR-065 - 2026-11-26. The guards this ADR describes are removed; the original acceptance follows.
 
 Accepted — 2026-09-06 (owner ruling on issue #912, `design-aggregate.ts` verdict `blocked`).
 
@@ -409,3 +412,7 @@ Doc-schema detection (`scripts/detect-doc-schema.sh`) returned `schema=blackhole
 artifact layers — `documentation/INDEX.md`, `documentation/decisions/INDEX.md`, and a sibling
 ADR's frontmatter — so this ADR and its INDEX row are rendered in blackhole's own schema and no
 `V-INT-01` WARN is emitted.
+
+## Post-acceptance amendments
+
+- 2026-11-26 (issue #1645): superseded in full by ADR-065. The code, the ledger codes and the prose this ADR describes were retired in the follow-up slice of issue #1644.
