@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
-import { WARM_TTL_MS } from './lib/worker-context-report.ts';
+import { CONTINUATION_MAX_TRANSCRIPT_BYTES, WARM_TTL_MS } from './lib/worker-context-report.ts';
 
 const ref = (name: string): string => readFileSync(new URL(`../src/references/${name}`, import.meta.url), 'utf8');
 const section = (): string => {
@@ -22,6 +22,21 @@ describe('fix-round implementer continuation protocol', () => {
     expect(WARM_TTL_MS).toBe(5 * 60_000);
     expect(section()).toContain('within 5 minutes');
     expect(section()).toContain('WARM_TTL_MS');
+  });
+
+  test('the size cap and the complete-return condition in prose match the constant', () => {
+    expect(CONTINUATION_MAX_TRANSCRIPT_BYTES).toBe(600_000);
+    expect(section()).toContain(`at most ${CONTINUATION_MAX_TRANSCRIPT_BYTES} bytes`);
+    expect(section()).toContain('CONTINUATION_MAX_TRANSCRIPT_BYTES');
+    expect(section()).toContain('`status: complete`');
+  });
+
+  test('both continuation paths carry Failed-Approaches and unevaluable conditions fall back to fresh', () => {
+    const s = section();
+    expect(s.match(/Failed-Approaches entries/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(s).toContain('Lean means no previous transcript, not a reduced contract');
+    expect(s).toContain('cannot be evaluated counts as false');
+    expect(s).toContain('`CLAUDE_CODE_SESSION_ID` unset');
   });
 
   test('reviewers, escalation returns and promotion spawns are never continued', () => {
