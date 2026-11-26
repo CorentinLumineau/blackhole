@@ -2,7 +2,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { readJsonFile } from './lib/fs.ts';
-import { mergeReadinessForReviewPromotion } from './lib/merge-gate/review-artifact.ts';
+import { mergeReadinessForReviewPromotion, type DocsGovernanceConfig } from './lib/merge-gate/review-artifact.ts';
 import type { LedgerFile } from './lib/promote-review-artifact.ts';
 import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
 
@@ -50,7 +50,7 @@ function parseArgs(argv: string[]) {
 function main(): void {
   const parsed = parseArgs(process.argv);
   const config = readJsonFile(parsed.configPath, parsed.configPath) as {
-    docs_governance?: { enabled?: boolean; write_governance?: boolean };
+    docs_governance?: DocsGovernanceConfig;
   };
   const ledger = readJsonFile(parsed.ledgerPath, parsed.ledgerPath) as LedgerFile;
   const prDiffPaths = fs
