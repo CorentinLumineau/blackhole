@@ -608,3 +608,48 @@ describe('Write and Bash reach the same verdict for every target', () => {
     });
   });
 });
+
+describe('orchestratorStateRoots: only an orchestrator-class caller gets roots', () => {
+  const MODULE = path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'hook-event-log.js');
+  const PROGRAM = `const [mod, cwd, input] = process.argv.slice(1); console.log(JSON.stringify(require(mod).orchestratorStateRoots(cwd, JSON.parse(input))));`;
+
+  // A child process, because `os.homedir()` is fixed at process start and the roots read the user settings from it.
+  const rootsFor = async (agentType: string | undefined, setup: (w: World) => void = () => undefined, env: Record<string, string> = {}) => {
+    let result: string[] = [];
+    await withWorld(async (w) => {
+      fs.mkdirSync(path.join(w.home, '.claude'), { recursive: true });
+      fs.writeFileSync(path.join(w.home, '.claude', 'settings.json'), JSON.stringify({ permissions: { additionalDirectories: [w.mainB] } }));
+      setup(w);
+      const base: Record<string, string | undefined> = { ...process.env };
+      for (const key of SCOPED_ENV) delete base[key];
+      const proc = Bun.spawnSync({
+        cmd: ['bun', '-e', PROGRAM, MODULE, w.wtA, JSON.stringify(agentType === undefined ? {} : { agent_type: agentType })],
+        cwd: w.wtA,
+        env: { ...base, HOME: w.home, ...env } as Record<string, string>,
+      });
+      result = (JSON.parse(proc.stdout.toString()) as string[]).map((root) => root.replace(w.mainB, '<B>'));
+    });
+    return result;
+  };
+
+  test('no agent_type, orchestrator and coordinator receive the declared clone state dir', async () => {
+    for (const agentType of [undefined, 'orchestrator', 'blackhole:coordinator']) {
+      expect(await rootsFor(agentType)).toContain('<B>/.blackhole');
+    }
+  });
+
+  test('every worker and unknown agent_type receives []', async () => {
+    for (const agentType of ['implementer', 'reviewer', 'planner', 'router', 'investigator', 'hunter', 'general-purpose', 'Explore', '']) {
+      expect(await rootsFor(agentType)).toEqual([]);
+    }
+  });
+
+  test('BLACKHOLE_ASSIGNED_WORKTREE receives []', async () => {
+    expect(await rootsFor(undefined, () => undefined, { BLACKHOLE_ASSIGNED_WORKTREE: os.tmpdir() })).toEqual([]);
+  });
+
+  test('a declared clone without a campaign config receives nothing', async () => {
+    const roots = await rootsFor(undefined, (w) => fs.rmSync(path.join(w.mainB, '.blackhole', 'config.json')));
+    expect(roots.some((root) => root.startsWith('<B>'))).toBe(false);
+  });
+});

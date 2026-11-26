@@ -27,6 +27,7 @@ const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { rotateHookEvents } = require('./hook-event-rotation');
+const { isOrchestratorCaller } = require('./campaign-scope');
 
 /** Credential-shaped literals are masked before anything is written to disk. The warn tier exists
  * precisely because a command may carry a secret, and recording it verbatim would move that secret
@@ -972,6 +973,10 @@ const readAdditionalDirectories = (file) => {
   }
 };
 
+/** The `permissions.additionalDirectories` entries of the settings `files`, `~/` expanded. */
+const declaredDirectoryEntries = (files) =>
+  files.flatMap(readAdditionalDirectories).map((dir) => (dir.startsWith('~/') ? path.join(os.homedir(), dir.slice(2)) : dir));
+
 /** True when `candidate` resolves, through any symlink, to one of the settings `files`. An existing
  * target is compared by realpath (`resolveExistingAncestor`, linear in the path depth: this runs on
  * every write target, and a deep one must stay cheap). A target that does not exist yet can only
@@ -1069,8 +1074,7 @@ const trustedWriteRoots = (cwd = process.cwd(), input = {}, { mainClone = mainCl
   // names any clone), and a project dir the worker can write to is never a source.
   const considered = new Set();
   const considerDeclared = (files) => {
-    const entries = files.flatMap(readAdditionalDirectories).map((dir) => (dir.startsWith('~/') ? path.join(os.homedir(), dir.slice(2)) : dir));
-    for (const entry of entries) {
+    for (const entry of declaredDirectoryEntries(files)) {
       if (considered.size >= MAX_EXTRA_ROOT_CANDIDATES) break;
       if (considered.has(entry)) continue;
       considered.add(entry);
@@ -1085,6 +1089,61 @@ const trustedWriteRoots = (cwd = process.cwd(), input = {}, { mainClone = mainCl
   considerDeclared([path.join(os.homedir(), '.claude', 'settings.json')]);
   const project = process.env.CLAUDE_PROJECT_DIR;
   if (typeof project === 'string' && isHarnessProjectDir(project, cwd, [assignedRoot, ...scratchpadDirs, ...roots])) {
+    considerDeclared([path.join(project, '.claude', 'settings.json'), path.join(project, '.claude', 'settings.local.json')]);
+  }
+  return [...roots];
+};
+
+/** The main clone a declared `additionalDirectories` entry names, or `null`: the entry itself when
+ * it is a main clone (its `.git` is a directory, so never a linked worktree or a planted pointer
+ * file), or the directory above a `.blackhole` the entry names or sits inside. Realpath. */
+const declaredMainClone = (entry) => {
+  if (!path.isAbsolute(entry) || !isExistingDirectory(entry)) return null;
+  const real = resolveExistingAncestor(entry);
+  const segments = real.split(path.sep);
+  const at = segments.lastIndexOf('.blackhole');
+  const clone = at > 0 ? segments.slice(0, at).join(path.sep) || path.sep : real;
+  try {
+    return fs.lstatSync(path.join(clone, '.git')).isDirectory() ? clone : null;
+  } catch {
+    return null;
+  }
+};
+
+/** Campaign state dirs an orchestrator-class caller (`isOrchestratorCaller`: no `agent_type`, or
+ * `orchestrator`/`coordinator`) may write from any cwd, the one place both guards read them from.
+ * Two sources: the anchored own clone (`campaignStateRoot`), and the main clones the owner
+ * declares in `permissions.additionalDirectories` of the user settings file and of the harness
+ * project dir's settings (`isHarnessProjectDir`), each validated by `declaredMainClone` and
+ * `stateRootOf` (a `.blackhole/config.json`, not a broad root), at most `MAX_EXTRA_ROOT_CANDIDATES`
+ * entries. Nothing is derived from git metadata a worker can write. Callers judge a path with
+ * `isStateDirTrustedPath`, so `config.json`, `hook-events/` and the state root stay protected.
+ * Returns `[]` for every worker or unknown `agent_type`, and whenever `BLACKHOLE_ASSIGNED_WORKTREE`
+ * marks the process as a worker's, so no worker gains a write it lacked. */
+const orchestratorStateRoots = (cwd = process.cwd(), input = {}, { assignedRoot = null } = {}) => {
+  if (!isOrchestratorCaller(input && input.agent_type)) return [];
+  const assigned = process.env.BLACKHOLE_ASSIGNED_WORKTREE;
+  if (typeof assigned === 'string' && assigned.trim().length > 0) return [];
+  const roots = new Set();
+  const own = campaignStateRoot(cwd);
+  if (own) roots.add(own);
+  const considered = new Set();
+  const considerDeclared = (files) => {
+    for (const entry of declaredDirectoryEntries(files)) {
+      if (considered.size >= MAX_EXTRA_ROOT_CANDIDATES) break;
+      if (considered.has(entry)) continue;
+      considered.add(entry);
+      try {
+        const root = stateRootOf(declaredMainClone(entry));
+        if (root) roots.add(root);
+      } catch {
+        // An entry git or the filesystem cannot resolve is dropped: narrower, never wider.
+      }
+    }
+  };
+  considerDeclared([path.join(os.homedir(), '.claude', 'settings.json')]);
+  const project = process.env.CLAUDE_PROJECT_DIR;
+  if (typeof project === 'string' && isHarnessProjectDir(project, cwd, [assignedRoot, process.env.BLACKHOLE_SCRATCHPAD_DIR, ...roots])) {
     considerDeclared([path.join(project, '.claude', 'settings.json'), path.join(project, '.claude', 'settings.local.json')]);
   }
   return [...roots];
@@ -1160,6 +1219,7 @@ module.exports = {
   campaignStateRoot,
   isStateDirTrustedPath,
   trustedWriteRoots,
+  orchestratorStateRoots,
   isTrustedExtraPath,
   settingsFileCandidates,
   isSettingsFilePath,

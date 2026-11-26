@@ -49,6 +49,7 @@ const {
   resolveExistingAncestor,
   campaignStateRoot,
   trustedWriteRoots,
+  orchestratorStateRoots,
   isTrustedExtraPath,
   settingsFileCandidates,
   isSettingsFilePath,
@@ -1956,6 +1957,7 @@ const evaluateBashWriteTargets = (command, cwd, input = {}) => {
   const stateRoot = campaignStateRoot(cwd);
   const mainClone = mainCloneRoot(cwd);
   const extraRoots = trustedWriteRoots(cwd, input, { mainClone, assignedRoot });
+  const orchestratorRoots = orchestratorStateRoots(cwd, input, { assignedRoot });
   const settingsFiles = settingsFileCandidates(cwd, mainClone);
   const isExtraPath = (p) => isTrustedExtraPath(p, extraRoots);
 
@@ -2008,6 +2010,7 @@ const evaluateBashWriteTargets = (command, cwd, input = {}) => {
     if (
       (!isUnderRoot(resolvedPath, assignedRoot) || escapesRootLexically(resolvedPath, assignedRoot)) &&
       !isTrustedStateWrite({ target, shape }, resolvedPath, dir, stateRoot) &&
+      !orchestratorRoots.some((root) => isTrustedStateWrite({ target, shape }, resolvedPath, dir, root)) &&
       !isTrustedShapedWrite({ target, shape }, resolvedPath, dir, isExtraPath)
     ) {
       const hint = looksLikeRegexFragment(target)
