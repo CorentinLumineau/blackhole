@@ -3,7 +3,7 @@ import { validateStateWrite } from './lib/state-write-guard.ts';
 import { readJsonFile } from './lib/fs.ts';
 import { changePrBase } from './lib/forge-adapter/github-rest.ts';
 import { changeGiteaPrBase, giteaApiSlug } from './lib/forge-adapter/gitea.ts';
-import { readPrLanding, type PrLanding, type PrRowFetcher } from './lib/forge-adapter/pr-landing.ts';
+import { readPrHeadSha, readPrLanding, type PrLanding, type PrRowFetcher } from './lib/forge-adapter/pr-landing.ts';
 import { parseFlags, requireFlag, type Flags } from './lib/argv-flags.ts';
 import {
   changedFileCount,
@@ -18,8 +18,10 @@ import {
   revParse,
   type ForgeParentState,
   type LandingAction,
+  type GitRunner,
   type ParentLanding,
 } from './lib/stack-merge.ts';
+import { describeTip, resolveParentTip } from './lib/parent-tip.ts';
 import { forgeParentState, parentLandedReport, parentMergeMethod } from './lib/stack-lifecycle.ts';
 import { effectiveParent } from './lib/stack-overlap.ts';
 import { readRepoMergeSettings } from './lib/forge-adapter/merge-settings.ts';
@@ -31,8 +33,9 @@ export { changedFileCount, childBranchFor };
 // replayed commits, or not at all leaves the child claiming the parent's work as its own. The
 // recovery is a merge, never a history rewrite: the child's remote head gains one commit whose
 // tree is a three-way merge with the tip recorded at stack creation as the base, published as a
-// fast-forward push (`lib/stack-merge.ts`). `<parent-tip>` has to be recorded before the parent
-// merges, because after the parent branch is deleted the base is gone.
+// fast-forward push (`lib/stack-merge.ts`). `<parent-tip>` is best recorded before the parent
+// merges; a child without one derives it from the parent PR's head (`deriveParentTips`), because
+// `refs/pull/<N>/head` still resolves after the parent branch is deleted.
 // The prose half (when to run each subcommand) lives in `merge-gate.md` § 7.
 
 export type StackedIssue = {
@@ -54,6 +57,11 @@ export type StackedChild = {
   pr: number | null;
   branch: string;
   parentTipSha: string | null;
+  /** Set by `deriveParentTips`: `parentTipSha` is then the parent PR's head, not yet the merge base. */
+  tipSource?: 'merged-parent-head';
+  parentPr?: number | null;
+  /** The parent PR's head when readable, kept beside a recorded tip so the repair can cross-check it. */
+  parentHead?: string | null;
 };
 
 const OPEN_STATUSES_EXCLUDED = new Set(['merged', 'closed']);
@@ -74,6 +82,40 @@ export const findStackedChildren = (issues: QueueIssues, parentIssue: number): S
       parentTipSha: issue.parent_tip_sha ?? null,
     }))
     .sort((a, b) => a.issue - b.issue);
+
+/** The PR a child is stacked on: its own `stacked_on_pr` edge, else the parent issue's PR. */
+export const parentPrOf = (issues: QueueIssues, childIssue: number, parentIssue: number): number | null =>
+  issues[String(childIssue)]?.stacked_on_pr ?? issues[String(parentIssue)]?.pr ?? null;
+
+/**
+ * A child with no recorded tip takes its parent PR's head as the tip to resolve (`resolveParentTip`
+ * turns it into the merge base once the ref is fetched). A recorded tip always wins and stays the
+ * tip; the head is read only to ride along as `parentHead` for the cross-check. Without a readable
+ * head a tip-less child stays null and `planRepair` refuses.
+ */
+export const deriveParentTips = (
+  children: StackedChild[],
+  issues: QueueIssues,
+  parentIssue: number,
+  forge: ForgeType,
+  repoSlug: string,
+  fetchRow?: PrRowFetcher,
+): StackedChild[] =>
+  children.map((child) => {
+    const parentPr = parentPrOf(issues, child.issue, parentIssue);
+    const head = parentPr === null ? null : readPrHeadSha(forge, repoSlug, parentPr, fetchRow);
+    if (child.parentTipSha !== null) return { ...child, parentPr, parentHead: head };
+    return head === null ? child : { ...child, parentTipSha: head, tipSource: 'merged-parent-head', parentPr, parentHead: head };
+  });
+
+/** The tip input for a child: a recorded tip is `captured`, a derived one is the head alone. */
+const tipInputOf = (child: StackedChild, target: string) => ({
+  captured: child.tipSource === 'merged-parent-head' ? null : child.parentTipSha,
+  head: child.tipSource === 'merged-parent-head' ? child.parentTipSha : (child.parentHead ?? null),
+  parentPr: child.parentPr ?? null,
+  branch: child.branch,
+  target,
+});
 
 export type RepairPlan = { child: StackedChild; commands: string[]; refusal: string | null };
 
@@ -100,9 +142,9 @@ export const planRepair = (child: StackedChild, base: string, repoSlug: string, 
       child,
       commands: [],
       refusal:
-        `no parent_tip_sha recorded for #${child.issue} — the merge base was never captured at ` +
-        'stack creation and cannot be reconstructed once the parent branch is gone; recover it by hand ' +
-        "from the merged parent PR's commit list",
+        `no parent_tip_sha recorded for #${child.issue} and the parent PR's head could not be read ` +
+        '(no stacked_on_pr edge, no parent issue PR, or the forge read failed); record the tip with ' +
+        "`capture` or recover it by hand from the merged parent PR's commit list",
     };
   }
   if (child.pr === null) {
@@ -294,8 +336,8 @@ const readLanding = (flags: Flags, repoSlug: string, parentPr: number | null, fe
   return parentPr === null ? null : readPrLanding(forgeOf(flags), repoSlug, parentPr, fetchRow);
 };
 
-const readParentState = (flags: Flags, repoSlug: string, parentPr: number | null): ForgeParentState | null => {
-  const landing = readLanding(flags, repoSlug, parentPr);
+const readParentState = (flags: Flags, repoSlug: string, parentPr: number | null, fetchRow?: PrRowFetcher): ForgeParentState | null => {
+  const landing = readLanding(flags, repoSlug, parentPr, fetchRow);
   return landing === null ? null : forgeParentState(landing);
 };
 
@@ -345,22 +387,32 @@ const printCiRetrigger = (forge: ForgeType, child: StackedChild, base: string, a
   if (notice !== null) console.log(notice);
 };
 
-const gitFetch = (repoRoot: string, branch: string): boolean => realGit(repoRoot, ['fetch', '--quiet', 'origin', branch]).ok;
+const gitFetch = (repoRoot: string, branch: string, git: GitRunner = realGit): boolean => git(repoRoot, ['fetch', '--quiet', 'origin', branch]).ok;
 
 const applyOneRepair = (
   plan: RepairPlan,
-  ctx: { base: string; repoSlug: string; repoRoot: string; queue: QueueJson; parentState: ForgeParentState; acceptPatchIdChange: boolean; forge: ForgeType },
+  ctx: { base: string; repoSlug: string; repoRoot: string; queue: QueueJson; parentState: ForgeParentState; acceptPatchIdChange: boolean; forge: ForgeType; git: GitRunner },
 ): boolean => {
   const { child } = plan;
+  const { git } = ctx;
   const { base, repoSlug, repoRoot, queue } = ctx;
-  const parentTip = child.parentTipSha as string;
   const target = `origin/${base}`;
 
-  if (!gitFetch(repoRoot, base)) {
+  if (!gitFetch(repoRoot, base, git)) {
     console.error(`#${child.issue}: git fetch origin ${base} failed`);
     return false;
   }
-  if (!isAncestor(repoRoot, parentTip, child.branch)) {
+  const resolved = resolveParentTip(repoRoot, tipInputOf(child, target), {
+    git,
+    fetchPrHead: (pr) => git(repoRoot, ['fetch', '--quiet', 'origin', `refs/pull/${pr}/head`]).ok,
+  });
+  if ('refusal' in resolved) {
+    console.error(`#${child.issue}: ${resolved.refusal}`);
+    return false;
+  }
+  const parentTip = resolved.tip;
+  console.log(`#${child.issue}: ${resolved.source === 'derived' ? 'no recorded parent tip — ' : ''}${resolved.note}`);
+  if (!isAncestor(repoRoot, parentTip, child.branch, git)) {
     console.error(
       `#${child.issue}: recorded parent tip ${parentTip} is not an ancestor of ${child.branch} — refusing, ` +
         'the merge base is wrong and the replay would drop or duplicate work',
@@ -390,6 +442,7 @@ const applyOneRepair = (
     mergeBase: parentTip,
     push: { remote: 'origin', queue },
     acceptPatchIdChange: ctx.acceptPatchIdChange,
+    git,
   });
   if (result.status === 'conflict') {
     const note = kind === 'abandoned' ? ` (note: stack-parent-abandoned:#${child.issue}) ` : ' ';
@@ -419,7 +472,7 @@ const applyOneRepair = (
   return counts.ok;
 };
 
-const repair = (flags: Flags): number => {
+const repair = (flags: Flags, fetchRow?: PrRowFetcher, git: GitRunner = realGit): number => {
   const queuePath = requireFlag(flags, 'queue');
   const repoRoot = requireFlag(flags, 'repo-root');
   const repoSlug = requireFlag(flags, 'repo-slug');
@@ -429,8 +482,10 @@ const repair = (flags: Flags): number => {
   const only = typeof flags['child-issue'] === 'string' ? Number(flags['child-issue']) : null;
 
   const queue = readQueue(queuePath);
+  const forge = forgeOf(flags);
   const all = findStackedChildren(queue.issues ?? {}, parentIssue);
-  const children = only === null ? all : all.filter((c) => c.issue === only);
+  const selected = only === null ? all : all.filter((c) => c.issue === only);
+  const children = deriveParentTips(selected, queue.issues ?? {}, parentIssue, forge, repoSlug, fetchRow);
   if (children.length === 0) {
     console.log(`No open children stacked on #${parentIssue}${only === null ? '' : ` matching #${only}`} — nothing to repair.`);
     return 0;
@@ -443,11 +498,13 @@ const repair = (flags: Flags): number => {
     return 2;
   }
 
-  const forge = forgeOf(flags);
   const plans = children.map((child) => planRepair(child, base, repoSlug, repoRoot, forge));
   for (const plan of plans) {
     if (plan.refusal !== null) console.log(`#${plan.child.issue}: REFUSED — ${plan.refusal}`);
-    else for (const command of plan.commands) console.log(`#${plan.child.issue}: ${command}`);
+    else {
+      console.log(`#${plan.child.issue}: ${describeTip(tipInputOf(plan.child, `origin/${base}`))}`);
+      for (const command of plan.commands) console.log(`#${plan.child.issue}: ${command}`);
+    }
   }
 
   const refused = plans.filter((p) => p.refusal !== null);
@@ -460,7 +517,8 @@ const repair = (flags: Flags): number => {
     return 1;
   }
 
-  const parentState = readParentState(flags, repoSlug, queue.issues?.[String(parentIssue)]?.pr ?? null);
+  const parentPr = queue.issues?.[String(parentIssue)]?.pr ?? parentPrOf(queue.issues ?? {}, plans[0].child.issue, parentIssue);
+  const parentState = readParentState(flags, repoSlug, parentPr, fetchRow);
   if (parentState === null) {
     console.error(`cannot tell how parent #${parentIssue} landed — pass --parent-state merged|closed-unmerged`);
     return 1;
@@ -471,7 +529,7 @@ const repair = (flags: Flags): number => {
   }
   const acceptPatchIdChange = flags['accept-patch-id-change'] === true;
   for (const plan of plans) {
-    if (!applyOneRepair(plan, { base, repoSlug, repoRoot, queue, parentState, acceptPatchIdChange, forge })) return 1;
+    if (!applyOneRepair(plan, { base, repoSlug, repoRoot, queue, parentState, acceptPatchIdChange, forge, git })) return 1;
   }
   console.log(`Repaired ${plans.length} stacked child(ren) of #${parentIssue}.`);
   return 0;
@@ -620,12 +678,12 @@ const USAGE = `Usage:
       (exit 0 merged, 1 open, 4 closed unmerged, 3 unreadable)
   bun run scripts/stack-repair.ts merge-method --queue <path> --repo-slug <owner/repo> [--forge <github|gitea>] --issue <N>   (exit 3: hold)`;
 
-export const main = (argv: string[], fetchRow?: PrRowFetcher): number => {
+export const main = (argv: string[], fetchRow?: PrRowFetcher, git: GitRunner = realGit): number => {
   const [subcommand, ...rest] = argv;
   const flags = parseFlags(rest);
   try {
     if (subcommand === 'capture') return capture(flags);
-    if (subcommand === 'repair') return repair(flags);
+    if (subcommand === 'repair') return repair(flags, fetchRow, git);
     if (subcommand === 'restack') return restack(flags);
     if (subcommand === 'merge-method') return mergeMethod(flags);
     if (subcommand === 'parent-landed') return parentLanded(flags, fetchRow);

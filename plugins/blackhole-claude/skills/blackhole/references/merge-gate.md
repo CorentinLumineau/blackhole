@@ -339,9 +339,12 @@ while its own diff silently absorbs the parent's files, and a reviewer opening i
 already on the base branch. The repair is a retarget followed by a **replay merge**, never a
 history rewrite: one new commit on the child whose tree is a three-way merge of the target branch
 into the child with `<parent-tip>` as the merge base, published as a fast-forward push. A parent
-merged with a merge commit needs no commit at all (retarget only). `<parent-tip>` is only knowable *before* the
+merged with a merge commit needs no commit at all (retarget only). `<parent-tip>` is best captured *before* the
 parent merges, which is why this section owns an obligation at stack-creation time and not only at
-merge time.
+merge time. A child with no recorded tip (an owner or cross-session PR, an external `stacked_on_pr`
+parent, a parent squashed by someone else) is not stuck: `repair` derives the base from the parent
+PR's `head.sha`, which `refs/pull/<N>/head` still resolves after the branch is deleted, as the
+merge base of the child and that head, and refuses a base already on the target under a head that is not. A recorded tip always wins, and is refused when the readable head does not descend from it.
 
 Both obligations are mechanized by `scripts/stack-repair.ts`; only the judgment lives here.
 
@@ -402,7 +405,7 @@ per-child and requires `--child-issue`, because the replay fast-forwards the chi
 Three things the script refuses rather than guesses, each a case where proceeding would look like
 success:
 
-- a child with no recorded `parent_tip_sha` — the boundary is gone and no local recipe recovers it;
+- a child with no recorded `parent_tip_sha` whose parent PR head cannot be read or fetched (no parent PR on its stack edge, a forge read failure, `refs/pull/<N>/head` gone) — nothing is derived, so nothing is guessed;
 - a recorded tip that is not an ancestor of the child branch — the replay merge would drop or
   duplicate the parent's work;
 - a retarget whose read-back `base.ref` does not equal the base. The PATCH's exit status is not
@@ -489,7 +492,7 @@ mistaken for a verified base-ref landing.
 | PR merged while ineligible AND `merged_by: blackhole` marker present | § 3 detects the same way; `merged_by` present proves blackhole's own step 0 was bypassed; logs `V-MERGE-01` BLOCK instead of `V-MERGE-02` |
 | `leave-open` PR merged externally after LGTM | Reconciled normally via forge-sync's generic externally-observed-merge path — no `V-MERGE-01`/`V-MERGE-02` logged (designed path, not drift; see § 3's `leave-open` carve-out) |
 | Pipeline installed (`pipeline_detection.actionman_workclaude: true`) but has not yet verdicted the current HEAD SHA | `pipelineVerdict()` returns `not_detected` for this turn (§ 6) — proceeds to step 1 same as a genuinely undetected pipeline; re-checked next turn, never blocks indefinitely on a bot that has not run |
-| Parent PR about to merge with an open stacked child whose `parent_tip_sha` was never recorded | `phase-loop.md` Step 0.7's dry run exits non-zero and **STOPS** that issue's merge for the turn (§ 7) — the boundary is still recoverable while the parent branch exists and is not afterwards |
+| Parent PR about to merge with an open stacked child whose `parent_tip_sha` was never recorded | `phase-loop.md` Step 0.7's dry run reads the parent PR head to derive the base and exits 0 when it can; when it cannot it exits non-zero and **STOPS** that issue's merge for the turn (§ 7) — capture the tip while the parent branch still exists |
 | Parent PR merges with no open stacked children | § 7's repair is a no-op — Step 0.7 and step 4.6 both exit 0 immediately, no forge or git call made |
 | `leave-open` PR under the merge-readiness dry run (§ Bypass note) | Step 0.5/0.6/1 (C2/C1/C3) all run; on all-green, `phase-loop.md`'s `mergeReady(issue)` (C1+C2+C3) gates the "delivered-at-LGTM" annotation together with `isLgtm(issue)` — no `gh pr merge` call regardless of outcome |
 | PR base is a sibling feature branch, no stacked-merge opt-in | Step 0.8 refuses (§ 8) — hard STOP for the turn, naming both the PR's base and `target_branch`; re-evaluated next turn once the base is corrected or an opt-in is declared |

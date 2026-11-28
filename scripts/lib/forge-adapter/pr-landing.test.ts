@@ -1,5 +1,26 @@
 import { describe, expect, test } from 'bun:test';
-import { prLandingFromRow, readPrLanding } from './pr-landing.ts';
+import { prLandingFromRow, readPrHeadSha, readPrLanding } from './pr-landing.ts';
+
+describe('readPrHeadSha', () => {
+  const SHA = 'c'.repeat(40);
+
+  test('reads head.sha off a merged row on either forge', () => {
+    expect(readPrHeadSha('github', 'o/r', 7, () => ({ state: 'closed', merged: true, head: { sha: SHA } }))).toBe(SHA);
+    expect(readPrHeadSha('gitea', 'o/r', 7, () => ({ state: 'closed', merged_at: '2026-01-02T03:04:05Z', head: { sha: SHA } }))).toBe(SHA);
+  });
+
+  test('a missing, short or non-string sha is null, as is a throwing fetcher or a forge with no reader', () => {
+    expect(readPrHeadSha('github', 'o/r', 7, () => ({ state: 'closed' }))).toBeNull();
+    expect(readPrHeadSha('github', 'o/r', 7, () => ({ head: { sha: 'abc' } }))).toBeNull();
+    expect(readPrHeadSha('github', 'o/r', 7, () => null)).toBeNull();
+    expect(
+      readPrHeadSha('github', 'o/r', 7, () => {
+        throw new Error('network down');
+      }),
+    ).toBeNull();
+    expect(readPrHeadSha('gitlab' as never, 'o/r', 7, () => ({ head: { sha: SHA } }))).toBeNull();
+  });
+});
 
 describe('prLandingFromRow', () => {
   test('a GitHub squash-merged row is merged and carries the merge commit', () => {

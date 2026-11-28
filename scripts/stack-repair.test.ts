@@ -4,14 +4,16 @@ import * as ghCli from './lib/forge-adapter/cli.ts';
 import * as fs from 'fs';
 import { spawnSync } from 'child_process';
 import { makeTempDir } from './lib/fs.ts';
-import { replayMerge } from './lib/stack-merge.ts';
+import { realGit, replayMerge, type GitRunner } from './lib/stack-merge.ts';
 import {
   changedFileCount,
   childBranchFor,
   ciRetriggerNotice,
+  deriveParentTips,
   findStackedChildren,
   issueOfPr,
   main,
+  parentPrOf,
   planRepair,
   planRestack,
   recordParentTip,
@@ -690,5 +692,311 @@ describe('Gitea parity: retarget, read-back, CI re-trigger notice and merge sett
   test('merge-method on a Gitea squash-only repo squashes even with open children', () => {
     const { choice } = mergeMethodOn({ allow_squash_merge: true, allow_merge_commits: false, allow_rebase: false }, '7');
     expect(choice).toMatchObject({ method: 'squash' });
+  });
+});
+
+describe('deriveParentTips (pure)', () => {
+  const HEAD = 'a'.repeat(40);
+  const merged = { state: 'closed', merged: true, merged_at: '2026-01-02T03:04:05Z', head: { sha: HEAD } };
+  const issues: QueueIssues = { '1': { status: 'merged', pr: 41 }, '2': { status: 'ready', pr: 42, stacked_on: 1 } };
+
+  test('a child with no recorded tip takes the merged parent PR head, flagged as derived', () => {
+    const asked: number[] = [];
+    const [derived] = deriveParentTips([child({ issue: 2, pr: 42, parentTipSha: null })], issues, 1, 'github', 'o/r', (_f, _r, pr) => {
+      asked.push(pr);
+      return merged;
+    });
+    expect(asked).toEqual([41]);
+    expect(derived).toMatchObject({ parentTipSha: HEAD, tipSource: 'merged-parent-head', parentPr: 41 });
+  });
+
+  test('a recorded tip wins; the parent head is attached only so the repair can cross-check it', () => {
+    const recorded = child({ issue: 2, parentTipSha: 'b'.repeat(40) });
+    const [kept] = deriveParentTips([recorded], issues, 1, 'github', 'o/r', () => merged);
+    expect(kept).toMatchObject({ parentTipSha: 'b'.repeat(40), parentHead: HEAD, parentPr: 41 });
+    expect(kept.tipSource).toBeUndefined();
+  });
+
+  test('a recorded tip stays untouched when the parent head cannot be read', () => {
+    const recorded = child({ issue: 2, parentTipSha: 'b'.repeat(40) });
+    expect(deriveParentTips([recorded], issues, 1, 'github', 'o/r', () => null)[0]).toMatchObject({ parentTipSha: 'b'.repeat(40), parentHead: null });
+  });
+
+  test('a child with no parent PR, or an unreadable parent head, stays null so the plan refuses', () => {
+    const orphan: QueueIssues = { '2': { status: 'ready', pr: 42, stacked_on: 1 } };
+    expect(deriveParentTips([child({ issue: 2, parentTipSha: null })], orphan, 1, 'github', 'o/r', () => merged)[0].parentTipSha).toBeNull();
+    expect(deriveParentTips([child({ issue: 2, parentTipSha: null })], issues, 1, 'github', 'o/r', () => null)[0].parentTipSha).toBeNull();
+  });
+
+  test('stacked_on_pr names the parent PR when the parent has no queue issue', () => {
+    expect(parentPrOf({ '2': { stacked_on_pr: 99 } }, 2, 1)).toBe(99);
+  });
+});
+
+// The squash-replay recovery with no captured tip: a squashed parent, its branch deleted, a child
+// with commits of its own. Origin keeps refs/pull/41/head, as a forge does after a merge.
+describe('repair derives the merge base from the merged parent PR head', () => {
+  const parentBranch = childBranchFor(1);
+  const childBranch = childBranchFor(2);
+  let root: string;
+  let origin: string;
+  let work: string;
+  let parentTip: string;
+  let queuePath: string;
+
+  const git = (cwd: string, ...args: string[]) => spawnSync('git', ['-C', cwd, ...args], { encoding: 'utf-8' });
+  const writeFile = (name: string, content: string) => fs.writeFileSync(`${work}/${name}`, `${content}\n`);
+  const commit = (message: string) => {
+    git(work, 'add', '-A');
+    git(work, 'commit', '-qm', message);
+  };
+  const quiet = <T>(fn: () => T): { value: T; logs: string[] } => {
+    const logs: string[] = [];
+    const [log, err] = [console.log, console.error];
+    console.log = (m: string) => void logs.push(m);
+    console.error = (m: string) => void logs.push(m);
+    try {
+      return { value: fn(), logs };
+    } finally {
+      console.log = log;
+      console.error = err;
+    }
+  };
+
+  let parentTip1: string;
+  let child3Branch: string;
+  type Scene = { conflict?: boolean; diverged?: boolean; twoChildren?: boolean };
+
+  // The child is cut at the parent's FIRST commit, so the merge base is an earlier parent commit and
+  // not the head: a derivation that simply used the head would pass a head-cut fixture by accident.
+  const build = ({ conflict = false, diverged = false, twoChildren = false }: Scene = {}) => {
+    root = makeTempDir('blackhole-stack-derive');
+    origin = `${root}/origin.git`;
+    work = `${root}/work`;
+    child3Branch = childBranchFor(3);
+    git(root, 'init', '-q', '--bare', '-b', 'main', origin);
+    git(root, 'init', '-q', '-b', 'main', work);
+    git(work, 'config', 'user.email', 'campaign@example.invalid');
+    git(work, 'config', 'user.name', 'campaign');
+    git(work, 'remote', 'add', 'origin', origin);
+    writeFile('base.txt', 'base');
+    writeFile('shared.txt', 'shared base');
+    commit('base');
+    git(work, 'push', '-q', 'origin', 'main');
+
+    git(work, 'checkout', '-qb', parentBranch);
+    writeFile('parent1.txt', 'p');
+    writeFile('parent2.txt', 'p');
+    commit('parent work 1');
+    parentTip1 = git(work, 'rev-parse', 'HEAD').stdout.trim();
+    writeFile('parent1.txt', 'p revised');
+    commit('parent work 2');
+    parentTip = git(work, 'rev-parse', 'HEAD').stdout.trim();
+    git(work, 'push', '-q', 'origin', `${parentBranch}`);
+
+    git(work, 'checkout', '-qb', childBranch, parentTip1);
+    writeFile('child1.txt', 'c');
+    writeFile('child2.txt', 'c');
+    if (conflict) writeFile('shared.txt', 'shared from child');
+    commit('child work');
+    git(work, 'push', '-q', 'origin', childBranch);
+    if (twoChildren) {
+      git(work, 'checkout', '-qb', child3Branch, parentTip1);
+      writeFile('child3a.txt', 'c');
+      writeFile('child3b.txt', 'c');
+      commit('second child work');
+      git(work, 'push', '-q', 'origin', child3Branch);
+    }
+
+    git(work, 'checkout', '-q', 'main');
+    if (diverged) {
+      // The parent's author rebased onto a newer trunk and force-pushed before the squash: the head
+      // the forge keeps shares nothing with the child except the old trunk.
+      writeFile('trunk.txt', 'trunk moved');
+      commit('trunk moves');
+      git(work, 'push', '-q', 'origin', 'main');
+      git(work, 'checkout', '-q', parentBranch);
+      git(work, 'rebase', '-q', 'main');
+      parentTip = git(work, 'rev-parse', 'HEAD').stdout.trim();
+      git(work, 'push', '-qf', 'origin', parentBranch);
+      git(work, 'checkout', '-q', 'main');
+    }
+    git(work, 'merge', '--squash', '-q', parentBranch);
+    if (conflict) writeFile('shared.txt', 'shared from main');
+    commit('parent squashed');
+    git(work, 'push', '-q', 'origin', 'main');
+
+    // The forge keeps the PR head ref after the merge; the branch itself is deleted.
+    git(origin, 'update-ref', 'refs/pull/41/head', parentTip);
+    git(work, 'push', '-q', 'origin', '--delete', parentBranch);
+    git(work, 'branch', '-qD', parentBranch);
+    git(work, 'checkout', '-q', childBranch);
+
+    queuePath = `${root}/queue.json`;
+    fs.writeFileSync(
+      queuePath,
+      JSON.stringify({
+        issues: {
+          '1': { status: 'merged', pr: 41 },
+          '2': { status: 'ready', pr: 42, stacked_on: 1 },
+          ...(twoChildren ? { '3': { status: 'ready', pr: 43, stacked_on: 1 } } : {}),
+        },
+      }),
+    );
+  };
+
+  const runRepair = (childIssue = '2', gitRunner?: GitRunner, extra: string[] = []) => {
+    const mergedParent = { state: 'closed', merged: true, merged_at: '2026-01-02T03:04:05Z', head: { sha: parentTip } };
+    const gh = spyOn(ghCli, 'runGhApi').mockImplementation((method: string) => ({
+      status: 0,
+      stdout: JSON.stringify(
+        method === 'PATCH' ? { number: 42 } : { number: 42, state: 'open', head: { ref: childBranch, sha: 'abc' }, base: { ref: 'main' } },
+      ),
+      stderr: '',
+      error: null,
+    }));
+    try {
+      return quiet(() =>
+        main(
+          ['repair', '--queue', queuePath, '--repo-root', work, '--repo-slug', 'o/r', '--base', 'main', '--parent-issue', '1', '--child-issue', childIssue, '--apply', ...extra],
+          () => mergedParent,
+          gitRunner,
+        ),
+      );
+    } finally {
+      gh.mockRestore();
+    }
+  };
+
+  const afterEachScene = () => fs.rmSync(root, { recursive: true, force: true });
+
+  test('replays the squash onto the child with the parent PR head as merge base and pushes one commit', () => {
+    build();
+    try {
+      const before = git(origin, 'rev-parse', childBranch).stdout.trim();
+      const { value, logs } = runRepair();
+      expect(parentTip1).not.toBe(parentTip);
+      expect(logs.join('\n')).toContain(`merge base ${parentTip1} derived from parent PR #41 head ${parentTip}`);
+      expect(value).toBe(0);
+
+      const after = git(origin, 'rev-parse', childBranch).stdout.trim();
+      expect(after).not.toBe(before);
+      expect(git(origin, 'rev-list', '--count', '--first-parent', `${before}..${after}`).stdout.trim()).toBe('1');
+      expect(git(origin, 'merge-base', '--is-ancestor', before, after).status).toBe(0);
+      expect(changedFileCount(work, 'main', after, true)).toBe(2);
+    } finally {
+      afterEachScene();
+    }
+  });
+
+  test('a conflicting overlap with the landed work stops with nothing pushed', () => {
+    build({ conflict: true });
+    try {
+      const before = git(origin, 'rev-parse', childBranch).stdout.trim();
+      const { value, logs } = runRepair();
+      expect(value).toBe(1);
+      expect(logs.join('\n')).toContain('replay conflict');
+      expect(git(origin, 'rev-parse', childBranch).stdout.trim()).toBe(before);
+    } finally {
+      afterEachScene();
+    }
+  });
+
+  test('a parent head that did not fetch refuses with a reason and pushes nothing', () => {
+    build();
+    try {
+      git(origin, 'update-ref', '-d', 'refs/pull/41/head');
+      const before = git(origin, 'rev-parse', childBranch).stdout.trim();
+      const { value, logs } = runRepair();
+      expect(value).toBe(1);
+      expect(logs.join('\n')).toContain('refs/pull/41/head did not fetch');
+      expect(git(origin, 'rev-parse', childBranch).stdout.trim()).toBe(before);
+    } finally {
+      afterEachScene();
+    }
+  });
+
+  test('on Gitea, a pull ref that does not exist keeps the refusal and pushes nothing', () => {
+    build();
+    try {
+      git(origin, 'update-ref', '-d', 'refs/pull/41/head');
+      const before = git(origin, 'rev-parse', childBranch).stdout.trim();
+      const { value, logs } = runRepair('2', undefined, ['--forge', 'gitea']);
+      expect(value).toBe(1);
+      expect(logs.join('\n')).toContain('no merge base can be derived from parent PR #41');
+      expect(git(origin, 'rev-parse', childBranch).stdout.trim()).toBe(before);
+    } finally {
+      afterEachScene();
+    }
+  });
+
+  test('a parent rebased and force-pushed before the squash is refused naming both SHAs, with nothing pushed', () => {
+    build({ diverged: true });
+    try {
+      const before = git(origin, 'rev-parse', childBranch).stdout.trim();
+      const { value, logs } = runRepair();
+      const text = logs.join('\n');
+      expect(value).toBe(1);
+      expect(text).toContain(parentTip);
+      expect(text).toMatch(/derived merge base [0-9a-f]{40}/);
+      expect(text).not.toContain('Repaired');
+      expect(git(origin, 'rev-parse', childBranch).stdout.trim()).toBe(before);
+    } finally {
+      afterEachScene();
+    }
+  });
+
+  test('a recorded tip that is not an ancestor of the fetched parent head is refused, naming both SHAs', () => {
+    build();
+    try {
+      const stray = git(work, 'rev-parse', 'main').stdout.trim();
+      const queue = JSON.parse(fs.readFileSync(queuePath, 'utf-8'));
+      queue.issues['2'].parent_tip_sha = stray;
+      fs.writeFileSync(queuePath, JSON.stringify(queue));
+      const before = git(origin, 'rev-parse', childBranch).stdout.trim();
+      const { value, logs } = runRepair();
+      expect(value).toBe(1);
+      expect(logs.join('\n')).toContain(stray);
+      expect(logs.join('\n')).toContain(parentTip);
+      expect(git(origin, 'rev-parse', childBranch).stdout.trim()).toBe(before);
+    } finally {
+      afterEachScene();
+    }
+  });
+
+  test('a recorded tip behind the parent head stays the merge base', () => {
+    build();
+    try {
+      const queue = JSON.parse(fs.readFileSync(queuePath, 'utf-8'));
+      queue.issues['2'].parent_tip_sha = parentTip1;
+      fs.writeFileSync(queuePath, JSON.stringify(queue));
+      const { value, logs } = runRepair();
+      expect(value).toBe(0);
+      expect(logs.join('\n')).not.toContain('derived from parent PR');
+    } finally {
+      afterEachScene();
+    }
+  });
+
+  test('two stacked children are each repaired with exactly one push, through an injected git runner', () => {
+    build({ twoChildren: true });
+    try {
+      const pushes: string[] = [];
+      const counting: GitRunner = (repoRoot, args, input) => {
+        if (args[0] === 'push') pushes.push(args[2]);
+        return realGit(repoRoot, args, input);
+      };
+      expect(runRepair('2', counting).value).toBe(0);
+      git(work, 'checkout', '-q', child3Branch);
+      expect(runRepair('3', counting).value).toBe(0);
+
+      expect(pushes).toHaveLength(2);
+      expect(pushes.map((p) => p.split(':refs/heads/')[1])).toEqual([childBranch, child3Branch]);
+      for (const branch of [childBranch, child3Branch]) {
+        expect(git(origin, 'rev-list', '--count', '--first-parent', `${branch}~1..${branch}`).stdout.trim()).toBe('1');
+      }
+    } finally {
+      afterEachScene();
+    }
   });
 });

@@ -6,7 +6,13 @@ export type PrLandingState = 'open' | 'merged' | 'closed-unmerged';
 
 export type PrLanding = { state: PrLandingState; mergedAt: string | null; mergeCommitSha: string | null };
 
-type PrRow = { state?: string; merged?: boolean; merged_at?: string | null; merge_commit_sha?: string | null };
+type PrRow = {
+  state?: string;
+  merged?: boolean;
+  merged_at?: string | null;
+  merge_commit_sha?: string | null;
+  head?: { sha?: string | null } | null;
+};
 
 /**
  * Landing of a PR from its REST row. The forge's merged flag (GitHub `merged`, Gitea `merged_at`)
@@ -41,6 +47,26 @@ export const readPrLanding = (
   if (forge !== 'github' && forge !== 'gitea') return null;
   try {
     return prLandingFromRow(fetchRow(forge, repo, pr));
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Head commit of `pr` as the forge reports it. A merged PR keeps this value after its branch is
+ * deleted, and `refs/pull/<pr>/head` still resolves it, which is how a stacked child recovers a
+ * parent tip that was never captured. Null when the read fails or the row carries no 40-hex sha.
+ */
+export const readPrHeadSha = (
+  forge: ForgeType,
+  repo: string,
+  pr: number,
+  fetchRow: PrRowFetcher = defaultFetch,
+): string | null => {
+  if (forge !== 'github' && forge !== 'gitea') return null;
+  try {
+    const sha = fetchRow(forge, repo, pr)?.head?.sha;
+    return typeof sha === 'string' && /^[0-9a-f]{40}$/.test(sha) ? sha : null;
   } catch {
     return null;
   }

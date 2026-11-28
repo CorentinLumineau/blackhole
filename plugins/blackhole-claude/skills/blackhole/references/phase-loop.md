@@ -113,11 +113,11 @@ merge-readiness dry run (same D5 narrowing as Step 0.5 above).
 **Step 0.7 — Stacked-child tip capture check** (issue #794): after Step 0.6 passes and before step
 1, run `merge-gate.md` § 7's `stack-repair.ts repair` **without** `--apply`, with this issue as
 `--parent-issue`. Exit 0 with no children listed means this PR is nobody's parent — continue to
-step 1 unchanged. Exit non-zero means at least one open child has no recorded `parent_tip_sha`:
+step 1 unchanged. Exit non-zero means at least one open child has no recorded `parent_tip_sha` and no readable parent PR head to derive one from:
 **STOP** this issue's merge for the turn and capture the missing tip (`merge-gate.md` § 7's
-`capture --apply`) first. The ordering is the whole point — the merge base is recoverable
-only while the parent branch still exists, and no amount of care at repair time recovers what the
-merge destroyed. **Runs for `merge_mode: leave-open` too**: a human's merge deletes the boundary
+`capture --apply`) first. Capture is the preferred source of the merge base; deriving it from the
+parent PR head at repair time is the fallback, and it needs a readable, fetchable head that still
+shares a parent-only commit with the child (a force-pushed parent does not). **Runs for `merge_mode: leave-open` too**: a human's merge deletes the boundary
 exactly as blackhole's would.
 
 **Step 0.8 — Merge-Base Assertion**: after Step 0.7 passes and before step 1, read the PR's base
